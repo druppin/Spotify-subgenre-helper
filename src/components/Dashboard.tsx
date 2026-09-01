@@ -86,7 +86,7 @@ function DashboardInner() {
           <option value="">Choose a source playlist…</option>
           {playlists.map((p) => (
             <option key={p.id} value={p.id}>
-              {p.name} ({p.tracks.total})
+              {p.name} ({p.tracks?.total ?? "?"})
             </option>
           ))}
         </select>

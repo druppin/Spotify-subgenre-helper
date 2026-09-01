@@ -10,7 +10,9 @@ export interface SpotifyPlaylist {
   id: string;
   name: string;
   images: SpotifyImage[];
-  tracks: { total: number };
+  // Spotify omits this for some playlists (e.g. ones you can only partially
+  // see) even when the playlist entry itself is otherwise present.
+  tracks?: { total: number };
   owner: { display_name: string | null };
 }
 

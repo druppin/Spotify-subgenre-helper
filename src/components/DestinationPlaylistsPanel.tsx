@@ -84,7 +84,7 @@ export function DestinationPlaylistsPanel({
             >
               <div className="flex items-center justify-between">
                 <span className="truncate">{p.name}</span>
-                <span className="text-xs text-neutral-500">{p.tracks.total}</span>
+                <span className="text-xs text-neutral-500">{p.tracks?.total ?? "?"}</span>
               </div>
             </button>
           </li>
