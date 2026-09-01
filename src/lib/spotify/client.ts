@@ -71,8 +71,11 @@ export class SpotifyClient {
     const playlists: SpotifyPlaylist[] = [];
     let url: string | null = "/me/playlists?limit=50";
     while (url) {
-      const page: { items: SpotifyPlaylist[]; next: string | null } = await this.request(url);
-      playlists.push(...page.items);
+      const page: { items: (SpotifyPlaylist | null)[]; next: string | null } =
+        await this.request(url);
+      // /me/playlists can include null entries for playlists that became
+      // inaccessible (deleted, region-locked, etc.) — drop those.
+      playlists.push(...page.items.filter((item): item is SpotifyPlaylist => item !== null));
       url = page.next ? page.next.replace(API_BASE, "") : null;
     }
     return playlists;
