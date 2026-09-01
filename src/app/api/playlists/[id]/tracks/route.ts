@@ -9,7 +9,8 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
     const client = new SpotifyClient(accessToken);
     const items = await client.getPlaylistTracks(id);
     return NextResponse.json({ items });
-  } catch {
+  } catch (err) {
+    console.error("GET /api/playlists/[id]/tracks failed:", err);
     return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
   }
 }
@@ -27,7 +28,8 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
     const client = new SpotifyClient(accessToken);
     await client.removeTrackFromPlaylist(id, trackUri);
     return NextResponse.json({ ok: true });
-  } catch {
+  } catch (err) {
+    console.error("DELETE /api/playlists/[id]/tracks failed:", err);
     return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
   }
 }

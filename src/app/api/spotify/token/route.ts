@@ -8,7 +8,8 @@ export async function GET() {
   try {
     const accessToken = await getValidAccessToken();
     return NextResponse.json({ accessToken });
-  } catch {
+  } catch (err) {
+    console.error("GET /api/spotify/token failed:", err);
     return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
   }
 }

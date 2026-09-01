@@ -13,7 +13,8 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const client = new SpotifyClient(accessToken);
     await client.addTrackToPlaylist(id, trackUri);
     return NextResponse.json({ ok: true });
-  } catch {
+  } catch (err) {
+    console.error("POST /api/playlists/[id]/add failed:", err);
     return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
   }
 }

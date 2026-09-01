@@ -8,7 +8,8 @@ export async function GET() {
     const client = new SpotifyClient(accessToken);
     const playlists = await client.getUserPlaylists();
     return NextResponse.json({ playlists });
-  } catch {
+  } catch (err) {
+    console.error("GET /api/playlists failed:", err);
     return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
   }
 }
