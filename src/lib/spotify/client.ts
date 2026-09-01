@@ -38,7 +38,7 @@ export interface SpotifyPlaylistTrackItem {
   track: SpotifyTrack | null;
 }
 
-class SpotifyApiError extends Error {
+export class SpotifyApiError extends Error {
   constructor(public status: number, message: string) {
     super(message);
     this.name = "SpotifyApiError";

@@ -6,14 +6,20 @@ interface Props {
   tracks: SpotifyPlaylistTrackItem[];
   currentIndex: number;
   onSelect: (index: number) => void;
+  error?: string | null;
 }
 
-export function SourcePlaylistPanel({ tracks, currentIndex, onSelect }: Props) {
+export function SourcePlaylistPanel({ tracks, currentIndex, onSelect, error }: Props) {
   return (
     <div className="flex h-full flex-col overflow-hidden">
       <h2 className="mb-2 px-3 pt-3 text-sm font-semibold uppercase tracking-wide text-neutral-400">
         Source playlist
       </h2>
+      {error && (
+        <p className="mx-3 mb-2 rounded-md bg-red-900/30 px-2 py-1.5 text-xs text-red-400">
+          {error}
+        </p>
+      )}
       <ul className="flex-1 overflow-y-auto">
         {tracks.map((item, index) => {
           if (!item.track) return null;
@@ -36,7 +42,7 @@ export function SourcePlaylistPanel({ tracks, currentIndex, onSelect }: Props) {
             </li>
           );
         })}
-        {tracks.length === 0 && (
+        {tracks.length === 0 && !error && (
           <li className="px-3 py-2 text-sm text-neutral-500">No tracks in this playlist.</li>
         )}
       </ul>

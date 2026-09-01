@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getValidAccessToken } from "@/lib/spotify/auth";
+import { spotifyErrorResponse } from "@/lib/spotify/routeError";
 
 // Returns a valid access token for the Web Playback SDK to use client-side.
 // The SDK needs the raw token in the browser; there's no way around that
@@ -9,7 +10,6 @@ export async function GET() {
     const accessToken = await getValidAccessToken();
     return NextResponse.json({ accessToken });
   } catch (err) {
-    console.error("GET /api/spotify/token failed:", err);
-    return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
+    return spotifyErrorResponse(err, "GET /api/spotify/token");
   }
 }

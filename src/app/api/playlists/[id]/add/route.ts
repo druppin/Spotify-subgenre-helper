@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getValidAccessToken } from "@/lib/spotify/auth";
 import { SpotifyClient } from "@/lib/spotify/client";
+import { spotifyErrorResponse } from "@/lib/spotify/routeError";
 
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -14,7 +15,6 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     await client.addTrackToPlaylist(id, trackUri);
     return NextResponse.json({ ok: true });
   } catch (err) {
-    console.error("POST /api/playlists/[id]/add failed:", err);
-    return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
+    return spotifyErrorResponse(err, "POST /api/playlists/[id]/add");
   }
 }

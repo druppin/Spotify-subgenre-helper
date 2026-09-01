@@ -5,6 +5,7 @@ import { buildTrackContext } from "@/lib/context";
 import { summarizeTrack } from "@/lib/llm/summarize";
 import type { LlmConfig, LlmProvider, TrackSummary } from "@/lib/llm/types";
 import { getCache } from "@/lib/cache";
+import { SpotifyApiError } from "@/lib/spotify/client";
 
 const summaryCache = getCache<TrackSummary>("track-summary");
 
@@ -41,6 +42,10 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
     await summaryCache.set(cacheKey, summary);
     return NextResponse.json({ summary, context, cached: false });
   } catch (err) {
+    console.error("GET /api/track/[id]/summary failed:", err);
+    if (err instanceof SpotifyApiError) {
+      return NextResponse.json({ error: err.message }, { status: err.status });
+    }
     const message = err instanceof Error ? err.message : "Unknown error";
     const status = message.includes("Not authenticated") ? 401 : 500;
     return NextResponse.json({ error: message }, { status });

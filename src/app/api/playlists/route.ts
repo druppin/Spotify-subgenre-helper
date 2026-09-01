@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getValidAccessToken } from "@/lib/spotify/auth";
 import { SpotifyClient } from "@/lib/spotify/client";
+import { spotifyErrorResponse } from "@/lib/spotify/routeError";
 
 export async function GET() {
   try {
@@ -9,7 +10,6 @@ export async function GET() {
     const playlists = await client.getUserPlaylists();
     return NextResponse.json({ playlists });
   } catch (err) {
-    console.error("GET /api/playlists failed:", err);
-    return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
+    return spotifyErrorResponse(err, "GET /api/playlists");
   }
 }

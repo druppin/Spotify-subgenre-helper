@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getValidAccessToken } from "@/lib/spotify/auth";
 import { SpotifyClient } from "@/lib/spotify/client";
+import { spotifyErrorResponse } from "@/lib/spotify/routeError";
 
 export async function GET(_request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -10,8 +11,7 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
     const items = await client.getPlaylistTracks(id);
     return NextResponse.json({ items });
   } catch (err) {
-    console.error("GET /api/playlists/[id]/tracks failed:", err);
-    return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
+    return spotifyErrorResponse(err, "GET /api/playlists/[id]/tracks");
   }
 }
 
@@ -29,7 +29,6 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
     await client.removeTrackFromPlaylist(id, trackUri);
     return NextResponse.json({ ok: true });
   } catch (err) {
-    console.error("DELETE /api/playlists/[id]/tracks failed:", err);
-    return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
+    return spotifyErrorResponse(err, "DELETE /api/playlists/[id]/tracks");
   }
 }

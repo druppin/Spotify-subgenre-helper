@@ -11,6 +11,7 @@ function DashboardInner() {
   const [playlists, setPlaylists] = useState<SpotifyPlaylist[]>([]);
   const [sourcePlaylistId, setSourcePlaylistId] = useState<string | null>(null);
   const [sourceTracks, setSourceTracks] = useState<SpotifyPlaylistTrackItem[]>([]);
+  const [sourceTracksError, setSourceTracksError] = useState<string | null>(null);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [pinnedIds, setPinnedIds] = useState<string[]>([]);
 
@@ -25,11 +26,18 @@ function DashboardInner() {
   useEffect(() => {
     if (!sourcePlaylistId) return;
     fetch(`/api/playlists/${sourcePlaylistId}/tracks`)
-      .then((res) => res.json())
-      .then((body) => {
+      .then(async (res) => {
+        const body = await res.json();
+        if (!res.ok) {
+          setSourceTracks([]);
+          setSourceTracksError(body.error ?? "Failed to load this playlist's tracks.");
+          return;
+        }
+        setSourceTracksError(null);
         setSourceTracks(body.items ?? []);
         setCurrentIndex(0);
-      });
+      })
+      .catch((err) => setSourceTracksError(String(err)));
   }, [sourcePlaylistId]);
 
   const currentTrack = sourceTracks[currentIndex]?.track ?? null;
@@ -98,6 +106,7 @@ function DashboardInner() {
             tracks={sourceTracks}
             currentIndex={currentIndex}
             onSelect={setCurrentIndex}
+            error={sourceTracksError}
           />
         </div>
 
