@@ -87,20 +87,28 @@ export class SpotifyClient {
     // Spotify's per-app rate limit (and the occasional 5xx) is easy to hit
     // once a track summary fires off several requests at once (track +
     // per-artist fetches) — retry transient failures a few times, honoring
-    // Retry-After on a 429 rather than guessing at a backoff.
-    const MAX_ATTEMPTS = 4;
+    // Retry-After on a 429 rather than guessing at a backoff. A short
+    // per-attempt timeout (Spotify is normally sub-second) keeps the worst
+    // case bounded — a track summary chains this behind an LLM call too,
+    // and the client that's waiting on the whole thing has its own ceiling.
+    const MAX_ATTEMPTS = 3;
+    const TIMEOUT_MS = 8_000;
     for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
       const isLastAttempt = attempt === MAX_ATTEMPTS;
       let res: Response;
       try {
-        res = await fetchWithTimeout(`${API_BASE}${path}`, {
-          ...init,
-          headers: {
-            Authorization: `Bearer ${this.accessToken}`,
-            "Content-Type": "application/json",
-            ...init?.headers,
+        res = await fetchWithTimeout(
+          `${API_BASE}${path}`,
+          {
+            ...init,
+            headers: {
+              Authorization: `Bearer ${this.accessToken}`,
+              "Content-Type": "application/json",
+              ...init?.headers,
+            },
           },
-        });
+          TIMEOUT_MS
+        );
       } catch (err) {
         // Network error or our own timeout — treat the same as a transient
         // HTTP failure rather than letting a single stalled request kill

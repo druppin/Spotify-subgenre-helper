@@ -5,6 +5,7 @@ import type { SpotifyTrack } from "@/lib/spotify/client";
 import type { TrackContext, TrackSummary } from "@/lib/llm/types";
 import { usePlayer } from "./PlayerProvider";
 import { TrackDataPanel } from "./TrackDataPanel";
+import { fetchWithTimeout } from "@/lib/fetchWithTimeout";
 
 interface Props {
   track: SpotifyTrack | null;
@@ -41,24 +42,20 @@ function TrackData({
   onRefresh: (force: boolean) => void;
 }) {
   const [state, setState] = useState<FetchState>({ status: "loading" });
-  console.debug("[TrackData] render", { trackId, force, status: state.status });
 
   useEffect(() => {
     let cancelled = false;
     const url = `/api/track/${trackId}/summary${force ? "?force=true" : ""}`;
-    console.debug("[TrackData] effect start", { trackId, force, url });
-    fetch(url)
+    // Server-side, a single track summary can legitimately chain several
+    // retrying layers (Spotify calls, then the LLM call) — worst case that
+    // can take well over a minute. This request had no timeout of its own,
+    // so in a bad case the fetch promise just never settled and the UI sat
+    // on "Loading track data..." with nothing to show for it. 60s is a
+    // generous ceiling that still guarantees an actionable error + Retry
+    // button shows up eventually instead of an unbounded wait.
+    fetchWithTimeout(url, {}, 60_000)
       .then(async (res) => {
         const body = await res.json();
-        console.debug("[TrackData] fetch resolved", {
-          trackId,
-          cancelled,
-          ok: res.ok,
-          hasContext: Boolean(body.context),
-          hasSummary: Boolean(body.summary),
-          summaryError: body.summaryError,
-          error: body.error,
-        });
         if (cancelled) return;
         if (!res.ok) {
           setState({ status: "error", message: body.error ?? "Failed to load track data" });
@@ -72,11 +69,9 @@ function TrackData({
         });
       })
       .catch((err) => {
-        console.debug("[TrackData] fetch rejected", { trackId, cancelled, err: String(err) });
         if (!cancelled) setState({ status: "error", message: String(err) });
       });
     return () => {
-      console.debug("[TrackData] effect cleanup (cancelling)", { trackId, force });
       cancelled = true;
     };
   }, [trackId, force]);

@@ -46,7 +46,7 @@ async function callOpenAiCompatible(
         temperature: 0.4,
       }),
     },
-    30_000
+    20_000
   );
   if (!res.ok) {
     throw new LlmApiError(res.status, `${config.provider} request failed: ${res.status} ${await res.text()}`);
@@ -76,7 +76,7 @@ async function callAnthropic(
         messages: [{ role: "user", content: userPrompt }],
       }),
     },
-    30_000
+    20_000
   );
   if (!res.ok) {
     throw new LlmApiError(res.status, `anthropic request failed: ${res.status} ${await res.text()}`);
@@ -102,7 +102,7 @@ async function callGoogle(
         generationConfig: { responseMimeType: "application/json", temperature: 0.4 },
       }),
     },
-    30_000
+    20_000
   );
   if (!res.ok) {
     throw new LlmApiError(res.status, `google request failed: ${res.status} ${await res.text()}`);
@@ -127,15 +127,17 @@ function callProvider(config: LlmConfig, systemPrompt: string, userPrompt: strin
 /**
  * Sends a system+user prompt to the configured provider and returns the raw
  * text response (expected to be a JSON string — callers parse it). Retries
- * transient failures (rate limiting, "model overloaded") a couple of times
- * before giving up.
+ * a transient failure (rate limiting, "model overloaded") once before
+ * giving up — this runs after the Spotify context fetch in the same
+ * request, and the client waiting on the whole thing has its own ceiling,
+ * so it's kept tight rather than stacking a long budget on top of that.
  */
 export async function callLlm(
   config: LlmConfig,
   systemPrompt: string,
   userPrompt: string
 ): Promise<string> {
-  const MAX_ATTEMPTS = 3;
+  const MAX_ATTEMPTS = 2;
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
     try {
       return await callProvider(config, systemPrompt, userPrompt);

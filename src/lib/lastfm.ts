@@ -25,7 +25,7 @@ async function call<T>(params: Record<string, string>): Promise<T | null> {
   // error or timeout here shouldn't take down the whole track-context
   // build any more than a non-OK HTTP response already doesn't.
   try {
-    const res = await fetchWithTimeout(url);
+    const res = await fetchWithTimeout(url, {}, 10_000);
     if (!res.ok) return null;
     const body = await res.json();
     if (body.error) return null;

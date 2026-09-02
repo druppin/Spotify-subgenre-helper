@@ -137,12 +137,6 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       player.addListener("player_state_changed", (arg) => {
         const state = arg as SpotifyPlayerState | null;
         if (!state) return;
-        console.debug("[player_state_changed]", {
-          actuallyPlayingUri: state.track_window.current_track.uri,
-          actuallyPlayingName: state.track_window.current_track.name,
-          latestRequestedUri: latestRequestedUriRef.current,
-          paused: state.paused,
-        });
         setIsPaused(state.paused);
         setPosition(state.position);
         setDuration(state.duration);
@@ -176,7 +170,6 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   }, [isPaused, duration]);
 
   const playTrack = useCallback((uri: string): Promise<void> => {
-    console.debug("[playTrack] requested", { uri });
     latestRequestedUriRef.current = uri;
     const deviceId = deviceIdRef.current;
 
@@ -186,13 +179,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     const next = playChainRef.current.then(async () => {
       // Superseded by a newer request before this one's turn came up (the
       // user has since moved on) — no need to actually play it at all.
-      if (latestRequestedUriRef.current !== uri) {
-        console.debug("[playTrack] skipped (superseded before its turn)", {
-          uri,
-          latest: latestRequestedUriRef.current,
-        });
-        return;
-      }
+      if (latestRequestedUriRef.current !== uri) return;
       if (!deviceId) throw new Error("Player not ready yet");
 
       setPlaybackError(null);
@@ -207,7 +194,6 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         const isLastAttempt = attempt === MAX_ATTEMPTS;
         try {
           const accessToken = await fetchAccessToken();
-          console.debug("[playTrack] sending PUT", { uri, attempt });
           const res = await fetchWithTimeout(`https://api.spotify.com/v1/me/player/play?device_id=${deviceId}`, {
             method: "PUT",
             headers: {
@@ -216,7 +202,6 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
             },
             body: JSON.stringify({ uris: [uri] }),
           });
-          console.debug("[playTrack] PUT response", { uri, attempt, status: res.status });
           if (res.ok || res.status === 204) return;
 
           const message = `Failed to start playback: ${res.status} ${await res.text()}`;

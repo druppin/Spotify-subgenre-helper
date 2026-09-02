@@ -67,9 +67,11 @@ function toAudioFeatures(item: ReccoBeatsAudioFeaturesItem): AudioFeatures {
 }
 
 async function fetchBatch(trackIds: string[]): Promise<ReccoBeatsAudioFeaturesItem[]> {
-  const res = await fetchWithTimeout(`${API_BASE}/audio-features?ids=${trackIds.join(",")}`, {
-    headers: { Accept: "application/json" },
-  });
+  const res = await fetchWithTimeout(
+    `${API_BASE}/audio-features?ids=${trackIds.join(",")}`,
+    { headers: { Accept: "application/json" } },
+    10_000
+  );
   if (res.status === 429) {
     // ReccoBeats rate-limits without a documented budget — a single retry
     // after a short pause is enough for this app's low request volume.
