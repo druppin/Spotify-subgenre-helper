@@ -24,6 +24,9 @@
 .DS_Store
 *.pem
 
+# persisted track-context/summary cache (local data, not source)
+/.cache/
+
 # editor swap files (e.g. vim's ..env.local.swp for .env.local — .env* doesn't
 # catch these since the leading "." makes the basename start with ".." not ".env")
 *.swp

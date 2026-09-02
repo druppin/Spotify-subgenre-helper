@@ -21,6 +21,10 @@ function DashboardInner() {
   // is deferred until the user navigates to a different track (or a
   // different source playlist), tracked here by the pending track's URI.
   const [pendingRemovalUri, setPendingRemovalUri] = useState<string | null>(null);
+  // Which destination playlists each track has been added to this session —
+  // keyed by track id so the "already added" cue is still there if the user
+  // navigates back to a track they already filed somewhere.
+  const [addedPlaylistIdsByTrack, setAddedPlaylistIdsByTrack] = useState<Record<string, string[]>>({});
 
   const { playTrack } = usePlayer();
 
@@ -130,12 +134,19 @@ function DashboardInner() {
         body: JSON.stringify({ trackUri: currentTrack.uri }),
       });
 
+      setAddedPlaylistIdsByTrack((prev) => ({
+        ...prev,
+        [currentTrack.id]: [...(prev[currentTrack.id] ?? []), destinationPlaylistId],
+      }));
+
       if (alsoRemoveFromSource) {
         setPendingRemovalUri(currentTrack.uri);
       }
     },
     [currentTrack]
   );
+
+  const addedPlaylistIds = new Set(currentTrack ? addedPlaylistIdsByTrack[currentTrack.id] : undefined);
 
   return (
     <div className="flex h-screen flex-col bg-neutral-950 text-white">
@@ -179,6 +190,7 @@ function DashboardInner() {
             onTogglePin={togglePin}
             onAddToPlaylist={handleAddToPlaylist}
             disabled={!currentTrack}
+            addedPlaylistIds={addedPlaylistIds}
           />
         </div>
       </div>

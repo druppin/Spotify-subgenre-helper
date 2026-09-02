@@ -10,6 +10,7 @@ interface Props {
   onTogglePin: (playlistId: string) => void;
   onAddToPlaylist: (playlistId: string, alsoRemoveFromSource: boolean) => Promise<void>;
   disabled: boolean;
+  addedPlaylistIds: Set<string>;
 }
 
 export function DestinationPlaylistsPanel({
@@ -18,6 +19,7 @@ export function DestinationPlaylistsPanel({
   onTogglePin,
   onAddToPlaylist,
   disabled,
+  addedPlaylistIds,
 }: Props) {
   const [alsoRemove, setAlsoRemove] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -62,6 +64,7 @@ export function DestinationPlaylistsPanel({
       <ul className="flex-1 overflow-y-auto">
         {sorted.map((p) => {
           const isPinned = pinnedIds.includes(p.id);
+          const isAdded = addedPlaylistIds.has(p.id);
           return (
             <li key={p.id} className="flex items-center gap-1 px-3 py-1">
               <button
@@ -77,14 +80,23 @@ export function DestinationPlaylistsPanel({
               <button
                 onClick={() => handleAdd(p.id)}
                 disabled={disabled || busyId === p.id}
-                className="flex min-w-0 flex-1 items-center gap-2 rounded-md border border-neutral-700 px-2 py-1.5 text-left text-sm text-neutral-200 hover:border-green-600 hover:bg-green-600/10 disabled:opacity-50"
+                title={isAdded ? "Current track already added here — click to add again" : undefined}
+                className={`flex min-w-0 flex-1 items-center gap-2 rounded-md border px-2 py-1.5 text-left text-sm disabled:opacity-50 ${
+                  isAdded
+                    ? "border-green-500 bg-green-600/15 text-green-300"
+                    : "border-neutral-700 text-neutral-200 hover:border-green-600 hover:bg-green-600/10"
+                }`}
               >
                 <PlaylistThumb playlist={p} size={32} />
                 <div className="flex min-w-0 flex-1 items-center justify-between">
                   <span className="truncate">{p.name}</span>
-                  <span className="flex-shrink-0 text-xs text-neutral-500">
-                    {p.tracks?.total ?? "?"}
-                  </span>
+                  {isAdded ? (
+                    <span className="flex-shrink-0 text-xs font-medium text-green-400">✓ Added</span>
+                  ) : (
+                    <span className="flex-shrink-0 text-xs text-neutral-500">
+                      {p.tracks?.total ?? "?"}
+                    </span>
+                  )}
                 </div>
               </button>
             </li>
