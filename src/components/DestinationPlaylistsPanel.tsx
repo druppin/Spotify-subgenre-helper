@@ -9,6 +9,7 @@ interface Props {
   pinnedIds: string[];
   onTogglePin: (playlistId: string) => void;
   onAddToPlaylist: (playlistId: string, alsoRemoveFromSource: boolean) => Promise<void>;
+  onRemoveFromPlaylist: (playlistId: string) => Promise<void>;
   disabled: boolean;
   addedPlaylistIds: Set<string>;
 }
@@ -18,6 +19,7 @@ export function DestinationPlaylistsPanel({
   pinnedIds,
   onTogglePin,
   onAddToPlaylist,
+  onRemoveFromPlaylist,
   disabled,
   addedPlaylistIds,
 }: Props) {
@@ -37,10 +39,14 @@ export function DestinationPlaylistsPanel({
     return aPinned - bPinned;
   });
 
-  const handleAdd = async (playlistId: string) => {
+  const handleClick = async (playlistId: string, isAdded: boolean) => {
     setBusyId(playlistId);
     try {
-      await onAddToPlaylist(playlistId, alsoRemove);
+      if (isAdded) {
+        await onRemoveFromPlaylist(playlistId);
+      } else {
+        await onAddToPlaylist(playlistId, alsoRemove);
+      }
     } finally {
       setBusyId(null);
     }
@@ -78,12 +84,12 @@ export function DestinationPlaylistsPanel({
                 {isPinned ? "★" : "☆"}
               </button>
               <button
-                onClick={() => handleAdd(p.id)}
+                onClick={() => handleClick(p.id, isAdded)}
                 disabled={disabled || busyId === p.id}
-                title={isAdded ? "Current track already added here — click to add again" : undefined}
+                title={isAdded ? "Click to remove the current track from this playlist" : undefined}
                 className={`flex min-w-0 flex-1 items-center gap-2 rounded-md border px-2 py-1.5 text-left text-sm disabled:opacity-50 ${
                   isAdded
-                    ? "border-green-500 bg-green-600/15 text-green-300"
+                    ? "border-green-500 bg-green-600/15 text-green-300 hover:border-red-500 hover:bg-red-600/10 hover:text-red-300"
                     : "border-neutral-700 text-neutral-200 hover:border-green-600 hover:bg-green-600/10"
                 }`}
               >
@@ -91,7 +97,7 @@ export function DestinationPlaylistsPanel({
                 <div className="flex min-w-0 flex-1 items-center justify-between">
                   <span className="truncate">{p.name}</span>
                   {isAdded ? (
-                    <span className="flex-shrink-0 text-xs font-medium text-green-400">✓ Added</span>
+                    <span className="flex-shrink-0 text-xs font-medium">✓ Added</span>
                   ) : (
                     <span className="flex-shrink-0 text-xs text-neutral-500">
                       {p.tracks?.total ?? "?"}

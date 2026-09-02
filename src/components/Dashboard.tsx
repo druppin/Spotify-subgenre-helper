@@ -146,6 +146,24 @@ function DashboardInner() {
     [currentTrack]
   );
 
+  const handleRemoveFromPlaylist = useCallback(
+    async (destinationPlaylistId: string) => {
+      if (!currentTrack) return;
+
+      await fetch(`/api/playlists/${destinationPlaylistId}/tracks`, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ trackUri: currentTrack.uri }),
+      });
+
+      setAddedPlaylistIdsByTrack((prev) => ({
+        ...prev,
+        [currentTrack.id]: (prev[currentTrack.id] ?? []).filter((id) => id !== destinationPlaylistId),
+      }));
+    },
+    [currentTrack]
+  );
+
   const addedPlaylistIds = new Set(currentTrack ? addedPlaylistIdsByTrack[currentTrack.id] : undefined);
 
   return (
@@ -189,6 +207,7 @@ function DashboardInner() {
             pinnedIds={pinnedIds}
             onTogglePin={togglePin}
             onAddToPlaylist={handleAddToPlaylist}
+            onRemoveFromPlaylist={handleRemoveFromPlaylist}
             disabled={!currentTrack}
             addedPlaylistIds={addedPlaylistIds}
           />
