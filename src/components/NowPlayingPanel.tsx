@@ -41,13 +41,24 @@ function TrackData({
   onRefresh: (force: boolean) => void;
 }) {
   const [state, setState] = useState<FetchState>({ status: "loading" });
+  console.debug("[TrackData] render", { trackId, force, status: state.status });
 
   useEffect(() => {
     let cancelled = false;
     const url = `/api/track/${trackId}/summary${force ? "?force=true" : ""}`;
+    console.debug("[TrackData] effect start", { trackId, force, url });
     fetch(url)
       .then(async (res) => {
         const body = await res.json();
+        console.debug("[TrackData] fetch resolved", {
+          trackId,
+          cancelled,
+          ok: res.ok,
+          hasContext: Boolean(body.context),
+          hasSummary: Boolean(body.summary),
+          summaryError: body.summaryError,
+          error: body.error,
+        });
         if (cancelled) return;
         if (!res.ok) {
           setState({ status: "error", message: body.error ?? "Failed to load track data" });
@@ -61,9 +72,11 @@ function TrackData({
         });
       })
       .catch((err) => {
+        console.debug("[TrackData] fetch rejected", { trackId, cancelled, err: String(err) });
         if (!cancelled) setState({ status: "error", message: String(err) });
       });
     return () => {
+      console.debug("[TrackData] effect cleanup (cancelling)", { trackId, force });
       cancelled = true;
     };
   }, [trackId, force]);
