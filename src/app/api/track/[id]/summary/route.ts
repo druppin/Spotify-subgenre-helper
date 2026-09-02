@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getValidAccessToken } from "@/lib/spotify/auth";
 import { SpotifyClient, SpotifyApiError } from "@/lib/spotify/client";
 import { buildTrackContext } from "@/lib/context";
-import { summarizeTrack } from "@/lib/llm/summarize";
+import { summarizeTrack, SUMMARY_PROMPT_VERSION } from "@/lib/llm/summarize";
 import type { LlmConfig, LlmProvider, TrackContext, TrackSummary } from "@/lib/llm/types";
 import { getCache } from "@/lib/cache";
 import { spotifyErrorResponse } from "@/lib/spotify/routeError";
@@ -41,7 +41,7 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
     });
   }
 
-  const cacheKey = `${id}:${llmConfig.provider}:${llmConfig.model}`;
+  const cacheKey = `${id}:${llmConfig.provider}:${llmConfig.model}:${SUMMARY_PROMPT_VERSION}`;
   const cached = await summaryCache.get(cacheKey);
   if (cached) {
     return NextResponse.json({ summary: cached, context, cached: true });

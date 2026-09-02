@@ -1,3 +1,4 @@
+import { createHash } from "crypto";
 import { callLlm } from "./providers";
 import type { LlmConfig, TrackContext, TrackSummary } from "./types";
 
@@ -27,6 +28,14 @@ sounding but ungrounded story.
 
 Respond with ONLY a JSON object of this exact shape, no markdown fences:
 {"moodVibe": string, "subgenres": string[], "rationale": string}`;
+
+// Derived from the prompt text itself so editing SYSTEM_PROMPT automatically
+// invalidates cached summaries (see the cache key in the summary route)
+// instead of silently serving stale answers from a since-changed prompt.
+export const SUMMARY_PROMPT_VERSION = createHash("sha256")
+  .update(SYSTEM_PROMPT)
+  .digest("hex")
+  .slice(0, 8);
 
 function buildUserPrompt(context: TrackContext): string {
   return JSON.stringify(context, null, 2);
