@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import type { SpotifyPlaylist } from "@/lib/spotify/client";
+import { PlaylistThumb } from "./PlaylistThumb";
 
 interface Props {
   playlists: SpotifyPlaylist[];
@@ -62,10 +63,11 @@ export function DestinationPlaylistsPanel({
             <li key={p.id}>
               <button
                 onClick={() => onTogglePin(p.id)}
-                className="flex w-full items-center justify-between px-3 py-1.5 text-left text-sm text-neutral-300 hover:bg-neutral-800"
+                className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm text-neutral-300 hover:bg-neutral-800"
               >
-                <span className="truncate">{p.name}</span>
-                <span className="text-xs text-neutral-500">
+                <PlaylistThumb playlist={p} size={24} />
+                <span className="min-w-0 flex-1 truncate">{p.name}</span>
+                <span className="flex-shrink-0 text-xs text-neutral-500">
                   {pinnedIds.includes(p.id) ? "Unpin" : "Pin"}
                 </span>
               </button>
@@ -80,11 +82,14 @@ export function DestinationPlaylistsPanel({
             <button
               onClick={() => handleAdd(p.id)}
               disabled={disabled || busyId === p.id}
-              className="w-full rounded-md border border-neutral-700 px-3 py-2 text-left text-sm text-neutral-200 hover:border-green-600 hover:bg-green-600/10 disabled:opacity-50"
+              className="flex w-full items-center gap-2 rounded-md border border-neutral-700 px-3 py-2 text-left text-sm text-neutral-200 hover:border-green-600 hover:bg-green-600/10 disabled:opacity-50"
             >
-              <div className="flex items-center justify-between">
+              <PlaylistThumb playlist={p} size={32} />
+              <div className="flex min-w-0 flex-1 items-center justify-between">
                 <span className="truncate">{p.name}</span>
-                <span className="text-xs text-neutral-500">{p.tracks?.total ?? "?"}</span>
+                <span className="flex-shrink-0 text-xs text-neutral-500">
+                  {p.tracks?.total ?? "?"}
+                </span>
               </div>
             </button>
           </li>

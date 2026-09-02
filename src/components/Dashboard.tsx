@@ -6,6 +6,7 @@ import { PlayerProvider, usePlayer } from "./PlayerProvider";
 import { SourcePlaylistPanel } from "./SourcePlaylistPanel";
 import { NowPlayingPanel } from "./NowPlayingPanel";
 import { DestinationPlaylistsPanel } from "./DestinationPlaylistsPanel";
+import { PlaylistPicker } from "./PlaylistPicker";
 
 function DashboardInner() {
   const [playlists, setPlaylists] = useState<SpotifyPlaylist[]>([]);
@@ -86,22 +87,17 @@ function DashboardInner() {
     <div className="flex h-screen flex-col bg-neutral-950 text-white">
       <header className="flex items-center gap-3 border-b border-neutral-800 px-4 py-3">
         <h1 className="text-lg font-semibold">Spotify Subgenre Assistant</h1>
-        <select
-          className="ml-auto rounded-md border border-neutral-700 bg-neutral-900 px-2 py-1 text-sm"
-          value={sourcePlaylistId ?? ""}
-          onChange={(e) => setSourcePlaylistId(e.target.value || null)}
-        >
-          <option value="">Choose a source playlist…</option>
-          {playlists.map((p) => (
-            <option key={p.id} value={p.id}>
-              {p.name} ({p.tracks?.total ?? "?"})
-            </option>
-          ))}
-        </select>
+        <div className="ml-auto">
+          <PlaylistPicker
+            playlists={playlists}
+            selectedId={sourcePlaylistId}
+            onSelect={setSourcePlaylistId}
+          />
+        </div>
       </header>
 
       <div className="grid flex-1 grid-cols-[260px_1fr_280px] overflow-hidden">
-        <div className="border-r border-neutral-800">
+        <div className="min-h-0 overflow-hidden border-r border-neutral-800">
           <SourcePlaylistPanel
             tracks={sourceTracks}
             currentIndex={currentIndex}
@@ -110,9 +106,11 @@ function DashboardInner() {
           />
         </div>
 
-        <NowPlayingPanel key={currentTrack?.id ?? "none"} track={currentTrack} />
+        <div className="min-h-0 overflow-hidden">
+          <NowPlayingPanel key={currentTrack?.id ?? "none"} track={currentTrack} />
+        </div>
 
-        <div className="border-l border-neutral-800">
+        <div className="min-h-0 overflow-hidden border-l border-neutral-800">
           <DestinationPlaylistsPanel
             playlists={playlists}
             pinnedIds={pinnedIds}

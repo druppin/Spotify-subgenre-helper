@@ -28,15 +28,27 @@ export function SourcePlaylistPanel({ tracks, currentIndex, onSelect, error }: P
             <li key={`${item.track.id}-${index}`}>
               <button
                 onClick={() => onSelect(index)}
-                className={`w-full truncate px-3 py-2 text-left text-sm ${
+                className={`flex w-full items-center gap-2 px-3 py-2 text-left text-sm ${
                   isCurrent
                     ? "bg-green-600/20 text-green-400"
                     : "text-neutral-300 hover:bg-neutral-800"
                 }`}
               >
-                <div className="truncate font-medium">{item.track.name}</div>
-                <div className="truncate text-xs text-neutral-500">
-                  {item.track.artists.map((a) => a.name).join(", ")}
+                {item.track.album.images[item.track.album.images.length - 1] ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={item.track.album.images[item.track.album.images.length - 1].url}
+                    alt=""
+                    className="h-10 w-10 flex-shrink-0 rounded object-cover"
+                  />
+                ) : (
+                  <div className="h-10 w-10 flex-shrink-0 rounded bg-neutral-800" />
+                )}
+                <div className="min-w-0 flex-1">
+                  <div className="truncate font-medium">{item.track.name}</div>
+                  <div className="truncate text-xs text-neutral-500">
+                    {item.track.artists.map((a) => a.name).join(", ")}
+                  </div>
                 </div>
               </button>
             </li>
