@@ -128,17 +128,11 @@ export class SpotifyClient {
     return this.request<SpotifyTrack>(`/tracks/${trackId}`);
   }
 
-  async getArtists(artistIds: string[]): Promise<SpotifyArtist[]> {
-    if (artistIds.length === 0) return [];
-    const artists: SpotifyArtist[] = [];
-    for (let i = 0; i < artistIds.length; i += 50) {
-      const batch = artistIds.slice(i, i + 50);
-      const page = await this.request<{ artists: SpotifyArtist[] }>(
-        `/artists?ids=${batch.join(",")}`
-      );
-      artists.push(...page.artists);
-    }
-    return artists;
+  // Spotify's Feb 2026 migration removed the batch GET /artists?ids=... —
+  // "fetch items individually instead" is their own guidance, so that's
+  // what this does now.
+  getArtists(artistIds: string[]): Promise<SpotifyArtist[]> {
+    return Promise.all(artistIds.map((id) => this.request<SpotifyArtist>(`/artists/${id}`)));
   }
 
   addTrackToPlaylist(playlistId: string, trackUri: string) {
