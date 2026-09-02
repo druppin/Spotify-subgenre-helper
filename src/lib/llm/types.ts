@@ -17,7 +17,7 @@ export interface TrackContext {
   lastfmTrackTags: string[];
   lastfmArtistTags: string[];
   lastfmArtistBio: string | null;
-  audioFeatures: import("@/lib/apify").AudioFeatures | null;
+  audioFeatures: import("@/lib/reccobeats").AudioFeatures | null;
 }
 
 export interface TrackSummary {

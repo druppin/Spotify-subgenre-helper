@@ -1,4 +1,4 @@
-import { getAudioFeatures } from "@/lib/apify";
+import { getAudioFeatures } from "@/lib/reccobeats";
 import { getCache } from "@/lib/cache";
 import { getArtistInfo, getTrackTags } from "@/lib/lastfm";
 import type { SpotifyClient } from "@/lib/spotify/client";
@@ -7,7 +7,7 @@ import type { TrackContext } from "@/lib/llm/types";
 const contextCache = getCache<TrackContext>("track-context");
 
 /**
- * Pulls Spotify metadata + artist genre tags + Last.fm tags/bio + Apify
+ * Pulls Spotify metadata + artist genre tags + Last.fm tags/bio + ReccoBeats
  * audio-feature data into one JSON object per track. Cached per track ID
  * so repeat plays of the same track (or a summary retry) don't re-fetch.
  */

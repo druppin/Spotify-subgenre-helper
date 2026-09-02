@@ -26,14 +26,17 @@ it from the source playlist at the same time).
    - `SESSION_SECRET` — any random 32+ character string (`openssl rand -base64 32`).
    - `LASTFM_API_KEY` — optional, free key from [last.fm/api](https://www.last.fm/api/account/create).
      Track context still builds without it, just without Last.fm tags/bio.
-   - `APIFY_API_TOKEN` — optional, from [apify.com](https://apify.com/). Powers
-     audio-feature data (danceability/energy/valence/tempo/etc.) via the
-     "Spotify Audio Features Scraper" actor, replacing Spotify's own Audio
-     Features endpoint (closed to new apps since Nov 2024). Without it, track
-     context just omits audio features.
+   - Nothing to configure for audio features (danceability/energy/valence/
+     tempo/etc.) — they come from [ReccoBeats](https://reccobeats.com), a free
+     replacement for Spotify's own Audio Features endpoint (closed to new
+     apps since Nov 2024), no API key required. Tracks it doesn't have
+     coverage for just come back with no audio features.
    - `LLM_PROVIDER` / `LLM_API_KEY` / `LLM_MODEL` — required for AI summaries.
-     Bring your own key; free tiers to start with are listed in `.env.example`
-     (Google AI Studio's Gemini Flash, Groq, or an OpenRouter `:free` model).
+     Bring your own key; `anthropic` is pay-as-you-go from
+     [console.anthropic.com](https://console.anthropic.com) (a claude.ai Pro/Max
+     subscription does NOT cover API usage — separate billing). Free tiers to
+     prototype with instead are listed in `.env.example` (Google AI Studio's
+     Gemini Flash, Groq, or an OpenRouter `:free` model).
 
 4. **Run the dev server**
 
@@ -50,8 +53,8 @@ it from the source playlist at the same time).
   Tokens live in an encrypted session cookie (`src/lib/session.ts`), refreshed
   transparently by `getValidAccessToken()`.
 - `src/lib/context.ts` — `buildTrackContext()`: combines Spotify metadata,
-  artist genres, Last.fm tags/bio, and Apify audio features into one object
-  per track, cached by track ID.
+  artist genres, Last.fm tags/bio, and ReccoBeats audio features into one
+  object per track, cached by track ID.
 - `src/lib/llm/summarize.ts` — `summarizeTrack()`: sends that context to the
   configured LLM provider and returns a structured `{ moodVibe, subgenres,
   rationale }` summary. Subgenres are freeform (not a fixed list) by design.
