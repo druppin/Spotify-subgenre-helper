@@ -72,22 +72,47 @@ export class SpotifyApiError extends Error {
   }
 }
 
+const TRANSIENT_STATUS_CODES = new Set([429, 500, 502, 503, 504]);
+
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 export class SpotifyClient {
   constructor(private accessToken: string) {}
 
   private async request<T>(path: string, init?: RequestInit): Promise<T> {
-    const res = await fetch(`${API_BASE}${path}`, {
-      ...init,
-      headers: {
-        Authorization: `Bearer ${this.accessToken}`,
-        "Content-Type": "application/json",
-        ...init?.headers,
-      },
-    });
-    if (!res.ok) {
+    // Spotify's per-app rate limit (and the occasional 5xx) is easy to hit
+    // once a track summary fires off several requests at once (track +
+    // per-artist fetches) — retry transient failures a few times, honoring
+    // Retry-After on a 429 rather than guessing at a backoff.
+    const MAX_ATTEMPTS = 4;
+    for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+      const res = await fetch(`${API_BASE}${path}`, {
+        ...init,
+        headers: {
+          Authorization: `Bearer ${this.accessToken}`,
+          "Content-Type": "application/json",
+          ...init?.headers,
+        },
+      });
+      if (res.ok) return this.parseResponse<T>(res);
+
+      const isLastAttempt = attempt === MAX_ATTEMPTS;
+      if (TRANSIENT_STATUS_CODES.has(res.status) && !isLastAttempt) {
+        const retryAfterHeader = res.headers.get("Retry-After");
+        const retryAfterMs = retryAfterHeader ? Number(retryAfterHeader) * 1000 : NaN;
+        await sleep(Number.isFinite(retryAfterMs) ? retryAfterMs : 500 * attempt);
+        continue;
+      }
+
       const body = await res.text();
       throw new SpotifyApiError(res.status, `Spotify API ${path} failed: ${res.status} ${body}`);
     }
+    throw new Error("unreachable");
+  }
+
+  private async parseResponse<T>(res: Response): Promise<T> {
     if (res.status === 204) return undefined as T;
     return res.json();
   }
