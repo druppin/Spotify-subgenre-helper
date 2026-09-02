@@ -27,14 +27,25 @@ type FetchState =
   | { status: "ready"; context: TrackContext; summary: TrackSummary | null; summaryError: string | null };
 
 // Owns the actual fetch. Remounted (via a `key` that includes a retry
-// nonce) whenever the track changes OR the user clicks retry, so a lazy
-// initial state is all that's needed — no setState-in-effect reset required.
-function TrackData({ trackId, onRetry }: { trackId: string; onRetry: () => void }) {
+// nonce) whenever the track changes OR the user clicks retry/regenerate, so
+// a lazy initial state is all that's needed — no setState-in-effect reset
+// required. `force`, when true, tells the API to skip the disk cache and
+// generate a brand new summary rather than returning the same cached one.
+function TrackData({
+  trackId,
+  force,
+  onRefresh,
+}: {
+  trackId: string;
+  force: boolean;
+  onRefresh: (force: boolean) => void;
+}) {
   const [state, setState] = useState<FetchState>({ status: "loading" });
 
   useEffect(() => {
     let cancelled = false;
-    fetch(`/api/track/${trackId}/summary`)
+    const url = `/api/track/${trackId}/summary${force ? "?force=true" : ""}`;
+    fetch(url)
       .then(async (res) => {
         const body = await res.json();
         if (cancelled) return;
@@ -55,7 +66,7 @@ function TrackData({ trackId, onRetry }: { trackId: string; onRetry: () => void 
     return () => {
       cancelled = true;
     };
-  }, [trackId]);
+  }, [trackId, force]);
 
   if (state.status === "loading") {
     return <p className="text-sm text-neutral-500">Loading track data…</p>;
@@ -65,7 +76,7 @@ function TrackData({ trackId, onRetry }: { trackId: string; onRetry: () => void 
     return (
       <div className="space-y-2">
         <p className="text-sm text-red-400">{state.message}</p>
-        <button onClick={onRetry} className="text-xs text-green-400 hover:underline">
+        <button onClick={() => onRefresh(false)} className="text-xs text-green-400 hover:underline">
           Retry
         </button>
       </div>
@@ -79,7 +90,16 @@ function TrackData({ trackId, onRetry }: { trackId: string; onRetry: () => void 
       <div className="border-t border-neutral-800 pt-3">
         {state.summary && (
           <div className="space-y-2">
-            <p className="text-sm font-medium text-neutral-200">{state.summary.moodVibe}</p>
+            <div className="flex items-start justify-between gap-2">
+              <p className="text-sm font-medium text-neutral-200">{state.summary.moodVibe}</p>
+              <button
+                onClick={() => onRefresh(true)}
+                title="Not right? Generate a fresh AI summary for this track."
+                className="flex-shrink-0 text-xs text-neutral-500 hover:text-green-400"
+              >
+                ↻ Regenerate
+              </button>
+            </div>
             <div className="flex flex-wrap gap-1">
               {state.summary.subgenres.map((genre) => (
                 <span
@@ -96,7 +116,7 @@ function TrackData({ trackId, onRetry }: { trackId: string; onRetry: () => void 
         {state.summaryError && (
           <div className="space-y-1">
             <p className="text-xs text-red-400">AI summary: {state.summaryError}</p>
-            <button onClick={onRetry} className="text-xs text-green-400 hover:underline">
+            <button onClick={() => onRefresh(true)} className="text-xs text-green-400 hover:underline">
               Retry summary
             </button>
           </div>
@@ -110,6 +130,12 @@ export function NowPlayingPanel({ track, onPrevious, onNext, canGoPrevious, canG
   const { ready, isPaused, position, duration, volume, playbackError, togglePlay, seek, setVolume } =
     usePlayer();
   const [retryNonce, setRetryNonce] = useState(0);
+  const [forceNextFetch, setForceNextFetch] = useState(false);
+
+  const refresh = (force: boolean) => {
+    setForceNextFetch(force);
+    setRetryNonce((n) => n + 1);
+  };
 
   if (!track) {
     return (
@@ -194,11 +220,7 @@ export function NowPlayingPanel({ track, onPrevious, onNext, canGoPrevious, canG
       )}
 
       <div className="w-full max-w-md rounded-lg bg-neutral-900 p-4 text-left">
-        <TrackData
-          key={retryNonce}
-          trackId={track.id}
-          onRetry={() => setRetryNonce((n) => n + 1)}
-        />
+        <TrackData key={retryNonce} trackId={track.id} force={forceNextFetch} onRefresh={refresh} />
       </div>
     </div>
   );

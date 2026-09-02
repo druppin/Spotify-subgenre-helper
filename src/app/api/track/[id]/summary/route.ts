@@ -17,8 +17,9 @@ function llmConfigFromEnv(): LlmConfig | null {
   return { provider, apiKey, model };
 }
 
-export async function GET(_request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
+  const forceRegenerate = new URL(request.url).searchParams.get("force") === "true";
 
   // Track context (Spotify metadata + artist genres + Last.fm tags + audio
   // features) is independent of the AI summary and always worth returning —
@@ -42,9 +43,11 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
   }
 
   const cacheKey = `${id}:${llmConfig.provider}:${llmConfig.model}:${SUMMARY_PROMPT_VERSION}`;
-  const cached = await summaryCache.get(cacheKey);
-  if (cached) {
-    return NextResponse.json({ summary: cached, context, cached: true });
+  if (!forceRegenerate) {
+    const cached = await summaryCache.get(cacheKey);
+    if (cached) {
+      return NextResponse.json({ summary: cached, context, cached: true });
+    }
   }
 
   try {
