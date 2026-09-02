@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getValidAccessToken } from "@/lib/spotify/auth";
-import { SpotifyClient } from "@/lib/spotify/client";
+import { SpotifyClient, SpotifyApiError } from "@/lib/spotify/client";
 import { buildTrackContext } from "@/lib/context";
 import { summarizeTrack } from "@/lib/llm/summarize";
-import type { LlmConfig, LlmProvider, TrackSummary } from "@/lib/llm/types";
+import type { LlmConfig, LlmProvider, TrackContext, TrackSummary } from "@/lib/llm/types";
 import { getCache } from "@/lib/cache";
-import { SpotifyApiError } from "@/lib/spotify/client";
+import { spotifyErrorResponse } from "@/lib/spotify/routeError";
 
 const summaryCache = getCache<TrackSummary>("track-summary");
 
@@ -20,34 +20,46 @@ function llmConfigFromEnv(): LlmConfig | null {
 export async function GET(_request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
 
+  // Track context (Spotify metadata + artist genres + Last.fm tags + audio
+  // features) is independent of the AI summary and always worth returning —
+  // a flaky/rate-limited LLM shouldn't hide data we already successfully
+  // fetched.
+  let context: TrackContext;
+  try {
+    const accessToken = await getValidAccessToken();
+    const client = new SpotifyClient(accessToken);
+    context = await buildTrackContext(id, client);
+  } catch (err) {
+    return spotifyErrorResponse(err, "GET /api/track/[id]/summary (context)");
+  }
+
   const llmConfig = llmConfigFromEnv();
   if (!llmConfig) {
-    return NextResponse.json(
-      { error: "LLM_PROVIDER, LLM_API_KEY, and LLM_MODEL must be set (see .env.example)" },
-      { status: 500 }
-    );
+    return NextResponse.json({
+      context,
+      summaryError: "LLM_PROVIDER, LLM_API_KEY, and LLM_MODEL must be set (see .env.example)",
+    });
   }
 
   const cacheKey = `${id}:${llmConfig.provider}:${llmConfig.model}`;
   const cached = await summaryCache.get(cacheKey);
   if (cached) {
-    return NextResponse.json({ summary: cached, cached: true });
+    return NextResponse.json({ summary: cached, context, cached: true });
   }
 
   try {
-    const accessToken = await getValidAccessToken();
-    const client = new SpotifyClient(accessToken);
-    const context = await buildTrackContext(id, client);
     const summary = await summarizeTrack(context, llmConfig);
     await summaryCache.set(cacheKey, summary);
     return NextResponse.json({ summary, context, cached: false });
   } catch (err) {
-    console.error("GET /api/track/[id]/summary failed:", err);
+    console.error("GET /api/track/[id]/summary (LLM) failed:", err);
     if (err instanceof SpotifyApiError) {
       return NextResponse.json({ error: err.message }, { status: err.status });
     }
     const message = err instanceof Error ? err.message : "Unknown error";
-    const status = message.includes("Not authenticated") ? 401 : 500;
-    return NextResponse.json({ error: message }, { status });
+    // The AI summary failed, but context is still good data — return both,
+    // 200 status, and let the UI show context immediately with a retryable
+    // summary error rather than losing everything to a transient LLM hiccup.
+    return NextResponse.json({ context, summaryError: message });
   }
 }
