@@ -12,7 +12,6 @@ export interface TrackContext {
   artistNames: string[];
   albumName: string;
   releaseDate: string;
-  popularity: number;
   artistGenres: string[];
   lastfmTrackTags: string[];
   lastfmArtistTags: string[];

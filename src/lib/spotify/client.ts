@@ -33,7 +33,10 @@ export interface SpotifyTrack {
   artists: SpotifyArtist[];
   album: { id: string; name: string; images: SpotifyImage[]; release_date: string };
   duration_ms: number;
-  popularity: number;
+  // Removed from the Track object entirely by Spotify's Feb 2026 migration —
+  // kept optional so a leftover request for it just quietly comes back empty
+  // rather than lying about always being present.
+  popularity?: number;
   explicit: boolean;
 }
 
@@ -83,10 +86,6 @@ export class SpotifyClient {
     return res.json();
   }
 
-  getCurrentUser() {
-    return this.request<{ id: string; display_name: string | null; product: string }>("/me");
-  }
-
   async getUserPlaylists(): Promise<SpotifyPlaylist[]> {
     const playlists: SpotifyPlaylist[] = [];
     let url: string | null = "/me/playlists?limit=50";
@@ -114,7 +113,7 @@ export class SpotifyClient {
     let url: string | null =
       `/playlists/${playlistId}/items?limit=100&fields=` +
       encodeURIComponent(
-        "next,items(added_at,item(id,uri,name,artists(id,name),album(id,name,images,release_date),duration_ms,popularity,explicit))"
+        "next,items(added_at,item(id,uri,name,artists(id,name),album(id,name,images,release_date),duration_ms,explicit))"
       );
     while (url) {
       const page: { items: RawSpotifyPlaylistItem[]; next: string | null } = await this.request(url);

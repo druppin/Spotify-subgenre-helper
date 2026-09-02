@@ -34,7 +34,6 @@ export async function buildTrackContext(
     artistNames: track.artists.map((a) => a.name),
     albumName: track.album.name,
     releaseDate: track.album.release_date,
-    popularity: track.popularity,
     artistGenres: [...new Set(artists.flatMap((a) => a.genres ?? []))],
     lastfmTrackTags: lastfmTrack,
     lastfmArtistTags: lastfmArtist.tags,
