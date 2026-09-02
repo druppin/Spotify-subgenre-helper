@@ -56,11 +56,35 @@ interface PlayerContextValue {
 
 const PlayerContext = createContext<PlayerContextValue | null>(null);
 
+// The Web Playback SDK calls getOAuthToken on its own schedule, and
+// playTrack calls this on every attempt — uncached, that's enough
+// concurrent same-origin requests to exhaust the browser's per-origin
+// connection limit and leave one queued long enough to hit our own fetch
+// timeout, even though our server answered every other request fine. Cache
+// the token briefly and dedupe concurrent callers onto one in-flight
+// request instead of each firing their own.
+let cachedToken: { value: string; fetchedAt: number } | null = null;
+let inFlightTokenFetch: Promise<string> | null = null;
+const TOKEN_CACHE_TTL_MS = 30_000;
+
 async function fetchAccessToken(): Promise<string> {
-  const res = await fetchWithTimeout("/api/spotify/token");
-  if (!res.ok) throw new Error("Not authenticated with Spotify");
-  const body = await res.json();
-  return body.accessToken;
+  if (cachedToken && Date.now() - cachedToken.fetchedAt < TOKEN_CACHE_TTL_MS) {
+    return cachedToken.value;
+  }
+  if (inFlightTokenFetch) return inFlightTokenFetch;
+
+  inFlightTokenFetch = (async () => {
+    try {
+      const res = await fetchWithTimeout("/api/spotify/token");
+      if (!res.ok) throw new Error("Not authenticated with Spotify");
+      const body = await res.json();
+      cachedToken = { value: body.accessToken, fetchedAt: Date.now() };
+      return body.accessToken as string;
+    } finally {
+      inFlightTokenFetch = null;
+    }
+  })();
+  return inFlightTokenFetch;
 }
 
 const TRANSIENT_STATUS_CODES = new Set([502, 503, 504]);
