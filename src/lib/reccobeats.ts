@@ -12,6 +12,8 @@
  * track ID out of each result's `href`.
  */
 
+import { fetchWithTimeout } from "@/lib/fetchWithTimeout";
+
 const API_BASE = "https://api.reccobeats.com/v1";
 const BATCH_SIZE = 40;
 
@@ -65,7 +67,7 @@ function toAudioFeatures(item: ReccoBeatsAudioFeaturesItem): AudioFeatures {
 }
 
 async function fetchBatch(trackIds: string[]): Promise<ReccoBeatsAudioFeaturesItem[]> {
-  const res = await fetch(`${API_BASE}/audio-features?ids=${trackIds.join(",")}`, {
+  const res = await fetchWithTimeout(`${API_BASE}/audio-features?ids=${trackIds.join(",")}`, {
     headers: { Accept: "application/json" },
   });
   if (res.status === 429) {
@@ -83,8 +85,10 @@ async function fetchBatch(trackIds: string[]): Promise<ReccoBeatsAudioFeaturesIt
 
 /**
  * Fetches audio features for a batch of Spotify track IDs. Tracks ReccoBeats
- * doesn't have coverage for come back null — callers should degrade
- * gracefully rather than fail the whole track context on a miss.
+ * doesn't have coverage for, or that fail outright (timeout, network error,
+ * ReccoBeats itself erroring), come back null — audio features are optional
+ * data and should degrade gracefully rather than fail the whole track
+ * context.
  */
 export async function getAudioFeatures(
   trackIds: string[]
@@ -94,15 +98,19 @@ export async function getAudioFeatures(
   );
   if (trackIds.length === 0) return result;
 
-  for (let i = 0; i < trackIds.length; i += BATCH_SIZE) {
-    const batch = trackIds.slice(i, i + BATCH_SIZE);
-    const items = await fetchBatch(batch);
-    for (const item of items) {
-      const trackId = item.href.match(SPOTIFY_TRACK_ID_FROM_HREF)?.[1];
-      if (trackId && trackId in result) {
-        result[trackId] = toAudioFeatures(item);
+  try {
+    for (let i = 0; i < trackIds.length; i += BATCH_SIZE) {
+      const batch = trackIds.slice(i, i + BATCH_SIZE);
+      const items = await fetchBatch(batch);
+      for (const item of items) {
+        const trackId = item.href.match(SPOTIFY_TRACK_ID_FROM_HREF)?.[1];
+        if (trackId && trackId in result) {
+          result[trackId] = toAudioFeatures(item);
+        }
       }
     }
+  } catch (err) {
+    console.error("ReccoBeats audio-features request failed, continuing without it:", err);
   }
   return result;
 }

@@ -1,4 +1,5 @@
 import { getSession } from "@/lib/session";
+import { fetchWithTimeout } from "@/lib/fetchWithTimeout";
 
 const AUTH_URL = "https://accounts.spotify.com/authorize";
 const TOKEN_URL = "https://accounts.spotify.com/api/token";
@@ -53,7 +54,7 @@ function basicAuthHeader(): string {
 }
 
 export async function exchangeCodeForToken(code: string): Promise<SpotifyTokenResponse> {
-  const res = await fetch(TOKEN_URL, {
+  const res = await fetchWithTimeout(TOKEN_URL, {
     method: "POST",
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",
@@ -72,7 +73,7 @@ export async function exchangeCodeForToken(code: string): Promise<SpotifyTokenRe
 }
 
 export async function refreshAccessToken(refreshToken: string): Promise<SpotifyTokenResponse> {
-  const res = await fetch(TOKEN_URL, {
+  const res = await fetchWithTimeout(TOKEN_URL, {
     method: "POST",
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",

@@ -1,3 +1,5 @@
+import { fetchWithTimeout } from "@/lib/fetchWithTimeout";
+
 const API_BASE = "https://api.spotify.com/v1";
 
 export interface SpotifyImage {
@@ -88,17 +90,28 @@ export class SpotifyClient {
     // Retry-After on a 429 rather than guessing at a backoff.
     const MAX_ATTEMPTS = 4;
     for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
-      const res = await fetch(`${API_BASE}${path}`, {
-        ...init,
-        headers: {
-          Authorization: `Bearer ${this.accessToken}`,
-          "Content-Type": "application/json",
-          ...init?.headers,
-        },
-      });
+      const isLastAttempt = attempt === MAX_ATTEMPTS;
+      let res: Response;
+      try {
+        res = await fetchWithTimeout(`${API_BASE}${path}`, {
+          ...init,
+          headers: {
+            Authorization: `Bearer ${this.accessToken}`,
+            "Content-Type": "application/json",
+            ...init?.headers,
+          },
+        });
+      } catch (err) {
+        // Network error or our own timeout — treat the same as a transient
+        // HTTP failure rather than letting a single stalled request kill
+        // the whole call outright.
+        if (isLastAttempt) throw err;
+        await sleep(500 * attempt);
+        continue;
+      }
+
       if (res.ok) return this.parseResponse<T>(res);
 
-      const isLastAttempt = attempt === MAX_ATTEMPTS;
       if (TRANSIENT_STATUS_CODES.has(res.status) && !isLastAttempt) {
         const retryAfterHeader = res.headers.get("Retry-After");
         const retryAfterMs = retryAfterHeader ? Number(retryAfterHeader) * 1000 : NaN;

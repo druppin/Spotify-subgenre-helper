@@ -9,6 +9,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import { fetchWithTimeout } from "@/lib/fetchWithTimeout";
 
 // Minimal shape of the bits of the Web Playback SDK we use. The SDK ships no
 // official types; this covers what this app touches.
@@ -56,7 +57,7 @@ interface PlayerContextValue {
 const PlayerContext = createContext<PlayerContextValue | null>(null);
 
 async function fetchAccessToken(): Promise<string> {
-  const res = await fetch("/api/spotify/token");
+  const res = await fetchWithTimeout("/api/spotify/token");
   if (!res.ok) throw new Error("Not authenticated with Spotify");
   const body = await res.json();
   return body.accessToken;
@@ -169,7 +170,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         const isLastAttempt = attempt === MAX_ATTEMPTS;
         try {
           const accessToken = await fetchAccessToken();
-          const res = await fetch(`https://api.spotify.com/v1/me/player/play?device_id=${deviceId}`, {
+          const res = await fetchWithTimeout(`https://api.spotify.com/v1/me/player/play?device_id=${deviceId}`, {
             method: "PUT",
             headers: {
               Authorization: `Bearer ${accessToken}`,

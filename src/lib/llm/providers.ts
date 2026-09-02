@@ -1,3 +1,4 @@
+import { fetchWithTimeout, FetchTimeoutError } from "@/lib/fetchWithTimeout";
 import type { LlmConfig } from "./types";
 
 const OPENAI_COMPATIBLE_BASE_URL: Record<string, string> = {
@@ -27,22 +28,26 @@ async function callOpenAiCompatible(
   userPrompt: string
 ): Promise<string> {
   const baseUrl = OPENAI_COMPATIBLE_BASE_URL[config.provider];
-  const res = await fetch(`${baseUrl}/chat/completions`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${config.apiKey}`,
+  const res = await fetchWithTimeout(
+    `${baseUrl}/chat/completions`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${config.apiKey}`,
+      },
+      body: JSON.stringify({
+        model: config.model,
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: userPrompt },
+        ],
+        response_format: { type: "json_object" },
+        temperature: 0.4,
+      }),
     },
-    body: JSON.stringify({
-      model: config.model,
-      messages: [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: userPrompt },
-      ],
-      response_format: { type: "json_object" },
-      temperature: 0.4,
-    }),
-  });
+    30_000
+  );
   if (!res.ok) {
     throw new LlmApiError(res.status, `${config.provider} request failed: ${res.status} ${await res.text()}`);
   }
@@ -55,20 +60,24 @@ async function callAnthropic(
   systemPrompt: string,
   userPrompt: string
 ): Promise<string> {
-  const res = await fetch("https://api.anthropic.com/v1/messages", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "x-api-key": config.apiKey,
-      "anthropic-version": "2023-06-01",
+  const res = await fetchWithTimeout(
+    "https://api.anthropic.com/v1/messages",
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-api-key": config.apiKey,
+        "anthropic-version": "2023-06-01",
+      },
+      body: JSON.stringify({
+        model: config.model,
+        max_tokens: 1024,
+        system: systemPrompt,
+        messages: [{ role: "user", content: userPrompt }],
+      }),
     },
-    body: JSON.stringify({
-      model: config.model,
-      max_tokens: 1024,
-      system: systemPrompt,
-      messages: [{ role: "user", content: userPrompt }],
-    }),
-  });
+    30_000
+  );
   if (!res.ok) {
     throw new LlmApiError(res.status, `anthropic request failed: ${res.status} ${await res.text()}`);
   }
@@ -82,15 +91,19 @@ async function callGoogle(
   userPrompt: string
 ): Promise<string> {
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${config.model}:generateContent?key=${config.apiKey}`;
-  const res = await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      systemInstruction: { parts: [{ text: systemPrompt }] },
-      contents: [{ role: "user", parts: [{ text: userPrompt }] }],
-      generationConfig: { responseMimeType: "application/json", temperature: 0.4 },
-    }),
-  });
+  const res = await fetchWithTimeout(
+    url,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        systemInstruction: { parts: [{ text: systemPrompt }] },
+        contents: [{ role: "user", parts: [{ text: userPrompt }] }],
+        generationConfig: { responseMimeType: "application/json", temperature: 0.4 },
+      }),
+    },
+    30_000
+  );
   if (!res.ok) {
     throw new LlmApiError(res.status, `google request failed: ${res.status} ${await res.text()}`);
   }
@@ -127,7 +140,9 @@ export async function callLlm(
     try {
       return await callProvider(config, systemPrompt, userPrompt);
     } catch (err) {
-      const isTransient = err instanceof LlmApiError && TRANSIENT_STATUS_CODES.has(err.status);
+      const isTransient =
+        (err instanceof LlmApiError && TRANSIENT_STATUS_CODES.has(err.status)) ||
+        err instanceof FetchTimeoutError;
       if (!isTransient || attempt === MAX_ATTEMPTS) throw err;
       await sleep(500 * attempt);
     }

@@ -1,3 +1,5 @@
+import { fetchWithTimeout } from "@/lib/fetchWithTimeout";
+
 const API_BASE = "https://ws.audioscrobbler.com/2.0/";
 
 export interface LastfmTrackInfo {
@@ -19,11 +21,18 @@ async function call<T>(params: Record<string, string>): Promise<T | null> {
 
   const url = new URL(API_BASE);
   url.search = new URLSearchParams({ ...params, api_key: key, format: "json" }).toString();
-  const res = await fetch(url);
-  if (!res.ok) return null;
-  const body = await res.json();
-  if (body.error) return null;
-  return body;
+  // Last.fm data is optional and should degrade gracefully — a network
+  // error or timeout here shouldn't take down the whole track-context
+  // build any more than a non-OK HTTP response already doesn't.
+  try {
+    const res = await fetchWithTimeout(url);
+    if (!res.ok) return null;
+    const body = await res.json();
+    if (body.error) return null;
+    return body;
+  } catch {
+    return null;
+  }
 }
 
 function stripHtml(html: string): string {
