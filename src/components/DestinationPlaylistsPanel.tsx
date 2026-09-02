@@ -23,7 +23,11 @@ export function DestinationPlaylistsPanel({
   const [showAllPicker, setShowAllPicker] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
 
-  const pinned = playlists.filter((p) => pinnedIds.includes(p.id));
+  // Adding a track requires owning or collaborating on the destination
+  // playlist — Spotify 403s otherwise — so followed-only playlists never
+  // belong here.
+  const modifiablePlaylists = playlists.filter((p) => p.canModify);
+  const pinned = modifiablePlaylists.filter((p) => pinnedIds.includes(p.id));
 
   const handleAdd = async (playlistId: string) => {
     setBusyId(playlistId);
@@ -59,7 +63,7 @@ export function DestinationPlaylistsPanel({
 
       {showAllPicker && (
         <ul className="max-h-40 overflow-y-auto border-b border-neutral-800">
-          {playlists.map((p) => (
+          {modifiablePlaylists.map((p) => (
             <li key={p.id}>
               <button
                 onClick={() => onTogglePin(p.id)}

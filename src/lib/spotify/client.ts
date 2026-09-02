@@ -17,7 +17,13 @@ export interface SpotifyPlaylist {
   // some playlists (e.g. ones you can only partially see) even when the
   // playlist entry itself is otherwise present.
   tracks?: { total: number };
-  owner: { display_name: string | null };
+  owner: { id: string; display_name: string | null };
+  collaborative: boolean;
+  // Not a raw Spotify field — computed in getUserPlaylists() from
+  // owner.id/collaborative vs. the current user, so callers don't each
+  // have to know the "own or collaborate" rule for which playlists accept
+  // track adds (see getPlaylistTracks's note on the same restriction).
+  canModify: boolean;
 }
 
 export interface SpotifyArtist {
@@ -51,7 +57,7 @@ export interface SpotifyPlaylistTrackItem {
 // getPlaylistTracks() normalize back to our stable SpotifyPlaylist /
 // SpotifyPlaylistTrackItem shapes above so the rest of the app is
 // insulated from that rename.
-interface RawSpotifyPlaylist extends Omit<SpotifyPlaylist, "tracks"> {
+interface RawSpotifyPlaylist extends Omit<SpotifyPlaylist, "tracks" | "canModify"> {
   items?: { total: number };
 }
 interface RawSpotifyPlaylistItem {
@@ -86,22 +92,36 @@ export class SpotifyClient {
     return res.json();
   }
 
+  getCurrentUser() {
+    return this.request<{ id: string; display_name: string | null }>("/me");
+  }
+
   async getUserPlaylists(): Promise<SpotifyPlaylist[]> {
-    const playlists: SpotifyPlaylist[] = [];
-    let url: string | null = "/me/playlists?limit=50";
-    while (url) {
-      const page: { items: (RawSpotifyPlaylist | null)[]; next: string | null } =
-        await this.request(url);
-      // /me/playlists can include null entries for playlists that became
-      // inaccessible (deleted, region-locked, etc.) — drop those.
-      for (const raw of page.items) {
-        if (!raw) continue;
-        const { items, ...rest } = raw;
-        playlists.push({ ...rest, tracks: items });
-      }
-      url = page.next ? page.next.replace(API_BASE, "") : null;
-    }
-    return playlists;
+    const [currentUser, rawPlaylists] = await Promise.all([
+      this.getCurrentUser(),
+      (async () => {
+        const raw: RawSpotifyPlaylist[] = [];
+        let url: string | null = "/me/playlists?limit=50";
+        while (url) {
+          const page: { items: (RawSpotifyPlaylist | null)[]; next: string | null } =
+            await this.request(url);
+          // /me/playlists can include null entries for playlists that became
+          // inaccessible (deleted, region-locked, etc.) — drop those.
+          raw.push(...page.items.filter((item): item is RawSpotifyPlaylist => item !== null));
+          url = page.next ? page.next.replace(API_BASE, "") : null;
+        }
+        return raw;
+      })(),
+    ]);
+
+    return rawPlaylists.map((raw) => {
+      const { items, ...rest } = raw;
+      return {
+        ...rest,
+        tracks: items,
+        canModify: raw.owner.id === currentUser.id || raw.collaborative,
+      };
+    });
   }
 
   // NOTE: as of Spotify's Feb 2026 API migration, this only returns track

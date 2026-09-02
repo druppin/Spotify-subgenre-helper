@@ -8,6 +8,17 @@ import { TrackDataPanel } from "./TrackDataPanel";
 
 interface Props {
   track: SpotifyTrack | null;
+  onPrevious: () => void;
+  onNext: () => void;
+  canGoPrevious: boolean;
+  canGoNext: boolean;
+}
+
+function formatMs(ms: number): string {
+  const totalSeconds = Math.floor(ms / 1000);
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return `${minutes}:${seconds.toString().padStart(2, "0")}`;
 }
 
 type FetchState =
@@ -95,8 +106,9 @@ function TrackData({ trackId, onRetry }: { trackId: string; onRetry: () => void 
   );
 }
 
-export function NowPlayingPanel({ track }: Props) {
-  const { ready, isPaused, playbackError, togglePlay } = usePlayer();
+export function NowPlayingPanel({ track, onPrevious, onNext, canGoPrevious, canGoNext }: Props) {
+  const { ready, isPaused, position, duration, volume, playbackError, togglePlay, seek, setVolume } =
+    usePlayer();
   const [retryNonce, setRetryNonce] = useState(0);
 
   if (!track) {
@@ -122,13 +134,60 @@ export function NowPlayingPanel({ track }: Props) {
         <p className="text-neutral-400">{track.artists.map((a) => a.name).join(", ")}</p>
       </div>
 
-      <button
-        onClick={() => togglePlay()}
-        disabled={!ready}
-        className="rounded-full bg-green-600 px-6 py-2 font-semibold text-white disabled:opacity-50"
-      >
-        {isPaused ? "Play" : "Pause"}
-      </button>
+      <div className="w-full max-w-md space-y-3">
+        <div className="flex items-center gap-2">
+          <span className="w-10 text-right text-xs text-neutral-500">{formatMs(position)}</span>
+          <input
+            type="range"
+            min={0}
+            max={duration || 0}
+            value={Math.min(position, duration || 0)}
+            onChange={(e) => seek(Number(e.target.value))}
+            disabled={!ready || !duration}
+            className="flex-1 accent-green-600"
+          />
+          <span className="w-10 text-xs text-neutral-500">{formatMs(duration)}</span>
+        </div>
+
+        <div className="flex items-center justify-center gap-4">
+          <button
+            onClick={onPrevious}
+            disabled={!canGoPrevious}
+            className="text-2xl text-neutral-300 hover:text-white disabled:opacity-30"
+            aria-label="Previous track"
+          >
+            ⏮
+          </button>
+          <button
+            onClick={() => togglePlay()}
+            disabled={!ready}
+            className="rounded-full bg-green-600 px-6 py-2 font-semibold text-white disabled:opacity-50"
+          >
+            {isPaused ? "Play" : "Pause"}
+          </button>
+          <button
+            onClick={onNext}
+            disabled={!canGoNext}
+            className="text-2xl text-neutral-300 hover:text-white disabled:opacity-30"
+            aria-label="Next track"
+          >
+            ⏭
+          </button>
+        </div>
+
+        <div className="flex items-center justify-center gap-2">
+          <span className="text-sm text-neutral-500">🔉</span>
+          <input
+            type="range"
+            min={0}
+            max={1}
+            step={0.01}
+            value={volume}
+            onChange={(e) => setVolume(Number(e.target.value))}
+            className="w-24 accent-green-600"
+          />
+        </div>
+      </div>
 
       {playbackError && (
         <p className="max-w-md text-xs text-red-400">Playback error: {playbackError}</p>

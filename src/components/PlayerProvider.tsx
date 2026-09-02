@@ -14,6 +14,8 @@ import {
 // official types; this covers what this app touches.
 interface SpotifyPlayerState {
   paused: boolean;
+  position: number;
+  duration: number;
   track_window: { current_track: { uri: string; name: string } };
 }
 interface SpotifyPlayer {
@@ -21,6 +23,8 @@ interface SpotifyPlayer {
   disconnect(): void;
   addListener(event: string, cb: (arg: unknown) => void): void;
   togglePlay(): Promise<void>;
+  seek(positionMs: number): Promise<void>;
+  setVolume(volume: number): Promise<void>;
 }
 declare global {
   interface Window {
@@ -39,9 +43,14 @@ interface PlayerContextValue {
   ready: boolean;
   isPaused: boolean;
   currentUri: string | null;
+  position: number;
+  duration: number;
+  volume: number;
   playbackError: string | null;
   playTrack: (uri: string) => Promise<void>;
   togglePlay: () => Promise<void>;
+  seek: (positionMs: number) => Promise<void>;
+  setVolume: (volume: number) => Promise<void>;
 }
 
 const PlayerContext = createContext<PlayerContextValue | null>(null);
@@ -65,6 +74,9 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const [ready, setReady] = useState(false);
   const [isPaused, setIsPaused] = useState(true);
   const [currentUri, setCurrentUri] = useState<string | null>(null);
+  const [position, setPosition] = useState(0);
+  const [duration, setDuration] = useState(0);
+  const [volume, setVolumeState] = useState(0.8);
   const [playbackError, setPlaybackError] = useState<string | null>(null);
   const playerRef = useRef<SpotifyPlayer | null>(null);
   const deviceIdRef = useRef<string | null>(null);
@@ -92,6 +104,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         const state = arg as SpotifyPlayerState | null;
         if (!state) return;
         setIsPaused(state.paused);
+        setPosition(state.position);
+        setDuration(state.duration);
         setCurrentUri(state.track_window.current_track.uri);
       });
       player.addListener("initialization_error", (arg) => console.error("Spotify SDK init error", arg));
@@ -109,6 +123,17 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       document.body.removeChild(script);
     };
   }, []);
+
+  // player_state_changed only fires on actual state transitions (play,
+  // pause, seek, track change) — tick position forward locally in between
+  // so the progress bar moves smoothly instead of jumping once a second.
+  useEffect(() => {
+    if (isPaused) return;
+    const interval = setInterval(() => {
+      setPosition((p) => Math.min(p + 1000, duration || p + 1000));
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [isPaused, duration]);
 
   const playTrack = useCallback(async (uri: string) => {
     const deviceId = deviceIdRef.current;
@@ -155,9 +180,31 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     await playerRef.current?.togglePlay();
   }, []);
 
+  const seek = useCallback(async (positionMs: number) => {
+    await playerRef.current?.seek(positionMs);
+    setPosition(positionMs);
+  }, []);
+
+  const setVolume = useCallback(async (v: number) => {
+    await playerRef.current?.setVolume(v);
+    setVolumeState(v);
+  }, []);
+
   return (
     <PlayerContext.Provider
-      value={{ ready, isPaused, currentUri, playbackError, playTrack, togglePlay }}
+      value={{
+        ready,
+        isPaused,
+        currentUri,
+        position,
+        duration,
+        volume,
+        playbackError,
+        playTrack,
+        togglePlay,
+        seek,
+        setVolume,
+      }}
     >
       {children}
     </PlayerContext.Provider>

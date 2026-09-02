@@ -59,6 +59,10 @@ function DashboardInner() {
     setCurrentIndex((i) => Math.min(i + 1, sourceTracks.length - 1));
   }, [sourceTracks.length]);
 
+  const goToPrevious = useCallback(() => {
+    setCurrentIndex((i) => Math.max(i - 1, 0));
+  }, []);
+
   const handleAddToPlaylist = useCallback(
     async (destinationPlaylistId: string, alsoRemoveFromSource: boolean) => {
       if (!currentTrack || !sourcePlaylistId) return;
@@ -107,7 +111,14 @@ function DashboardInner() {
         </div>
 
         <div className="min-h-0 overflow-hidden">
-          <NowPlayingPanel key={currentTrack?.id ?? "none"} track={currentTrack} />
+          <NowPlayingPanel
+            key={currentTrack?.id ?? "none"}
+            track={currentTrack}
+            onPrevious={goToPrevious}
+            onNext={advance}
+            canGoPrevious={currentIndex > 0}
+            canGoNext={currentIndex < sourceTracks.length - 1}
+          />
         </div>
 
         <div className="min-h-0 overflow-hidden border-l border-neutral-800">
