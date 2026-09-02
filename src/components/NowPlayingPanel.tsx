@@ -16,7 +16,7 @@ type SummaryState =
   | { status: "ready"; summary: TrackSummary };
 
 export function NowPlayingPanel({ track }: Props) {
-  const { ready, isPaused, togglePlay } = usePlayer();
+  const { ready, isPaused, playbackError, togglePlay } = usePlayer();
   // NowPlayingPanel is remounted (via `key={track?.id}`) whenever the current
   // track changes, so this lazy initializer is all that's needed to reset
   // state per track — no effect-based reset required.
@@ -75,6 +75,10 @@ export function NowPlayingPanel({ track }: Props) {
       >
         {isPaused ? "Play" : "Pause"}
       </button>
+
+      {playbackError && (
+        <p className="max-w-md text-xs text-red-400">Playback error: {playbackError}</p>
+      )}
 
       <div className="w-full max-w-md rounded-lg bg-neutral-900 p-4 text-left">
         {summaryState.status === "loading" && (

@@ -39,6 +39,7 @@ interface PlayerContextValue {
   ready: boolean;
   isPaused: boolean;
   currentUri: string | null;
+  playbackError: string | null;
   playTrack: (uri: string) => Promise<void>;
   togglePlay: () => Promise<void>;
 }
@@ -52,10 +53,19 @@ async function fetchAccessToken(): Promise<string> {
   return body.accessToken;
 }
 
+const TRANSIENT_STATUS_CODES = new Set([502, 503, 504]);
+
+class PermanentPlaybackError extends Error {}
+
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 export function PlayerProvider({ children }: { children: ReactNode }) {
   const [ready, setReady] = useState(false);
   const [isPaused, setIsPaused] = useState(true);
   const [currentUri, setCurrentUri] = useState<string | null>(null);
+  const [playbackError, setPlaybackError] = useState<string | null>(null);
   const playerRef = useRef<SpotifyPlayer | null>(null);
   const deviceIdRef = useRef<string | null>(null);
 
@@ -103,17 +113,41 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const playTrack = useCallback(async (uri: string) => {
     const deviceId = deviceIdRef.current;
     if (!deviceId) throw new Error("Player not ready yet");
-    const accessToken = await fetchAccessToken();
-    const res = await fetch(`https://api.spotify.com/v1/me/player/play?device_id=${deviceId}`, {
-      method: "PUT",
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ uris: [uri] }),
-    });
-    if (!res.ok && res.status !== 204) {
-      throw new Error(`Failed to start playback: ${res.status} ${await res.text()}`);
+
+    setPlaybackError(null);
+    // Spotify's Connect "play" endpoint is known to be flaky (502/503/504, or
+    // an outright network failure) right after a device connects or on rapid
+    // track switches — worth a couple of retries before treating it as real.
+    // A non-transient failure (bad auth, bad request, etc.) is marked with
+    // PermanentPlaybackError below and always fails immediately.
+    const MAX_ATTEMPTS = 3;
+    for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+      const isLastAttempt = attempt === MAX_ATTEMPTS;
+      try {
+        const accessToken = await fetchAccessToken();
+        const res = await fetch(`https://api.spotify.com/v1/me/player/play?device_id=${deviceId}`, {
+          method: "PUT",
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ uris: [uri] }),
+        });
+        if (res.ok || res.status === 204) return;
+
+        const message = `Failed to start playback: ${res.status} ${await res.text()}`;
+        throw TRANSIENT_STATUS_CODES.has(res.status)
+          ? new Error(message)
+          : new PermanentPlaybackError(message);
+      } catch (err) {
+        if (err instanceof PermanentPlaybackError || isLastAttempt) {
+          const message = err instanceof Error ? err.message : String(err);
+          setPlaybackError(message);
+          throw err;
+        }
+        // transient — fall through and retry after a short backoff
+      }
+      await sleep(400 * attempt);
     }
   }, []);
 
@@ -122,7 +156,9 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   }, []);
 
   return (
-    <PlayerContext.Provider value={{ ready, isPaused, currentUri, playTrack, togglePlay }}>
+    <PlayerContext.Provider
+      value={{ ready, isPaused, currentUri, playbackError, playTrack, togglePlay }}
+    >
       {children}
     </PlayerContext.Provider>
   );
