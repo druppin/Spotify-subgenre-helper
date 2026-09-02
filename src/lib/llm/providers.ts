@@ -6,6 +6,21 @@ const OPENAI_COMPATIBLE_BASE_URL: Record<string, string> = {
   openrouter: "https://openrouter.ai/api/v1",
 };
 
+class LlmApiError extends Error {
+  constructor(public status: number, message: string) {
+    super(message);
+    this.name = "LlmApiError";
+  }
+}
+
+// Free-tier and shared LLM infra commonly return these transiently (rate
+// limiting, "model overloaded") — worth a retry before giving up.
+const TRANSIENT_STATUS_CODES = new Set([429, 500, 502, 503, 504]);
+
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 async function callOpenAiCompatible(
   config: LlmConfig,
   systemPrompt: string,
@@ -29,7 +44,7 @@ async function callOpenAiCompatible(
     }),
   });
   if (!res.ok) {
-    throw new Error(`${config.provider} request failed: ${res.status} ${await res.text()}`);
+    throw new LlmApiError(res.status, `${config.provider} request failed: ${res.status} ${await res.text()}`);
   }
   const body = await res.json();
   return body.choices?.[0]?.message?.content ?? "";
@@ -55,7 +70,7 @@ async function callAnthropic(
     }),
   });
   if (!res.ok) {
-    throw new Error(`anthropic request failed: ${res.status} ${await res.text()}`);
+    throw new LlmApiError(res.status, `anthropic request failed: ${res.status} ${await res.text()}`);
   }
   const body = await res.json();
   return body.content?.[0]?.text ?? "";
@@ -77,21 +92,13 @@ async function callGoogle(
     }),
   });
   if (!res.ok) {
-    throw new Error(`google request failed: ${res.status} ${await res.text()}`);
+    throw new LlmApiError(res.status, `google request failed: ${res.status} ${await res.text()}`);
   }
   const body = await res.json();
   return body.candidates?.[0]?.content?.parts?.[0]?.text ?? "";
 }
 
-/**
- * Sends a system+user prompt to the configured provider and returns the raw
- * text response (expected to be a JSON string — callers parse it).
- */
-export async function callLlm(
-  config: LlmConfig,
-  systemPrompt: string,
-  userPrompt: string
-): Promise<string> {
+function callProvider(config: LlmConfig, systemPrompt: string, userPrompt: string): Promise<string> {
   switch (config.provider) {
     case "openai":
     case "groq":
@@ -102,4 +109,28 @@ export async function callLlm(
     case "google":
       return callGoogle(config, systemPrompt, userPrompt);
   }
+}
+
+/**
+ * Sends a system+user prompt to the configured provider and returns the raw
+ * text response (expected to be a JSON string — callers parse it). Retries
+ * transient failures (rate limiting, "model overloaded") a couple of times
+ * before giving up.
+ */
+export async function callLlm(
+  config: LlmConfig,
+  systemPrompt: string,
+  userPrompt: string
+): Promise<string> {
+  const MAX_ATTEMPTS = 3;
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    try {
+      return await callProvider(config, systemPrompt, userPrompt);
+    } catch (err) {
+      const isTransient = err instanceof LlmApiError && TRANSIENT_STATUS_CODES.has(err.status);
+      if (!isTransient || attempt === MAX_ATTEMPTS) throw err;
+      await sleep(500 * attempt);
+    }
+  }
+  throw new Error("unreachable");
 }
