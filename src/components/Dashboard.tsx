@@ -15,6 +15,12 @@ function DashboardInner() {
   const [sourceTracksError, setSourceTracksError] = useState<string | null>(null);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [pinnedIds, setPinnedIds] = useState<string[]>([]);
+  // A track "add"ed with "also remove from source" checked doesn't get
+  // removed right away — the same track might still get added to a second
+  // or third destination playlist while it's showing. The actual removal
+  // is deferred until the user navigates to a different track (or a
+  // different source playlist), tracked here by the pending track's URI.
+  const [pendingRemovalUri, setPendingRemovalUri] = useState<string | null>(null);
 
   const { playTrack } = usePlayer();
 
@@ -55,17 +61,68 @@ function DashboardInner() {
     );
   }, []);
 
-  const advance = useCallback(() => {
-    setCurrentIndex((i) => Math.min(i + 1, sourceTracks.length - 1));
-  }, [sourceTracks.length]);
+  // Actually removes the pending track from the source playlist (Spotify +
+  // local state) against `fromPlaylistId` — the playlist that was current
+  // when it was marked, which may differ from sourcePlaylistId by the time
+  // this runs if the user has since switched source playlists. Returns the
+  // resulting tracks array so navigation math can be computed against it
+  // synchronously rather than racing the next render.
+  const flushPendingRemoval = useCallback(
+    (tracks: SpotifyPlaylistTrackItem[], fromPlaylistId: string | null): SpotifyPlaylistTrackItem[] => {
+      if (!pendingRemovalUri || !fromPlaylistId) return tracks;
+      const uri = pendingRemovalUri;
+      setPendingRemovalUri(null);
+      fetch(`/api/playlists/${fromPlaylistId}/tracks`, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ trackUri: uri }),
+      }).catch((err) => console.error("Failed to remove track from source playlist:", err));
+      return tracks.filter((item) => item.track?.uri !== uri);
+    },
+    [pendingRemovalUri]
+  );
 
-  const goToPrevious = useCallback(() => {
-    setCurrentIndex((i) => Math.max(i - 1, 0));
-  }, []);
+  const goNext = useCallback(() => {
+    const hadPending = pendingRemovalUri !== null;
+    const tracks = flushPendingRemoval(sourceTracks, sourcePlaylistId);
+    setSourceTracks(tracks);
+    // If the current track just got removed, whatever was after it slides
+    // into its old position — so the target is the same index, not +1.
+    const target = hadPending ? currentIndex : currentIndex + 1;
+    setCurrentIndex(Math.max(Math.min(target, tracks.length - 1), 0));
+  }, [sourceTracks, sourcePlaylistId, currentIndex, pendingRemovalUri, flushPendingRemoval]);
+
+  const goPrevious = useCallback(() => {
+    const tracks = flushPendingRemoval(sourceTracks, sourcePlaylistId);
+    setSourceTracks(tracks);
+    // Removing the current track never shifts indices before it.
+    setCurrentIndex(Math.max(Math.min(currentIndex - 1, tracks.length - 1), 0));
+  }, [sourceTracks, sourcePlaylistId, currentIndex, flushPendingRemoval]);
+
+  const selectTrack = useCallback(
+    (clickedIndex: number) => {
+      if (clickedIndex === currentIndex) return;
+      const hadPending = pendingRemovalUri !== null;
+      const tracks = flushPendingRemoval(sourceTracks, sourcePlaylistId);
+      setSourceTracks(tracks);
+      const adjusted = hadPending && clickedIndex > currentIndex ? clickedIndex - 1 : clickedIndex;
+      setCurrentIndex(Math.max(Math.min(adjusted, tracks.length - 1), 0));
+    },
+    [sourceTracks, sourcePlaylistId, currentIndex, pendingRemovalUri, flushPendingRemoval]
+  );
+
+  const selectSourcePlaylist = useCallback(
+    (newId: string) => {
+      // Flush against the playlist being left, not the one being entered.
+      flushPendingRemoval(sourceTracks, sourcePlaylistId);
+      setSourcePlaylistId(newId);
+    },
+    [sourceTracks, sourcePlaylistId, flushPendingRemoval]
+  );
 
   const handleAddToPlaylist = useCallback(
     async (destinationPlaylistId: string, alsoRemoveFromSource: boolean) => {
-      if (!currentTrack || !sourcePlaylistId) return;
+      if (!currentTrack) return;
 
       await fetch(`/api/playlists/${destinationPlaylistId}/add`, {
         method: "POST",
@@ -74,17 +131,10 @@ function DashboardInner() {
       });
 
       if (alsoRemoveFromSource) {
-        await fetch(`/api/playlists/${sourcePlaylistId}/tracks`, {
-          method: "DELETE",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ trackUri: currentTrack.uri }),
-        });
-        setSourceTracks((prev) => prev.filter((_, i) => i !== currentIndex));
-      } else {
-        advance();
+        setPendingRemovalUri(currentTrack.uri);
       }
     },
-    [currentTrack, sourcePlaylistId, currentIndex, advance]
+    [currentTrack]
   );
 
   return (
@@ -95,7 +145,7 @@ function DashboardInner() {
           <PlaylistPicker
             playlists={playlists}
             selectedId={sourcePlaylistId}
-            onSelect={setSourcePlaylistId}
+            onSelect={selectSourcePlaylist}
           />
         </div>
       </header>
@@ -105,8 +155,9 @@ function DashboardInner() {
           <SourcePlaylistPanel
             tracks={sourceTracks}
             currentIndex={currentIndex}
-            onSelect={setCurrentIndex}
+            onSelect={selectTrack}
             error={sourceTracksError}
+            pendingRemovalUri={pendingRemovalUri}
           />
         </div>
 
@@ -114,10 +165,10 @@ function DashboardInner() {
           <NowPlayingPanel
             key={currentTrack?.id ?? "none"}
             track={currentTrack}
-            onPrevious={goToPrevious}
-            onNext={advance}
+            onPrevious={goPrevious}
+            onNext={goNext}
             canGoPrevious={currentIndex > 0}
-            canGoNext={currentIndex < sourceTracks.length - 1}
+            canGoNext={currentIndex < sourceTracks.length - 1 || pendingRemovalUri !== null}
           />
         </div>
 

@@ -7,9 +7,16 @@ interface Props {
   currentIndex: number;
   onSelect: (index: number) => void;
   error?: string | null;
+  pendingRemovalUri?: string | null;
 }
 
-export function SourcePlaylistPanel({ tracks, currentIndex, onSelect, error }: Props) {
+export function SourcePlaylistPanel({
+  tracks,
+  currentIndex,
+  onSelect,
+  error,
+  pendingRemovalUri,
+}: Props) {
   return (
     <div className="flex h-full flex-col overflow-hidden">
       <h2 className="mb-2 px-3 pt-3 text-sm font-semibold uppercase tracking-wide text-neutral-400">
@@ -49,6 +56,11 @@ export function SourcePlaylistPanel({ tracks, currentIndex, onSelect, error }: P
                   <div className="truncate text-xs text-neutral-500">
                     {item.track.artists.map((a) => a.name).join(", ")}
                   </div>
+                  {item.track.uri === pendingRemovalUri && (
+                    <div className="truncate text-[10px] text-amber-500">
+                      Leaving source playlist when you move on…
+                    </div>
+                  )}
                 </div>
               </button>
             </li>
