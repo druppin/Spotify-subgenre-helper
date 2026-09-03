@@ -23,8 +23,6 @@ interface SpotifyPlayer {
   connect(): Promise<boolean>;
   disconnect(): void;
   addListener(event: string, cb: (arg: unknown) => void): void;
-  togglePlay(): Promise<void>;
-  seek(positionMs: number): Promise<void>;
   setVolume(volume: number): Promise<void>;
 }
 declare global {
@@ -93,6 +91,40 @@ class PermanentPlaybackError extends Error {}
 
 function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+// Pause/resume/seek go through Spotify's REST Connect API rather than the
+// Web Playback SDK's own instance methods (player.togglePlay()/seek()) —
+// those silently no-op in some cases (this device not fully recognized as
+// the active Connect device yet), where the REST endpoints — the same ones
+// playTrack already uses reliably — just work.
+async function spotifyPlayerCommand(
+  endpoint: "play" | "pause" | "seek",
+  deviceId: string,
+  extraParams: Record<string, string> = {}
+): Promise<void> {
+  const params = new URLSearchParams({ device_id: deviceId, ...extraParams });
+  const MAX_ATTEMPTS = 3;
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    const isLastAttempt = attempt === MAX_ATTEMPTS;
+    try {
+      const accessToken = await fetchAccessToken();
+      const res = await fetchWithTimeout(`https://api.spotify.com/v1/me/player/${endpoint}?${params}`, {
+        method: "PUT",
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+      if (res.ok || res.status === 204) return;
+
+      const message = `Spotify ${endpoint} failed: ${res.status} ${await res.text()}`;
+      throw TRANSIENT_STATUS_CODES.has(res.status)
+        ? new Error(message)
+        : new PermanentPlaybackError(message);
+    } catch (err) {
+      if (err instanceof PermanentPlaybackError || isLastAttempt) throw err;
+    }
+    await sleep(400 * attempt);
+  }
+  throw new Error("unreachable");
 }
 
 export function PlayerProvider({ children }: { children: ReactNode }) {
@@ -230,12 +262,26 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const togglePlay = useCallback(async () => {
-    await playerRef.current?.togglePlay();
-  }, []);
+    const deviceId = deviceIdRef.current;
+    if (!deviceId) return;
+    setPlaybackError(null);
+    try {
+      await spotifyPlayerCommand(isPaused ? "play" : "pause", deviceId);
+    } catch (err) {
+      setPlaybackError(err instanceof Error ? err.message : String(err));
+    }
+  }, [isPaused]);
 
   const seek = useCallback(async (positionMs: number) => {
-    await playerRef.current?.seek(positionMs);
-    setPosition(positionMs);
+    const deviceId = deviceIdRef.current;
+    if (!deviceId) return;
+    setPlaybackError(null);
+    setPosition(positionMs); // optimistic — player_state_changed will correct it if this fails
+    try {
+      await spotifyPlayerCommand("seek", deviceId, { position_ms: String(Math.round(positionMs)) });
+    } catch (err) {
+      setPlaybackError(err instanceof Error ? err.message : String(err));
+    }
   }, []);
 
   const setVolume = useCallback(async (v: number) => {
