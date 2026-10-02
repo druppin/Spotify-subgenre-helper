@@ -50,6 +50,7 @@ interface PlayerContextValue {
   togglePlay: () => Promise<void>;
   seek: (positionMs: number) => Promise<void>;
   setVolume: (volume: number) => Promise<void>;
+  onTrackEnd: (handler: ((uri: string) => void) | null) => void;
 }
 
 const PlayerContext = createContext<PlayerContextValue | null>(null);
@@ -146,6 +147,9 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   // even though the UI has already moved on to the right track's info.
   const latestRequestedUriRef = useRef<string | null>(null);
   const playChainRef = useRef<Promise<void>>(Promise.resolve());
+  const lastStateRef = useRef<SpotifyPlayerState | null>(null);
+  const endedUriRef = useRef<string | null>(null);
+  const trackEndHandlerRef = useRef<((uri: string) => void) | null>(null);
 
   useEffect(() => {
     const script = document.createElement("script");
@@ -169,6 +173,25 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       player.addListener("player_state_changed", (arg) => {
         const state = arg as SpotifyPlayerState | null;
         if (!state) return;
+        const prev = lastStateRef.current;
+        lastStateRef.current = state;
+        // The SDK has no "ended" event: a finished track shows up as a
+        // playing → paused transition back at position 0. Requiring the
+        // track to still be the one we last requested filters out the same
+        // transition that happens briefly while switching to a new track.
+        const endedUri = prev?.track_window.current_track.uri;
+        if (
+          prev &&
+          endedUri &&
+          !prev.paused &&
+          state.paused &&
+          state.position === 0 &&
+          endedUri === latestRequestedUriRef.current &&
+          endedUriRef.current !== endedUri
+        ) {
+          endedUriRef.current = endedUri;
+          trackEndHandlerRef.current?.(endedUri);
+        }
         setIsPaused(state.paused);
         setPosition(state.position);
         setDuration(state.duration);
@@ -203,6 +226,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
 
   const playTrack = useCallback((uri: string): Promise<void> => {
     latestRequestedUriRef.current = uri;
+    endedUriRef.current = null;
     const deviceId = deviceIdRef.current;
 
     // Chain onto whatever's currently in flight so play requests always
@@ -289,6 +313,10 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     setVolumeState(v);
   }, []);
 
+  const onTrackEnd = useCallback((handler: ((uri: string) => void) | null) => {
+    trackEndHandlerRef.current = handler;
+  }, []);
+
   return (
     <PlayerContext.Provider
       value={{
@@ -303,6 +331,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         togglePlay,
         seek,
         setVolume,
+        onTrackEnd,
       }}
     >
       {children}

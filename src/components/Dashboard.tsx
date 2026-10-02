@@ -26,7 +26,7 @@ function DashboardInner() {
   // navigates back to a track they already filed somewhere.
   const [addedPlaylistIdsByTrack, setAddedPlaylistIdsByTrack] = useState<Record<string, string[]>>({});
 
-  const { playTrack } = usePlayer();
+  const { playTrack, onTrackEnd } = usePlayer();
 
   useEffect(() => {
     fetch("/api/playlists")
@@ -95,6 +95,13 @@ function DashboardInner() {
     const target = hadPending ? currentIndex : currentIndex + 1;
     setCurrentIndex(Math.max(Math.min(target, tracks.length - 1), 0));
   }, [sourceTracks, sourcePlaylistId, currentIndex, pendingRemovalUri, flushPendingRemoval]);
+
+  useEffect(() => {
+    onTrackEnd((uri) => {
+      if (uri === currentTrack?.uri) goNext();
+    });
+    return () => onTrackEnd(null);
+  }, [onTrackEnd, currentTrack, goNext]);
 
   const goPrevious = useCallback(() => {
     const tracks = flushPendingRemoval(sourceTracks, sourcePlaylistId);

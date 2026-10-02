@@ -9,7 +9,7 @@ export function PlaylistThumb({
   playlist: SpotifyPlaylist;
   size?: number;
 }) {
-  const image = playlist.images[playlist.images.length - 1];
+  const image = playlist.images?.[playlist.images.length - 1];
   if (!image) {
     return (
       <div className="flex-shrink-0 rounded bg-neutral-800" style={{ width: size, height: size }} />
