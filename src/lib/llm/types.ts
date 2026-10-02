@@ -16,6 +16,7 @@ export interface TrackContext {
   lastfmTrackTags: string[];
   lastfmArtistTags: string[];
   lastfmArtistBio: string | null;
+  musicbrainz: import("@/lib/musicbrainz").MusicBrainzInfo;
   audioFeatures: import("@/lib/reccobeats").AudioFeatures | null;
 }
 

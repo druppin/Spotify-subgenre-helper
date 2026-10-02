@@ -82,6 +82,10 @@ without ever inventing context that isn't actually in the data.
    - `SESSION_SECRET` — any random 32+ character string (`openssl rand -base64 32`).
    - `LASTFM_API_KEY` — optional, free key from [last.fm/api](https://www.last.fm/api/account/create).
      Track context still builds without it, just without Last.fm tags/bio.
+   - Nothing to configure for [MusicBrainz](https://musicbrainz.org) — its
+     community-voted genres (per recording, release, and credited artist) are
+     fetched with no API key. It allows ~1 request/sec, so a track's first
+     load takes a few extra seconds; results are cached after that.
    - Nothing to configure for audio features (danceability/energy/valence/
      tempo/etc.) — they come from [ReccoBeats](https://reccobeats.com), a free
      replacement for Spotify's own Audio Features endpoint (closed to new

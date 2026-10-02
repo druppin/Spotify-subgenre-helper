@@ -17,12 +17,19 @@ just because a track is fast), hardstyle ~150-160 BPM, hardcore/gabber usually 1
 distorted/four-on-the-floor. Weigh tempo alongside energy/valence/acousticness and any genre
 tags given, not in isolation.
 
+musicbrainz holds community-voted genres from MusicBrainz; "votes" is how many editors voted for
+each, so more votes means stronger consensus. They come at three levels, most to least specific:
+recordingTags (this exact recording), releaseGroupGenres (the album/single/EP it's on), and
+artistGenres (each credited artist overall — for a remix, the remixer's genres often describe the
+track better than the original artist's). Prefer the most specific level that has votes; artist-
+level genres describe a whole career and may not fit this particular track.
+
 Ground the rationale ONLY in the data actually provided (audio features, artist genres, Last.fm
-tags/bio). Never invent context that isn't in the given data — no assumed soundtracks, games,
+tags/bio, MusicBrainz genres). Never invent context that isn't in the given data — no assumed soundtracks, games,
 playlists, or backstory for the artist or track. Never use the literal wording of the track
 title as evidence of genre or mood (e.g. a track called "Hot Wheels" is not evidence of a
 racing/car theme) — titles are not a reliable signal and reasoning from them reads as making
-things up. If artistGenres, Last.fm tags, and audio features are all empty or missing, say so
+things up. If artistGenres, Last.fm tags, MusicBrainz genres, and audio features are all empty or missing, say so
 plainly in the rationale and keep the guess clearly hedged rather than presenting a confident-
 sounding but ungrounded story.
 

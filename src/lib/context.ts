@@ -1,10 +1,13 @@
 import { getAudioFeatures } from "@/lib/reccobeats";
 import { getCache } from "@/lib/cache";
 import { getArtistInfo, getTrackTags } from "@/lib/lastfm";
+import { getMusicBrainzInfo } from "@/lib/musicbrainz";
 import type { SpotifyClient } from "@/lib/spotify/client";
 import type { TrackContext } from "@/lib/llm/types";
 
-const contextCache = getCache<TrackContext>("track-context");
+// Bump the namespace whenever TrackContext gains a field, so contexts cached
+// before it existed get rebuilt instead of served without it.
+const contextCache = getCache<TrackContext>("track-context-v3");
 
 /**
  * Pulls Spotify metadata + artist genre tags + Last.fm tags/bio + ReccoBeats
@@ -22,10 +25,11 @@ export async function buildTrackContext(
   const artists = await spotify.getArtists(track.artists.map((a) => a.id));
   const primaryArtistName = track.artists[0]?.name ?? "";
 
-  const [lastfmTrack, lastfmArtist, audioFeaturesByTrack] = await Promise.all([
+  const [lastfmTrack, lastfmArtist, audioFeaturesByTrack, musicbrainz] = await Promise.all([
     getTrackTags(primaryArtistName, track.name),
     getArtistInfo(primaryArtistName),
     getAudioFeatures([trackId]),
+    getMusicBrainzInfo(primaryArtistName, track.name),
   ]);
 
   const context: TrackContext = {
@@ -38,6 +42,7 @@ export async function buildTrackContext(
     lastfmTrackTags: lastfmTrack,
     lastfmArtistTags: lastfmArtist.tags,
     lastfmArtistBio: lastfmArtist.bioSummary,
+    musicbrainz,
     audioFeatures: audioFeaturesByTrack[trackId] ?? null,
   };
 
