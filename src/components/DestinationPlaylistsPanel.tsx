@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 import type { SpotifyPlaylist } from "@/lib/spotify/client";
 import { PlaylistThumb } from "./PlaylistThumb";
 
@@ -25,6 +25,21 @@ export function DestinationPlaylistsPanel({
 }: Props) {
   const [alsoRemove, setAlsoRemove] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const listRef = useRef<HTMLUListElement>(null);
+  const scrollTopBeforePinRef = useRef<number | null>(null);
+
+  // Pinning moves the clicked row to the top; without this the browser's
+  // scroll anchoring follows that row and yanks the list back up.
+  useLayoutEffect(() => {
+    if (scrollTopBeforePinRef.current === null || !listRef.current) return;
+    listRef.current.scrollTop = scrollTopBeforePinRef.current;
+    scrollTopBeforePinRef.current = null;
+  }, [pinnedIds]);
+
+  const handleTogglePin = (playlistId: string) => {
+    scrollTopBeforePinRef.current = listRef.current?.scrollTop ?? null;
+    onTogglePin(playlistId);
+  };
 
   // Adding a track requires owning or collaborating on the destination
   // playlist — Spotify 403s otherwise — so followed-only playlists never
@@ -67,14 +82,15 @@ export function DestinationPlaylistsPanel({
         Also remove from source playlist
       </label>
 
-      <ul className="flex-1 overflow-y-auto">
+      <ul ref={listRef} className="flex-1 overflow-y-auto [overflow-anchor:none]">
         {sorted.map((p) => {
           const isPinned = pinnedIds.includes(p.id);
           const isAdded = addedPlaylistIds.has(p.id);
           return (
             <li key={p.id} className="flex items-center gap-1 px-3 py-1">
               <button
-                onClick={() => onTogglePin(p.id)}
+                onClick={() => handleTogglePin(p.id)}
+                onMouseDown={(e) => e.preventDefault()}
                 className={`flex-shrink-0 px-1 text-lg ${
                   isPinned ? "text-yellow-400" : "text-neutral-600 hover:text-neutral-400"
                 }`}
