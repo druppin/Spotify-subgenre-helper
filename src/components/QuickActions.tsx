@@ -2,13 +2,26 @@
 
 import { useRef, useState, type FormEvent } from "react";
 import type { SpotifyPlaylist } from "@/lib/spotify/client";
+import type { Setup } from "@/lib/setups";
+import { SetupsDialog } from "./SetupsDialog";
 
 interface Props {
+  playlists: SpotifyPlaylist[];
+  sourcePlaylistId: string | null;
+  pinnedIds: string[];
   onPlaylistCreated: (playlist: SpotifyPlaylist, star: boolean) => void;
+  onLoadSetup: (setup: Setup) => void;
 }
 
-export function QuickActions({ onPlaylistCreated }: Props) {
+export function QuickActions({
+  playlists,
+  sourcePlaylistId,
+  pinnedIds,
+  onPlaylistCreated,
+  onLoadSetup,
+}: Props) {
   const dialogRef = useRef<HTMLDialogElement>(null);
+  const setupsDialogRef = useRef<HTMLDialogElement>(null);
 
   return (
     <div className="flex items-center gap-3 border-b border-neutral-800 px-4 py-2">
@@ -21,7 +34,20 @@ export function QuickActions({ onPlaylistCreated }: Props) {
       >
         + New playlist
       </button>
+      <button
+        onClick={() => setupsDialogRef.current?.showModal()}
+        className="rounded-md border border-neutral-700 px-2.5 py-1 text-sm text-neutral-200 hover:border-green-600 hover:bg-green-600/10"
+      >
+        Setups
+      </button>
       <NewPlaylistDialog dialogRef={dialogRef} onCreated={onPlaylistCreated} />
+      <SetupsDialog
+        dialogRef={setupsDialogRef}
+        playlists={playlists}
+        sourcePlaylistId={sourcePlaylistId}
+        pinnedIds={pinnedIds}
+        onLoad={onLoadSetup}
+      />
     </div>
   );
 }

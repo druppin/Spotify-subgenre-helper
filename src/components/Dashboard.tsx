@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { SpotifyPlaylist, SpotifyPlaylistTrackItem } from "@/lib/spotify/client";
 import { PlayerProvider, usePlayer } from "./PlayerProvider";
 import { SourcePlaylistPanel } from "./SourcePlaylistPanel";
@@ -8,14 +8,18 @@ import { NowPlayingPanel } from "./NowPlayingPanel";
 import { DestinationPlaylistsPanel } from "./DestinationPlaylistsPanel";
 import { PlaylistPicker } from "./PlaylistPicker";
 import { QuickActions } from "./QuickActions";
+import { loadLastSession, saveLastSession, type Setup } from "@/lib/setups";
 
 function DashboardInner() {
+  // Only ever mounted client-side (AuthGate renders it after a fetch), so
+  // reading localStorage in the initializer can't cause a hydration mismatch.
+  const [initialSession] = useState(loadLastSession);
   const [playlists, setPlaylists] = useState<SpotifyPlaylist[]>([]);
-  const [sourcePlaylistId, setSourcePlaylistId] = useState<string | null>(null);
+  const [sourcePlaylistId, setSourcePlaylistId] = useState<string | null>(initialSession.sourcePlaylistId);
   const [sourceTracks, setSourceTracks] = useState<SpotifyPlaylistTrackItem[]>([]);
   const [sourceTracksError, setSourceTracksError] = useState<string | null>(null);
   const [currentIndex, setCurrentIndex] = useState(0);
-  const [pinnedIds, setPinnedIds] = useState<string[]>([]);
+  const [pinnedIds, setPinnedIds] = useState<string[]>(initialSession.pinnedIds);
   // A track "add"ed with "also remove from source" checked doesn't get
   // removed right away — the same track might still get added to a second
   // or third destination playlist while it's showing. The actual removal
@@ -27,7 +31,19 @@ function DashboardInner() {
   // navigates back to a track they already filed somewhere.
   const [addedPlaylistIdsByTrack, setAddedPlaylistIdsByTrack] = useState<Record<string, string[]>>({});
 
-  const { playTrack, onTrackEnd } = usePlayer();
+  const { ready, playTrack, onTrackEnd } = usePlayer();
+
+  // Where to resume within the restored source playlist; consumed by the
+  // first successful track load of that playlist.
+  const resumeRef = useRef(
+    initialSession.sourcePlaylistId && initialSession.currentTrackUri
+      ? {
+          playlistId: initialSession.sourcePlaylistId,
+          uri: initialSession.currentTrackUri,
+          index: initialSession.currentIndex,
+        }
+      : null
+  );
 
   useEffect(() => {
     fetch("/api/playlists")
@@ -37,28 +53,81 @@ function DashboardInner() {
 
   useEffect(() => {
     if (!sourcePlaylistId) return;
+    // Ignore a response for a playlist the user has already moved off of
+    // (and the effect double-run in dev, which would otherwise consume the
+    // resume point on the discarded fetch).
+    let cancelled = false;
     fetch(`/api/playlists/${sourcePlaylistId}/tracks`)
       .then(async (res) => {
         const body = await res.json();
+        if (cancelled) return;
         if (!res.ok) {
           setSourceTracks([]);
           setSourceTracksError(body.error ?? "Failed to load this playlist's tracks.");
           return;
         }
+        const items: SpotifyPlaylistTrackItem[] = body.items ?? [];
+        let index = 0;
+        const resume = resumeRef.current;
+        resumeRef.current = null;
+        if (resume && resume.playlistId === sourcePlaylistId) {
+          const found = items.findIndex((item) => item.track?.uri === resume.uri);
+          index = found >= 0 ? found : Math.min(resume.index, Math.max(items.length - 1, 0));
+        }
         setSourceTracksError(null);
-        setSourceTracks(body.items ?? []);
-        setCurrentIndex(0);
+        setSourceTracks(items);
+        setCurrentIndex(index);
       })
-      .catch((err) => setSourceTracksError(String(err)));
+      .catch((err) => {
+        if (!cancelled) setSourceTracksError(String(err));
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [sourcePlaylistId]);
 
   const currentTrack = sourceTracks[currentIndex]?.track ?? null;
 
   useEffect(() => {
-    if (currentTrack) {
+    // Until the restored playlist's tracks arrive there's no current track —
+    // keep the saved resume point instead of overwriting it with nothing.
+    const resume = resumeRef.current;
+    saveLastSession({
+      sourcePlaylistId,
+      pinnedIds,
+      currentTrackUri: currentTrack?.uri ?? resume?.uri ?? null,
+      currentIndex: currentTrack ? currentIndex : (resume?.index ?? 0),
+    });
+  }, [sourcePlaylistId, pinnedIds, currentTrack, currentIndex]);
+
+  // A removal deferred until "next track" would otherwise be lost if the tab
+  // closes first. keepalive lets the request outlive the page.
+  const pendingRemovalRef = useRef({ uri: pendingRemovalUri, playlistId: sourcePlaylistId });
+  useEffect(() => {
+    pendingRemovalRef.current = { uri: pendingRemovalUri, playlistId: sourcePlaylistId };
+  }, [pendingRemovalUri, sourcePlaylistId]);
+  useEffect(() => {
+    const onPageHide = () => {
+      const { uri, playlistId } = pendingRemovalRef.current;
+      if (!uri || !playlistId) return;
+      fetch(`/api/playlists/${playlistId}/tracks`, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ trackUri: uri }),
+        keepalive: true,
+      });
+    };
+    window.addEventListener("pagehide", onPageHide);
+    return () => window.removeEventListener("pagehide", onPageHide);
+  }, []);
+
+  // Waits for the player to be ready: a restored session loads its source
+  // playlist's tracks before the Web Playback SDK has connected.
+  useEffect(() => {
+    if (currentTrack && ready) {
       playTrack(currentTrack.uri).catch((err) => console.error(err));
     }
-  }, [currentTrack, playTrack]);
+  }, [currentTrack, ready, playTrack]);
 
   const togglePin = useCallback((playlistId: string) => {
     setPinnedIds((prev) =>
@@ -137,6 +206,16 @@ function DashboardInner() {
     [sourceTracks, sourcePlaylistId, flushPendingRemoval]
   );
 
+  const loadSetup = useCallback(
+    (setup: Setup) => {
+      setPinnedIds(setup.pinnedIds);
+      if (setup.sourcePlaylistId && setup.sourcePlaylistId !== sourcePlaylistId) {
+        selectSourcePlaylist(setup.sourcePlaylistId);
+      }
+    },
+    [sourcePlaylistId, selectSourcePlaylist]
+  );
+
   const handleAddToPlaylist = useCallback(
     async (destinationPlaylistId: string, alsoRemoveFromSource: boolean) => {
       if (!currentTrack) return;
@@ -204,7 +283,13 @@ function DashboardInner() {
         </div>
 
         <div className="flex min-h-0 flex-col overflow-hidden">
-          <QuickActions onPlaylistCreated={handlePlaylistCreated} />
+          <QuickActions
+            playlists={playlists}
+            sourcePlaylistId={sourcePlaylistId}
+            pinnedIds={pinnedIds}
+            onPlaylistCreated={handlePlaylistCreated}
+            onLoadSetup={loadSetup}
+          />
           <div className="min-h-0 flex-1 overflow-hidden">
             <NowPlayingPanel
               key={currentTrack?.id ?? "none"}
