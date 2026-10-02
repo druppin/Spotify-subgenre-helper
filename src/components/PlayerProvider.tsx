@@ -175,6 +175,12 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         if (!state) return;
         const prev = lastStateRef.current;
         lastStateRef.current = state;
+        console.debug("[player] state", {
+          uri: state.track_window.current_track.uri,
+          paused: state.paused,
+          position: state.position,
+          duration: state.duration,
+        });
         // The SDK has no "ended" event: a finished track shows up as a
         // playing → paused transition back at position 0. Requiring the
         // track to still be the one we last requested filters out the same
@@ -244,7 +250,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       // rapid track switches — worth a couple of retries before treating it
       // as real. A non-transient failure (bad auth, bad request, etc.) is
       // marked with PermanentPlaybackError below and always fails immediately.
-      const MAX_ATTEMPTS = 3;
+      const MAX_ATTEMPTS = 4;
       for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
         if (latestRequestedUriRef.current !== uri) return;
         const isLastAttempt = attempt === MAX_ATTEMPTS;
@@ -260,10 +266,17 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
           });
           if (res.ok || res.status === 204) return;
 
-          const message = `Failed to start playback: ${res.status} ${await res.text()}`;
-          throw TRANSIENT_STATUS_CODES.has(res.status)
-            ? new Error(message)
-            : new PermanentPlaybackError(message);
+          const body = await res.text();
+          const message = `Failed to start playback: ${res.status} ${body}`;
+          // Spotify answers 403 "Restriction violated" for a moment right
+          // after a track finishes (exactly when autoplay fires), and 404
+          // "Device not found" right after the SDK reports ready, before
+          // Connect has registered the device — both go through on retry.
+          const isTransient =
+            TRANSIENT_STATUS_CODES.has(res.status) ||
+            (res.status === 403 && body.includes("Restriction violated")) ||
+            (res.status === 404 && body.includes("Device not found"));
+          throw isTransient ? new Error(message) : new PermanentPlaybackError(message);
         } catch (err) {
           if (err instanceof PermanentPlaybackError || isLastAttempt) {
             if (latestRequestedUriRef.current === uri) {
