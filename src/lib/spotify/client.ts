@@ -200,6 +200,26 @@ export class SpotifyClient {
     return Promise.all(artistIds.map((id) => this.request<SpotifyArtist>(`/artists/${id}`)));
   }
 
+  async createPlaylist(options: {
+    name: string;
+    description: string;
+    isPublic: boolean;
+    collaborative: boolean;
+  }): Promise<SpotifyPlaylist> {
+    const raw = await this.request<RawSpotifyPlaylist>("/me/playlists", {
+      method: "POST",
+      body: JSON.stringify({
+        name: options.name,
+        description: options.description,
+        // Spotify rejects collaborative playlists that are also public.
+        public: options.collaborative ? false : options.isPublic,
+        collaborative: options.collaborative,
+      }),
+    });
+    const { items, ...rest } = raw;
+    return { ...rest, images: rest.images ?? [], tracks: items ?? { total: 0 }, canModify: true };
+  }
+
   addTrackToPlaylist(playlistId: string, trackUri: string) {
     return this.request(`/playlists/${playlistId}/items`, {
       method: "POST",

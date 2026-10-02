@@ -7,6 +7,7 @@ import { SourcePlaylistPanel } from "./SourcePlaylistPanel";
 import { NowPlayingPanel } from "./NowPlayingPanel";
 import { DestinationPlaylistsPanel } from "./DestinationPlaylistsPanel";
 import { PlaylistPicker } from "./PlaylistPicker";
+import { QuickActions } from "./QuickActions";
 
 function DashboardInner() {
   const [playlists, setPlaylists] = useState<SpotifyPlaylist[]>([]);
@@ -63,6 +64,11 @@ function DashboardInner() {
     setPinnedIds((prev) =>
       prev.includes(playlistId) ? prev.filter((id) => id !== playlistId) : [...prev, playlistId]
     );
+  }, []);
+
+  const handlePlaylistCreated = useCallback((playlist: SpotifyPlaylist, star: boolean) => {
+    setPlaylists((prev) => [playlist, ...prev]);
+    if (star) setPinnedIds((prev) => [...prev, playlist.id]);
   }, []);
 
   // Actually removes the pending track from the source playlist (Spotify +
@@ -197,15 +203,18 @@ function DashboardInner() {
           />
         </div>
 
-        <div className="min-h-0 overflow-hidden">
-          <NowPlayingPanel
-            key={currentTrack?.id ?? "none"}
-            track={currentTrack}
-            onPrevious={goPrevious}
-            onNext={goNext}
-            canGoPrevious={currentIndex > 0}
-            canGoNext={currentIndex < sourceTracks.length - 1 || pendingRemovalUri !== null}
-          />
+        <div className="flex min-h-0 flex-col overflow-hidden">
+          <QuickActions onPlaylistCreated={handlePlaylistCreated} />
+          <div className="min-h-0 flex-1 overflow-hidden">
+            <NowPlayingPanel
+              key={currentTrack?.id ?? "none"}
+              track={currentTrack}
+              onPrevious={goPrevious}
+              onNext={goNext}
+              canGoPrevious={currentIndex > 0}
+              canGoNext={currentIndex < sourceTracks.length - 1 || pendingRemovalUri !== null}
+            />
+          </div>
         </div>
 
         <div className="min-h-0 overflow-hidden border-l border-neutral-800">
