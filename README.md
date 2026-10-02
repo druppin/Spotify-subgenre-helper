@@ -1,5 +1,7 @@
 # Spotify Subgenre Assistant
 
+![Spotify Subgenre Assistant](public/promo.png)
+
 A personal dashboard for triaging tracks into playlists. Point it at a messy
 source playlist (a Discover Weekly dump, a "sort me later" pile, whatever),
 play through it one track at a time, and let an LLM tell you what it actually
