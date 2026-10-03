@@ -8,7 +8,9 @@ interface Props {
   playlists: SpotifyPlaylist[];
   pinnedIds: string[];
   onTogglePin: (playlistId: string) => void;
-  onAddToPlaylist: (playlistId: string, alsoRemoveFromSource: boolean) => Promise<void>;
+  onAddToPlaylist: (playlistId: string) => Promise<void>;
+  alsoRemoveFromSource: boolean;
+  onAlsoRemoveFromSourceChange: (value: boolean) => void;
   onRemoveFromPlaylist: (playlistId: string) => Promise<void>;
   disabled: boolean;
   addedPlaylistIds: Set<string>;
@@ -20,10 +22,11 @@ export function DestinationPlaylistsPanel({
   onTogglePin,
   onAddToPlaylist,
   onRemoveFromPlaylist,
+  alsoRemoveFromSource,
+  onAlsoRemoveFromSourceChange,
   disabled,
   addedPlaylistIds,
 }: Props) {
-  const [alsoRemove, setAlsoRemove] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
   const listRef = useRef<HTMLUListElement>(null);
   const scrollTopBeforePinRef = useRef<number | null>(null);
@@ -60,7 +63,7 @@ export function DestinationPlaylistsPanel({
       if (isAdded) {
         await onRemoveFromPlaylist(playlistId);
       } else {
-        await onAddToPlaylist(playlistId, alsoRemove);
+        await onAddToPlaylist(playlistId);
       }
     } finally {
       setBusyId(null);
@@ -76,8 +79,8 @@ export function DestinationPlaylistsPanel({
       <label className="flex items-center gap-2 px-3 py-2 text-xs text-neutral-400">
         <input
           type="checkbox"
-          checked={alsoRemove}
-          onChange={(e) => setAlsoRemove(e.target.checked)}
+          checked={alsoRemoveFromSource}
+          onChange={(e) => onAlsoRemoveFromSourceChange(e.target.checked)}
         />
         Also remove from source playlist
       </label>

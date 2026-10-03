@@ -20,6 +20,7 @@ function DashboardInner() {
   const [sourceTracksError, setSourceTracksError] = useState<string | null>(null);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [pinnedIds, setPinnedIds] = useState<string[]>(initialSession.pinnedIds);
+  const [alsoRemoveFromSource, setAlsoRemoveFromSource] = useState(initialSession.alsoRemoveFromSource);
   // A track "add"ed with "also remove from source" checked doesn't get
   // removed right away — the same track might still get added to a second
   // or third destination playlist while it's showing. The actual removal
@@ -95,10 +96,11 @@ function DashboardInner() {
     saveLastSession({
       sourcePlaylistId,
       pinnedIds,
+      alsoRemoveFromSource,
       currentTrackUri: currentTrack?.uri ?? resume?.uri ?? null,
       currentIndex: currentTrack ? currentIndex : (resume?.index ?? 0),
     });
-  }, [sourcePlaylistId, pinnedIds, currentTrack, currentIndex]);
+  }, [sourcePlaylistId, pinnedIds, alsoRemoveFromSource, currentTrack, currentIndex]);
 
   // A removal deferred until "next track" would otherwise be lost if the tab
   // closes first. keepalive lets the request outlive the page.
@@ -209,6 +211,7 @@ function DashboardInner() {
   const loadSetup = useCallback(
     (setup: Setup) => {
       setPinnedIds(setup.pinnedIds);
+      if (setup.alsoRemoveFromSource !== undefined) setAlsoRemoveFromSource(setup.alsoRemoveFromSource);
       if (setup.sourcePlaylistId && setup.sourcePlaylistId !== sourcePlaylistId) {
         selectSourcePlaylist(setup.sourcePlaylistId);
       }
@@ -216,8 +219,24 @@ function DashboardInner() {
     [sourcePlaylistId, selectSourcePlaylist]
   );
 
+  // Unlike the deferred "also remove" checkbox, this removes right away and
+  // moves on — whatever was after the track slides into its position.
+  const removeCurrentFromSource = useCallback(() => {
+    if (!currentTrack || !sourcePlaylistId) return;
+    const uri = currentTrack.uri;
+    setPendingRemovalUri(null);
+    fetch(`/api/playlists/${sourcePlaylistId}/tracks`, {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ trackUri: uri }),
+    }).catch((err) => console.error("Failed to remove track from source playlist:", err));
+    const tracks = sourceTracks.filter((item) => item.track?.uri !== uri);
+    setSourceTracks(tracks);
+    setCurrentIndex(Math.max(Math.min(currentIndex, tracks.length - 1), 0));
+  }, [currentTrack, sourcePlaylistId, sourceTracks, currentIndex]);
+
   const handleAddToPlaylist = useCallback(
-    async (destinationPlaylistId: string, alsoRemoveFromSource: boolean) => {
+    async (destinationPlaylistId: string) => {
       if (!currentTrack) return;
 
       await fetch(`/api/playlists/${destinationPlaylistId}/add`, {
@@ -235,7 +254,7 @@ function DashboardInner() {
         setPendingRemovalUri(currentTrack.uri);
       }
     },
-    [currentTrack]
+    [currentTrack, alsoRemoveFromSource]
   );
 
   const handleRemoveFromPlaylist = useCallback(
@@ -287,8 +306,10 @@ function DashboardInner() {
             playlists={playlists}
             sourcePlaylistId={sourcePlaylistId}
             pinnedIds={pinnedIds}
+            alsoRemoveFromSource={alsoRemoveFromSource}
             onPlaylistCreated={handlePlaylistCreated}
             onLoadSetup={loadSetup}
+            onRemoveFromSource={currentTrack ? removeCurrentFromSource : null}
           />
           <div className="min-h-0 flex-1 overflow-hidden">
             <NowPlayingPanel
@@ -309,6 +330,8 @@ function DashboardInner() {
             onTogglePin={togglePin}
             onAddToPlaylist={handleAddToPlaylist}
             onRemoveFromPlaylist={handleRemoveFromPlaylist}
+            alsoRemoveFromSource={alsoRemoveFromSource}
+            onAlsoRemoveFromSourceChange={setAlsoRemoveFromSource}
             disabled={!currentTrack}
             addedPlaylistIds={addedPlaylistIds}
           />

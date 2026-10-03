@@ -9,10 +9,18 @@ interface Props {
   playlists: SpotifyPlaylist[];
   sourcePlaylistId: string | null;
   pinnedIds: string[];
+  alsoRemoveFromSource: boolean;
   onLoad: (setup: Setup) => void;
 }
 
-export function SetupsDialog({ dialogRef, playlists, sourcePlaylistId, pinnedIds, onLoad }: Props) {
+export function SetupsDialog({
+  dialogRef,
+  playlists,
+  sourcePlaylistId,
+  pinnedIds,
+  alsoRemoveFromSource,
+  onLoad,
+}: Props) {
   const [setups, setSetups] = useState<Setup[]>(loadSetups);
   const [title, setTitle] = useState("");
   const [includeSource, setIncludeSource] = useState(true);
@@ -37,6 +45,7 @@ export function SetupsDialog({ dialogRef, playlists, sourcePlaylistId, pinnedIds
       title: trimmedTitle,
       sourcePlaylistId: includeSource ? sourcePlaylistId : null,
       pinnedIds: [...pinnedIds],
+      alsoRemoveFromSource,
       savedAt: Date.now(),
     };
     update(existing ? setups.map((s) => (s.id === existing.id ? setup : s)) : [setup, ...setups]);
@@ -50,12 +59,19 @@ export function SetupsDialog({ dialogRef, playlists, sourcePlaylistId, pinnedIds
     const nextSourceName = playlistName(nextSourceId);
     const summary =
       `${pinnedIds.length} starred playlist${pinnedIds.length === 1 ? "" : "s"}` +
-      (nextSourceName ? ` and source playlist "${nextSourceName}"` : "");
+      (nextSourceName ? `, source playlist "${nextSourceName}"` : "") +
+      `, and "Also remove from source" ${alsoRemoveFromSource ? "on" : "off"}`;
     if (!window.confirm(`Update "${setup.title}" with your current ${summary}?`)) return;
     update(
       setups.map((s) =>
         s.id === setup.id
-          ? { ...s, sourcePlaylistId: nextSourceId, pinnedIds: [...pinnedIds], savedAt: Date.now() }
+          ? {
+              ...s,
+              sourcePlaylistId: nextSourceId,
+              pinnedIds: [...pinnedIds],
+              alsoRemoveFromSource,
+              savedAt: Date.now(),
+            }
           : s
       )
     );
@@ -124,7 +140,8 @@ export function SetupsDialog({ dialogRef, playlists, sourcePlaylistId, pinnedIds
           </label>
           <div className="flex items-center justify-between">
             <span className="text-xs text-neutral-500">
-              {pinnedIds.length} starred playlist{pinnedIds.length === 1 ? "" : "s"}
+              {pinnedIds.length} starred playlist{pinnedIds.length === 1 ? "" : "s"} · Also remove from
+              source: {alsoRemoveFromSource ? "on" : "off"}
             </span>
             <button
               type="submit"
@@ -148,6 +165,7 @@ export function SetupsDialog({ dialogRef, playlists, sourcePlaylistId, pinnedIds
                   <p className="truncate text-sm font-medium">{setup.title}</p>
                   <p className="truncate text-xs text-neutral-500">
                     {name ? `Source: ${name}` : "No source playlist"} · {setup.pinnedIds.length} starred ·{" "}
+                    {setup.alsoRemoveFromSource ? "removes from source · " : ""}
                     {new Date(setup.savedAt).toLocaleDateString()}
                   </p>
                 </div>

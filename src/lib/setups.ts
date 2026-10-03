@@ -4,6 +4,7 @@ export interface SessionState {
 }
 
 export interface LastSession extends SessionState {
+  alsoRemoveFromSource: boolean;
   currentTrackUri: string | null;
   // Fallback when the track itself is gone (e.g. it was removed from the
   // source playlist on the way out): whatever slid into its old position.
@@ -11,6 +12,9 @@ export interface LastSession extends SessionState {
 }
 
 export interface Setup extends SessionState {
+  // Missing on setups saved before this was tracked; loading one of those
+  // leaves the checkbox as it is.
+  alsoRemoveFromSource?: boolean;
   id: string;
   title: string;
   savedAt: number;
@@ -50,6 +54,7 @@ export function loadLastSession(): LastSession {
   return {
     sourcePlaylistId: typeof s.sourcePlaylistId === "string" ? s.sourcePlaylistId : null,
     pinnedIds: Array.isArray(s.pinnedIds) ? s.pinnedIds : [],
+    alsoRemoveFromSource: s.alsoRemoveFromSource === true,
     currentTrackUri: typeof s.currentTrackUri === "string" ? s.currentTrackUri : null,
     currentIndex: typeof s.currentIndex === "number" && s.currentIndex >= 0 ? s.currentIndex : 0,
   };

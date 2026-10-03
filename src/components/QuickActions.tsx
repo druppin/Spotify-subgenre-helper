@@ -9,16 +9,21 @@ interface Props {
   playlists: SpotifyPlaylist[];
   sourcePlaylistId: string | null;
   pinnedIds: string[];
+  alsoRemoveFromSource: boolean;
   onPlaylistCreated: (playlist: SpotifyPlaylist, star: boolean) => void;
   onLoadSetup: (setup: Setup) => void;
+  // null when there's no current track to remove.
+  onRemoveFromSource: (() => void) | null;
 }
 
 export function QuickActions({
   playlists,
   sourcePlaylistId,
   pinnedIds,
+  alsoRemoveFromSource,
   onPlaylistCreated,
   onLoadSetup,
+  onRemoveFromSource,
 }: Props) {
   const dialogRef = useRef<HTMLDialogElement>(null);
   const setupsDialogRef = useRef<HTMLDialogElement>(null);
@@ -40,12 +45,21 @@ export function QuickActions({
       >
         Setups
       </button>
+      <button
+        onClick={() => onRemoveFromSource?.()}
+        disabled={!onRemoveFromSource}
+        title="Remove the current track from the source playlist now and move to the next one"
+        className="rounded-md border border-neutral-700 px-2.5 py-1 text-sm text-neutral-200 hover:border-red-500 hover:bg-red-600/10 hover:text-red-300 disabled:opacity-40 disabled:hover:border-neutral-700 disabled:hover:bg-transparent disabled:hover:text-neutral-200"
+      >
+        Remove from source
+      </button>
       <NewPlaylistDialog dialogRef={dialogRef} onCreated={onPlaylistCreated} />
       <SetupsDialog
         dialogRef={setupsDialogRef}
         playlists={playlists}
         sourcePlaylistId={sourcePlaylistId}
         pinnedIds={pinnedIds}
+        alsoRemoveFromSource={alsoRemoveFromSource}
         onLoad={onLoadSetup}
       />
     </div>
