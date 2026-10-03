@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { SpotifyPlaylist, SpotifyPlaylistTrackItem } from "@/lib/spotify/client";
 import { PlayerProvider, usePlayer } from "./PlayerProvider";
 import { SourcePlaylistPanel } from "./SourcePlaylistPanel";
@@ -27,12 +27,46 @@ function DashboardInner() {
   // is deferred until the user navigates to a different track (or a
   // different source playlist), tracked here by the pending track's URI.
   const [pendingRemovalUri, setPendingRemovalUri] = useState<string | null>(null);
-  // Which destination playlists each track has been added to this session —
-  // keyed by track id so the "already added" cue is still there if the user
-  // navigates back to a track they already filed somewhere.
-  const [addedPlaylistIdsByTrack, setAddedPlaylistIdsByTrack] = useState<Record<string, string[]>>({});
+  // Track URIs in each playlist the user can add to, from the server-side
+  // playlist index, kept current locally as tracks are added/removed here.
+  const [playlistIndex, setPlaylistIndex] = useState<Record<string, Set<string>>>({});
+  const [playlistIndexStatus, setPlaylistIndexStatus] = useState<"loading" | "ready" | "error">("loading");
 
   const { ready, playTrack, onTrackEnd } = usePlayer();
+
+  useEffect(() => {
+    fetch("/api/playlist-index")
+      .then(async (res) => {
+        const body = await res.json();
+        if (!res.ok) throw new Error(body.error ?? `HTTP ${res.status}`);
+        const index: Record<string, Set<string>> = {};
+        for (const [playlistId, uris] of Object.entries(body.index as Record<string, string[]>)) {
+          index[playlistId] = new Set(uris);
+        }
+        // Keep tracks added here while the index was still loading. (A
+        // removal made in that window can reappear until the next reload.)
+        setPlaylistIndex((prev) => {
+          for (const [playlistId, uris] of Object.entries(prev)) {
+            index[playlistId] = new Set([...(index[playlistId] ?? []), ...uris]);
+          }
+          return index;
+        });
+        setPlaylistIndexStatus("ready");
+      })
+      .catch((err) => {
+        console.error("Failed to load playlist index:", err);
+        setPlaylistIndexStatus("error");
+      });
+  }, []);
+
+  const setMembership = useCallback((playlistId: string, uri: string, present: boolean) => {
+    setPlaylistIndex((prev) => {
+      const next = new Set(prev[playlistId]);
+      if (present) next.add(uri);
+      else next.delete(uri);
+      return { ...prev, [playlistId]: next };
+    });
+  }, []);
 
   // Where to resume within the restored source playlist; consumed by the
   // first successful track load of that playlist.
@@ -139,6 +173,7 @@ function DashboardInner() {
 
   const handlePlaylistCreated = useCallback((playlist: SpotifyPlaylist, star: boolean) => {
     setPlaylists((prev) => [playlist, ...prev]);
+    setPlaylistIndex((prev) => ({ ...prev, [playlist.id]: new Set() }));
     if (star) setPinnedIds((prev) => [...prev, playlist.id]);
   }, []);
 
@@ -158,9 +193,10 @@ function DashboardInner() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ trackUri: uri }),
       }).catch((err) => console.error("Failed to remove track from source playlist:", err));
+      setMembership(fromPlaylistId, uri, false);
       return tracks.filter((item) => item.track?.uri !== uri);
     },
-    [pendingRemovalUri]
+    [pendingRemovalUri, setMembership]
   );
 
   const goNext = useCallback(() => {
@@ -230,52 +266,72 @@ function DashboardInner() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ trackUri: uri }),
     }).catch((err) => console.error("Failed to remove track from source playlist:", err));
+    setMembership(sourcePlaylistId, uri, false);
     const tracks = sourceTracks.filter((item) => item.track?.uri !== uri);
     setSourceTracks(tracks);
     setCurrentIndex(Math.max(Math.min(currentIndex, tracks.length - 1), 0));
-  }, [currentTrack, sourcePlaylistId, sourceTracks, currentIndex]);
+  }, [currentTrack, sourcePlaylistId, sourceTracks, currentIndex, setMembership]);
 
   const handleAddToPlaylist = useCallback(
     async (destinationPlaylistId: string) => {
       if (!currentTrack) return;
 
-      await fetch(`/api/playlists/${destinationPlaylistId}/add`, {
+      const res = await fetch(`/api/playlists/${destinationPlaylistId}/add`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ trackUri: currentTrack.uri }),
       });
+      if (!res.ok) {
+        console.error("Failed to add track to playlist:", await res.text());
+        return;
+      }
 
-      setAddedPlaylistIdsByTrack((prev) => ({
-        ...prev,
-        [currentTrack.id]: [...(prev[currentTrack.id] ?? []), destinationPlaylistId],
-      }));
+      setMembership(destinationPlaylistId, currentTrack.uri, true);
 
       if (alsoRemoveFromSource) {
         setPendingRemovalUri(currentTrack.uri);
       }
     },
-    [currentTrack, alsoRemoveFromSource]
+    [currentTrack, alsoRemoveFromSource, setMembership]
   );
 
   const handleRemoveFromPlaylist = useCallback(
     async (destinationPlaylistId: string) => {
       if (!currentTrack) return;
 
-      await fetch(`/api/playlists/${destinationPlaylistId}/tracks`, {
+      const res = await fetch(`/api/playlists/${destinationPlaylistId}/tracks`, {
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ trackUri: currentTrack.uri }),
       });
+      if (!res.ok) {
+        console.error("Failed to remove track from playlist:", await res.text());
+        return;
+      }
 
-      setAddedPlaylistIdsByTrack((prev) => ({
-        ...prev,
-        [currentTrack.id]: (prev[currentTrack.id] ?? []).filter((id) => id !== destinationPlaylistId),
-      }));
+      setMembership(destinationPlaylistId, currentTrack.uri, false);
     },
-    [currentTrack]
+    [currentTrack, setMembership]
   );
 
-  const addedPlaylistIds = new Set(currentTrack ? addedPlaylistIdsByTrack[currentTrack.id] : undefined);
+  const addedPlaylistIds = new Set(
+    currentTrack
+      ? Object.keys(playlistIndex).filter((id) => playlistIndex[id].has(currentTrack.uri))
+      : []
+  );
+
+  // How many playlists (other than the source itself) each source track is
+  // already in.
+  const otherPlaylistCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    const others = Object.entries(playlistIndex).filter(([id]) => id !== sourcePlaylistId);
+    for (const item of sourceTracks) {
+      const uri = item.track?.uri;
+      if (!uri || counts.has(uri)) continue;
+      counts.set(uri, others.filter(([, uris]) => uris.has(uri)).length);
+    }
+    return counts;
+  }, [playlistIndex, sourcePlaylistId, sourceTracks]);
 
   return (
     <div className="flex h-screen flex-col bg-neutral-950 text-white">
@@ -298,6 +354,7 @@ function DashboardInner() {
             onSelect={selectTrack}
             error={sourceTracksError}
             pendingRemovalUri={pendingRemovalUri}
+            otherPlaylistCounts={otherPlaylistCounts}
           />
         </div>
 
@@ -334,6 +391,7 @@ function DashboardInner() {
             onAlsoRemoveFromSourceChange={setAlsoRemoveFromSource}
             disabled={!currentTrack}
             addedPlaylistIds={addedPlaylistIds}
+            membershipStatus={playlistIndexStatus}
           />
         </div>
       </div>

@@ -8,6 +8,7 @@ interface Props {
   onSelect: (index: number) => void;
   error?: string | null;
   pendingRemovalUri?: string | null;
+  otherPlaylistCounts: Map<string, number>;
 }
 
 export function SourcePlaylistPanel({
@@ -16,6 +17,7 @@ export function SourcePlaylistPanel({
   onSelect,
   error,
   pendingRemovalUri,
+  otherPlaylistCounts,
 }: Props) {
   return (
     <div className="flex h-full flex-col overflow-hidden">
@@ -31,6 +33,7 @@ export function SourcePlaylistPanel({
         {tracks.map((item, index) => {
           if (!item.track) return null;
           const isCurrent = index === currentIndex;
+          const inOtherPlaylists = otherPlaylistCounts.get(item.track.uri) ?? 0;
           return (
             <li key={`${item.track.id}-${index}`}>
               <button
@@ -62,6 +65,14 @@ export function SourcePlaylistPanel({
                     </div>
                   )}
                 </div>
+                {inOtherPlaylists > 0 && (
+                  <span
+                    className="flex-shrink-0 rounded-full bg-green-600/20 px-1.5 py-0.5 text-[10px] font-medium text-green-400"
+                    title={`Already in ${inOtherPlaylists} of your other playlist${inOtherPlaylists === 1 ? "" : "s"}`}
+                  >
+                    ✓{inOtherPlaylists}
+                  </span>
+                )}
               </button>
             </li>
           );

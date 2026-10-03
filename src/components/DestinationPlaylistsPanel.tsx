@@ -14,6 +14,7 @@ interface Props {
   onRemoveFromPlaylist: (playlistId: string) => Promise<void>;
   disabled: boolean;
   addedPlaylistIds: Set<string>;
+  membershipStatus: "loading" | "ready" | "error";
 }
 
 export function DestinationPlaylistsPanel({
@@ -26,6 +27,7 @@ export function DestinationPlaylistsPanel({
   onAlsoRemoveFromSourceChange,
   disabled,
   addedPlaylistIds,
+  membershipStatus,
 }: Props) {
   const [busyId, setBusyId] = useState<string | null>(null);
   const listRef = useRef<HTMLUListElement>(null);
@@ -75,6 +77,16 @@ export function DestinationPlaylistsPanel({
       <h2 className="px-3 pt-3 text-sm font-semibold uppercase tracking-wide text-neutral-400">
         Add to playlist
       </h2>
+      {membershipStatus === "loading" && (
+        <p className="px-3 pt-1 text-xs text-neutral-500">
+          Checking which playlists already have this track…
+        </p>
+      )}
+      {membershipStatus === "error" && (
+        <p className="px-3 pt-1 text-xs text-red-400">
+          Couldn&apos;t check which playlists already have this track.
+        </p>
+      )}
 
       <label className="flex items-center gap-2 px-3 py-2 text-xs text-neutral-400">
         <input

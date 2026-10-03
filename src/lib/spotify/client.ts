@@ -26,6 +26,8 @@ export interface SpotifyPlaylist {
   // have to know the "own or collaborate" rule for which playlists accept
   // track adds (see getPlaylistTracks's note on the same restriction).
   canModify: boolean;
+  // Changes whenever the playlist's contents change.
+  snapshot_id?: string;
 }
 
 export interface SpotifyArtist {
@@ -187,6 +189,17 @@ export class SpotifyClient {
       url = page.next ? page.next.replace(API_BASE, "") : null;
     }
     return items;
+  }
+
+  async getPlaylistTrackUris(playlistId: string): Promise<string[]> {
+    const uris: string[] = [];
+    let url: string | null = `/playlists/${playlistId}/items?limit=100&fields=${encodeURIComponent("next,items(item(uri))")}`;
+    while (url) {
+      const page: { items: { item: { uri: string } | null }[]; next: string | null } = await this.request(url);
+      for (const raw of page.items) if (raw.item?.uri) uris.push(raw.item.uri);
+      url = page.next ? page.next.replace(API_BASE, "") : null;
+    }
+    return uris;
   }
 
   getTrack(trackId: string) {
