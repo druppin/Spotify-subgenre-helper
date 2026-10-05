@@ -351,6 +351,16 @@ export class SpotifyClient {
     }
   }
 
+  async removeTracksFromPlaylist(playlistId: string, trackUris: string[]) {
+    // Spotify takes at most 100 items per request.
+    for (let i = 0; i < trackUris.length; i += 100) {
+      await this.request(`/playlists/${playlistId}/items`, {
+        method: "DELETE",
+        body: JSON.stringify({ items: trackUris.slice(i, i + 100).map((uri) => ({ uri })) }),
+      });
+    }
+  }
+
   removeTrackFromPlaylist(playlistId: string, trackUri: string) {
     return this.request(`/playlists/${playlistId}/items`, {
       method: "DELETE",

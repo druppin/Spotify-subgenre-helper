@@ -27,6 +27,28 @@ interface SongRow {
   versions: number;
 }
 
+// What the genre dropdown shows: stored genres (subgenres + mood), plus the
+// AI's reasoning when it was generated in this session.
+interface SongGenres {
+  subgenres: string[];
+  moodVibe: string;
+  rationale?: string;
+}
+
+// Lets Liked Songs be picked in a PlaylistPicker alongside real playlists.
+const LIKED_SONGS_PICKER_ENTRY: SpotifyPlaylist = {
+  id: LIKED_SONGS_ID,
+  name: "Liked Songs",
+  images: [],
+  owner: { id: "", display_name: null },
+  collaborative: false,
+  canModify: false,
+};
+
+function trackIdOf(uri: string): string {
+  return uri.split(":")[2] ?? uri;
+}
+
 // "lost": songs with exactly one counted home. "homes": every song in one
 // chosen place, with everywhere else it lives.
 type Mode = "lost" | "homes";
@@ -35,6 +57,8 @@ type SortKey = "oldest" | "newest" | "artist" | "title" | "fewest";
 const IGNORED_STORAGE_KEY = "lostTracks.ignoredPlaceIds";
 const DESTINATION_STORAGE_KEY = "lostTracks.destinationId";
 const MODE_STORAGE_KEY = "lostTracks.mode";
+const HIDDEN_STORAGE_KEY = "lostTracks.hiddenByPlace";
+const HIDE_RULES_STORAGE_KEY = "lostTracks.hideIfAlsoIn";
 
 function loadJson<T>(key: string, fallback: T): T {
   try {
@@ -91,23 +115,128 @@ function LikedSongsThumb({ size = 32 }: { size?: number }) {
   );
 }
 
-function PlaceChip({ name, ignored, onClick }: { name: string; ignored: boolean; onClick: () => void }) {
+function GenrePanel({
+  genres,
+  state,
+  onGenerate,
+}: {
+  genres: SongGenres | undefined;
+  // "loading" while generating, an error message if that failed.
+  state: "loading" | { error: string } | undefined;
+  onGenerate: (force: boolean) => void;
+}) {
+  const loading = state === "loading";
   return (
-    <button
-      type="button"
-      onClick={(e) => {
-        e.stopPropagation();
-        onClick();
-      }}
-      title={ignored ? `${name} (not counted as a home)` : `Show ${name}`}
-      className={`max-w-[160px] truncate rounded-full border px-2 py-0.5 text-[11px] ${
+    <div className="space-y-2 border-l-2 border-green-700/50 bg-neutral-900/60 py-2 pl-[4.75rem] pr-4 text-sm">
+      {genres ? (
+        <>
+          <div className="flex items-start justify-between gap-2">
+            <p className="font-medium text-neutral-200">{genres.moodVibe || "No mood description."}</p>
+            <button
+              type="button"
+              onClick={() => onGenerate(true)}
+              disabled={loading}
+              title="Not right? Generate fresh genre info for this song."
+              className="flex-shrink-0 text-xs text-neutral-500 hover:text-green-400 disabled:opacity-50"
+            >
+              {loading ? "Generating…" : "↻ Regenerate"}
+            </button>
+          </div>
+          <div className="flex flex-wrap gap-1">
+            {genres.subgenres.map((genre) => (
+              <span key={genre} className="rounded-full bg-green-600/20 px-2 py-0.5 text-xs text-green-400">
+                {genre}
+              </span>
+            ))}
+            {genres.subgenres.length === 0 && <span className="text-xs text-neutral-500">No subgenres listed.</span>}
+          </div>
+          {genres.rationale && <p className="text-xs text-neutral-500">{genres.rationale}</p>}
+        </>
+      ) : (
+        <div className="flex items-center gap-3">
+          <span className="text-xs text-neutral-500">No genre info for this song yet.</span>
+          <button
+            type="button"
+            onClick={() => onGenerate(false)}
+            disabled={loading}
+            className="rounded-md border border-neutral-700 px-2.5 py-1 text-xs text-neutral-200 hover:border-green-600 hover:bg-green-600/10 disabled:opacity-50"
+          >
+            {loading ? "Generating…" : "Generate genre info"}
+          </button>
+        </div>
+      )}
+      {state && state !== "loading" && <p className="text-xs text-red-400">{state.error}</p>}
+    </div>
+  );
+}
+
+function PlaceChip({
+  name,
+  ignored,
+  onClick,
+  onRemove,
+}: {
+  name: string;
+  ignored: boolean;
+  onClick: () => void;
+  // Omitted where removing isn't possible (Liked Songs).
+  onRemove?: () => void;
+}) {
+  // Removing takes a second click on the armed chip, so a stray click on
+  // the × can't take a song out of a playlist.
+  const [armed, setArmed] = useState(false);
+  if (armed && onRemove) {
+    return (
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation();
+          setArmed(false);
+          onRemove();
+        }}
+        onMouseLeave={() => setArmed(false)}
+        onBlur={() => setArmed(false)}
+        title={`Remove this song from ${name}`}
+        className="max-w-[180px] truncate rounded-full border border-red-600 bg-red-900/40 px-2 py-0.5 text-[11px] text-red-200"
+      >
+        Remove from {name}?
+      </button>
+    );
+  }
+  return (
+    <span
+      className={`flex max-w-[180px] items-center rounded-full border text-[11px] ${
         ignored
-          ? "border-neutral-800 text-neutral-600 line-through"
-          : "border-neutral-700 text-neutral-300 hover:border-green-600 hover:text-green-400"
+          ? "border-neutral-800 text-neutral-600"
+          : "border-neutral-700 text-neutral-300 hover:border-green-600"
       }`}
     >
-      {name}
-    </button>
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation();
+          onClick();
+        }}
+        title={ignored ? `${name} (not counted as a home)` : `Show ${name}`}
+        className={`truncate py-0.5 ${onRemove ? "pl-2 pr-1" : "px-2"} ${ignored ? "line-through" : "hover:text-green-400"}`}
+      >
+        {name}
+      </button>
+      {onRemove && (
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            setArmed(true);
+          }}
+          aria-label={`Remove from ${name}`}
+          title={`Remove from ${name}`}
+          className="rounded-full pr-1.5 text-neutral-500 hover:text-red-400"
+        >
+          ×
+        </button>
+      )}
+    </span>
   );
 }
 
@@ -138,8 +267,29 @@ export function LostTracksView({ tabs }: { tabs: ReactNode }) {
     loadJson<string | null>(DESTINATION_STORAGE_KEY, null)
   );
   const [adding, setAdding] = useState(false);
-  const [notice, setNotice] = useState<{ kind: "ok" | "error"; text: string } | null>(null);
+  const [removing, setRemoving] = useState(false);
+  // Bulk remove takes a second click, which shows what it's about to do.
+  const [removeArmed, setRemoveArmed] = useState(false);
+  const [notice, setNotice] = useState<{ kind: "ok" | "error"; text: string; onUndo?: () => void } | null>(
+    null
+  );
   const newPlaylistDialogRef = useRef<HTMLDialogElement>(null);
+  // Stored genre info by Spotify track ID, loaded once the library is in.
+  const [genres, setGenres] = useState<Record<string, SongGenres>>({});
+  const [expandedSongIds, setExpandedSongIds] = useState<Set<string>>(new Set());
+  // Songs hidden within a playlist in the homes view, as placeId -> track
+  // URIs. Hidden songs still show, greyed out at the bottom, and can't be
+  // selected. A song counts as hidden if any of its versions is listed.
+  const [hiddenByPlace, setHiddenByPlace] = useState<Record<string, string[]>>(() =>
+    loadJson<Record<string, string[]>>(HIDDEN_STORAGE_KEY, {})
+  );
+  // Per-playlist rules for the homes view: placeId -> other places whose
+  // songs are hidden here, so clearing out songs that are filed elsewhere
+  // can leave the ones also in those places alone.
+  const [hideRules, setHideRules] = useState<Record<string, string[]>>(() =>
+    loadJson<Record<string, string[]>>(HIDE_RULES_STORAGE_KEY, {})
+  );
+  const [genreStatus, setGenreStatus] = useState<Record<string, "loading" | { error: string }>>({});
 
   const { ready, isPaused, currentUri, playbackError, playTrack, togglePlay } = usePlayer();
 
@@ -181,6 +331,19 @@ export function LostTracksView({ tabs }: { tabs: ReactNode }) {
         }
         setTrackDetails(library.tracks);
         setPlaces(next);
+        const trackIds = Object.keys(library.tracks)
+          .filter((uri) => uri.startsWith("spotify:track:"))
+          .map(trackIdOf);
+        fetch("/api/track-genres", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ ids: trackIds }),
+        })
+          .then((res) => res.json())
+          .then((genreBody) => {
+            if (!cancelled && genreBody.genres) setGenres(genreBody.genres);
+          })
+          .catch((err) => console.error("Failed to load stored genres:", err));
         setLikedSongsStatus(library.likedSongs);
         setStatus("ready");
       })
@@ -225,6 +388,58 @@ export function LostTracksView({ tabs }: { tabs: ReactNode }) {
     for (const songId of songOf.values()) counts.set(songId, (counts.get(songId) ?? 0) + 1);
     return counts;
   }, [songOf]);
+
+  // songId -> every URI that's a version of it, for finding genre info
+  // generated against any of them.
+  const songVersions = useMemo(() => {
+    const versions = new Map<string, string[]>();
+    for (const [uri, songId] of songOf) {
+      const list = versions.get(songId);
+      if (list) list.push(uri);
+      else versions.set(songId, [uri]);
+    }
+    return versions;
+  }, [songOf]);
+
+  const genresFor = (row: SongRow): SongGenres | undefined => {
+    const own = genres[trackIdOf(row.uri)];
+    if (own) return own;
+    for (const uri of songVersions.get(row.songId) ?? []) {
+      const other = genres[trackIdOf(uri)];
+      if (other) return other;
+    }
+    return undefined;
+  };
+
+  const toggleExpanded = (songId: string) => {
+    setExpandedSongIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(songId)) next.delete(songId);
+      else next.add(songId);
+      return next;
+    });
+  };
+
+  const generateGenres = async (row: SongRow, force: boolean) => {
+    const trackId = trackIdOf(row.uri);
+    setGenreStatus((prev) => ({ ...prev, [row.songId]: "loading" }));
+    try {
+      const res = await fetch(`/api/track/${trackId}/summary${force ? "?force=true" : ""}`);
+      const body = await res.json();
+      if (!res.ok) throw new Error(body.error ?? `HTTP ${res.status}`);
+      if (!body.summary) throw new Error(body.summaryError ?? "No genre info came back.");
+      setGenres((prev) => ({ ...prev, [trackId]: body.summary }));
+      setGenreStatus((prev) => {
+        const next = { ...prev };
+        delete next[row.songId];
+        return next;
+      });
+    } catch (err) {
+      console.error("Failed to generate genres:", err);
+      const error = err instanceof Error ? err.message : String(err);
+      setGenreStatus((prev) => ({ ...prev, [row.songId]: { error } }));
+    }
+  };
 
   const rowFor = useCallback(
     (songId: string, byPlace: Map<string, { uri: string; addedAt: string }>, placeId: string): SongRow => {
@@ -281,7 +496,28 @@ export function LostTracksView({ tabs }: { tabs: ReactNode }) {
       );
   }, [places, placeName, placeCounts, ignoredIds, placeQuery]);
 
-  const rows = useMemo(() => {
+  const hiddenSets = useMemo(() => {
+    const sets: Record<string, Set<string>> = {};
+    for (const [placeId, uris] of Object.entries(hiddenByPlace)) sets[placeId] = new Set(uris);
+    return sets;
+  }, [hiddenByPlace]);
+
+  // Why a song is hidden in a place, or null if it isn't: hidden by hand,
+  // and/or also in places the place's hide rules name.
+  const hiddenReason = useCallback(
+    (songId: string, placeId: string): { manual: boolean; alsoIn: string[] } | null => {
+      const hidden = hiddenSets[placeId];
+      const manual = Boolean(hidden && (songVersions.get(songId) ?? [songId]).some((uri) => hidden.has(uri)));
+      const homes = songHomes.get(songId);
+      const alsoIn = (hideRules[placeId] ?? []).filter((id) => homes?.has(id));
+      return manual || alsoIn.length ? { manual, alsoIn } : null;
+    },
+    [hiddenSets, songVersions, songHomes, hideRules]
+  );
+
+  // rows: what can be selected and acted on. hiddenRows: the homes view's
+  // hidden songs, listed after them. hiddenTotal ignores the text filter.
+  const { rows, hiddenRows, hiddenTotal } = useMemo(() => {
     let candidates: SongRow[];
     if (mode === "lost") {
       candidates = selectedPlaceId ? lostSongs.filter((r) => r.placeId === selectedPlaceId) : lostSongs;
@@ -293,6 +529,11 @@ export function LostTracksView({ tabs }: { tabs: ReactNode }) {
         }
       }
     }
+    const hiddenIds = new Set(
+      mode === "homes" && selectedPlaceId
+        ? candidates.filter((r) => hiddenReason(r.songId, selectedPlaceId)).map((r) => r.songId)
+        : []
+    );
     const normalized = query.trim().toLowerCase();
     const filtered = normalized
       ? candidates.filter(
@@ -310,8 +551,54 @@ export function LostTracksView({ tabs }: { tabs: ReactNode }) {
       title: (a, b) => a.details.name.localeCompare(b.details.name),
       fewest: (a, b) => a.countedOtherHomes - b.countedOtherHomes || a.addedAt.localeCompare(b.addedAt),
     };
-    return filtered.sort(compare[sort]);
-  }, [mode, lostSongs, songHomes, selectedPlaceId, rowFor, query, sort]);
+    filtered.sort(compare[sort]);
+    return {
+      rows: filtered.filter((r) => !hiddenIds.has(r.songId)),
+      hiddenRows: filtered.filter((r) => hiddenIds.has(r.songId)),
+      hiddenTotal: hiddenIds.size,
+    };
+  }, [mode, lostSongs, songHomes, selectedPlaceId, rowFor, query, sort, hiddenReason]);
+
+  const saveHideRules = (placeId: string, ruleIds: string[]) => {
+    const next = { ...hideRules };
+    if (ruleIds.length) next[placeId] = ruleIds;
+    else delete next[placeId];
+    setHideRules(next);
+    saveJson(HIDE_RULES_STORAGE_KEY, next);
+    // Songs a new rule hides can't stay selected.
+    setSelected(new Set());
+  };
+
+  // The quick clean-out: check every shown song that's also somewhere else
+  // that counts, ready to remove from this playlist.
+  const selectSongsLivingElsewhere = () => {
+    setSelected(new Set(rows.filter((r) => r.countedOtherHomes > 0).map((r) => r.uri)));
+  };
+
+  const saveHidden = (next: Record<string, string[]>) => {
+    setHiddenByPlace(next);
+    saveJson(HIDDEN_STORAGE_KEY, next);
+  };
+
+  const hideRows = (toHide: SongRow[], placeId: string) => {
+    const uris = new Set([...(hiddenByPlace[placeId] ?? []), ...toHide.map((r) => r.uri)]);
+    saveHidden({ ...hiddenByPlace, [placeId]: [...uris] });
+    // Hidden songs can't be selected, so don't leave them checked.
+    setSelected((prev) => {
+      const next = new Set(prev);
+      for (const r of toHide) next.delete(r.uri);
+      return next;
+    });
+  };
+
+  const unhideRow = (row: SongRow, placeId: string) => {
+    const versions = new Set(songVersions.get(row.songId) ?? [row.uri]);
+    const remaining = (hiddenByPlace[placeId] ?? []).filter((uri) => !versions.has(uri));
+    const next = { ...hiddenByPlace };
+    if (remaining.length) next[placeId] = remaining;
+    else delete next[placeId];
+    saveHidden(next);
+  };
 
   // Only what's both checked and currently shown gets added, so a filter
   // change can't quietly sweep in songs the user can no longer see.
@@ -321,6 +608,15 @@ export function LostTracksView({ tabs }: { tabs: ReactNode }) {
     ? selectedRows.filter((r) => !songHomes.get(r.songId)?.has(destinationId))
     : selectedRows;
   const allRowsSelected = rows.length > 0 && selectedRows.length === rows.length;
+  // Removing needs one playlist in view; Liked Songs can't be edited here.
+  const removePlaceId = selectedPlaceId && selectedPlaceId !== LIKED_SONGS_ID ? selectedPlaceId : null;
+  // Of the selected songs, how many would be left with no counted home.
+  const wouldBeHomeless = removePlaceId
+    ? selectedRows.filter((r) => {
+        const homes = [...(songHomes.get(r.songId)?.keys() ?? [])];
+        return !homes.some((id) => id !== removePlaceId && !ignoredIds.has(id));
+      }).length
+    : 0;
 
   const changeMode = (next: Mode) => {
     setMode(next);
@@ -384,6 +680,86 @@ export function LostTracksView({ tabs }: { tabs: ReactNode }) {
     setNotice({ kind: "ok", text: `Created ${playlist.name}. It's now the playlist songs get added to.` });
   };
 
+  // Records tracks added to or removed from a place, keeping the local
+  // library (and the playlist's song count) in step with Spotify.
+  const applyMembership = (placeId: string, entries: [string, string][], present: boolean) => {
+    setPlaces((prev) => {
+      const next = new Map(prev[placeId]);
+      for (const [uri, addedAt] of entries) {
+        if (present && !next.has(uri)) next.set(uri, addedAt);
+        else if (!present) next.delete(uri);
+      }
+      return { ...prev, [placeId]: next };
+    });
+    const delta = present ? entries.length : -entries.length;
+    setPlaylists((prev) =>
+      prev.map((p) =>
+        p.id === placeId && p.tracks ? { ...p, tracks: { total: Math.max(0, p.tracks.total + delta) } } : p
+      )
+    );
+  };
+
+  const removeSongsFromPlace = async (songIds: string[], placeId: string) => {
+    // Every version of each song that's in this playlist, not just one.
+    const songSet = new Set(songIds);
+    const entries = [...(places[placeId] ?? [])].filter(([uri]) => songSet.has(songOf.get(uri) ?? uri));
+    if (entries.length === 0) return;
+    const name =
+      songIds.length === 1
+        ? (trackDetails[entries[0][0]]?.name ?? "Song")
+        : `${songIds.length} songs`;
+    setNotice(null);
+    setRemoving(true);
+    try {
+      const res = await fetch(`/api/playlists/${placeId}/tracks`, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ trackUris: entries.map(([uri]) => uri) }),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.error ?? `HTTP ${res.status}`);
+      }
+      applyMembership(placeId, entries, false);
+      setSelected((prev) => {
+        const next = new Set(prev);
+        for (const [uri] of entries) next.delete(uri);
+        return next;
+      });
+      setNotice({
+        kind: "ok",
+        text: `Removed ${name} from ${placeName(placeId)}.`,
+        // Spotify can't restore a track's old position; undo re-adds it at the end.
+        onUndo: () => undoRemove(placeId, entries, name),
+      });
+    } catch (err) {
+      console.error("Failed to remove song:", err);
+      setNotice({ kind: "error", text: `Couldn't remove ${name}: ${err instanceof Error ? err.message : err}` });
+    } finally {
+      setRemoving(false);
+    }
+  };
+
+  const undoRemove = async (placeId: string, entries: [string, string][], name: string) => {
+    setNotice(null);
+    try {
+      const res = await fetch(`/api/playlists/${placeId}/add`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ trackUris: entries.map(([uri]) => uri) }),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.error ?? `HTTP ${res.status}`);
+      }
+      applyMembership(placeId, entries, true);
+      setNotice({ kind: "ok", text: `Put ${name} back in ${placeName(placeId)} (at the end).` });
+    } catch (err) {
+      console.error("Failed to undo removal:", err);
+      setNotice({ kind: "error", text: `Couldn't put ${name} back: ${err instanceof Error ? err.message : err}` });
+    }
+  };
+
   const addSelected = async () => {
     if (!destinationId || toAdd.length === 0) return;
     const uris = toAdd.map((r) => r.uri);
@@ -401,15 +777,10 @@ export function LostTracksView({ tabs }: { tabs: ReactNode }) {
       }
       // Now in a second place, so lost songs drop out of the lost list.
       const now = new Date().toISOString();
-      setPlaces((prev) => {
-        const entries = new Map(prev[destinationId]);
-        for (const uri of uris) if (!entries.has(uri)) entries.set(uri, now);
-        return { ...prev, [destinationId]: entries };
-      });
-      setPlaylists((prev) =>
-        prev.map((p) =>
-          p.id === destinationId && p.tracks ? { ...p, tracks: { total: p.tracks.total + uris.length } } : p
-        )
+      applyMembership(
+        destinationId,
+        uris.map((uri) => [uri, now]),
+        true
       );
       setSelected((prev) => {
         const next = new Set(prev);
@@ -638,6 +1009,11 @@ export function LostTracksView({ tabs }: { tabs: ReactNode }) {
                 ) : selectedPlaceId ? (
                   <>
                     {rows.length} song{rows.length === 1 ? "" : "s"} in {placeName(selectedPlaceId)}
+                    {hiddenTotal > 0 && (
+                      <span className="text-neutral-500">
+                        · {hiddenTotal} hidden (at the bottom, can&apos;t be selected)
+                      </span>
+                    )}
                   </>
                 ) : (
                   "No playlist chosen"
@@ -665,76 +1041,179 @@ export function LostTracksView({ tabs }: { tabs: ReactNode }) {
                 {mode === "homes" && <option value="fewest">Fewest other homes</option>}
               </select>
             </div>
+            {mode === "homes" && selectedPlaceId && (
+              <div className="flex flex-wrap items-center gap-2 border-b border-neutral-800 px-4 py-2 text-xs text-neutral-400">
+                <span>Hide songs also in:</span>
+                {(hideRules[selectedPlaceId] ?? []).map((id) => (
+                  <span key={id} className="flex items-center rounded-full border border-neutral-700 text-neutral-200">
+                    <span className="max-w-[180px] truncate py-0.5 pl-2 pr-1">{placeName(id)}</span>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        saveHideRules(
+                          selectedPlaceId,
+                          (hideRules[selectedPlaceId] ?? []).filter((ruleId) => ruleId !== id)
+                        )
+                      }
+                      aria-label={`Stop hiding songs also in ${placeName(id)}`}
+                      className="rounded-full pr-1.5 text-neutral-500 hover:text-red-400"
+                    >
+                      ×
+                    </button>
+                  </span>
+                ))}
+                <PlaylistPicker
+                  playlists={[
+                    ...(places[LIKED_SONGS_ID] ? [LIKED_SONGS_PICKER_ENTRY] : []),
+                    ...playlists.filter((p) => places[p.id]),
+                  ].filter((p) => p.id !== selectedPlaceId && !(hideRules[selectedPlaceId] ?? []).includes(p.id))}
+                  selectedId={null}
+                  onSelect={(id) => saveHideRules(selectedPlaceId, [...(hideRules[selectedPlaceId] ?? []), id])}
+                  placeholder="+ Add playlist"
+                />
+                <button
+                  type="button"
+                  onClick={selectSongsLivingElsewhere}
+                  title="Check every shown song that's also in another counted playlist, ready to remove from this one"
+                  className="ml-auto rounded-md border border-neutral-700 px-2.5 py-1 text-xs text-neutral-200 hover:border-green-600 hover:bg-green-600/10"
+                >
+                  Select songs that live elsewhere
+                </button>
+              </div>
+            )}
 
             <ul className="min-h-0 flex-1 overflow-y-auto">
-              {rows.map((row, index) => {
+              {[...rows, ...hiddenRows].map((row, index) => {
+                const hidden = index >= rows.length;
+                const reason = hidden && selectedPlaceId ? hiddenReason(row.songId, selectedPlaceId) : null;
                 const isCurrent = row.uri === currentUri;
+                const expanded = expandedSongIds.has(row.songId);
+                const hasGenres = genresFor(row) !== undefined;
                 return (
-                  <li
-                    key={row.songId}
-                    onClick={() => ready && playTrack(row.uri).catch((err) => console.error(err))}
-                    title={ready ? "Click to play" : "Player is still connecting…"}
-                    className={`flex cursor-pointer items-center gap-3 px-4 py-1.5 text-sm ${
-                      isCurrent ? "bg-green-600/20 text-green-400" : "text-neutral-300 hover:bg-neutral-900"
-                    }`}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={selected.has(row.uri)}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        toggleSelected(index, e.shiftKey);
-                      }}
-                      onChange={() => {}}
-                      aria-label={`Select ${row.details.name}`}
-                      className="accent-green-600"
-                    />
-                    {row.details.image ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img src={row.details.image} alt="" loading="lazy" className="h-9 w-9 flex-shrink-0 rounded object-cover" />
-                    ) : (
-                      <div className="h-9 w-9 flex-shrink-0 rounded bg-neutral-800" />
+                  <li key={row.songId}>
+                    {hidden && index === rows.length && (
+                      <div className="mt-2 border-t border-neutral-800 px-4 pb-1 pt-2 text-[11px] uppercase tracking-wide text-neutral-500">
+                        Hidden ({hiddenRows.length})
+                      </div>
                     )}
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-1.5">
-                        <span className="truncate font-medium">
-                          {isCurrent && <span className="mr-1">{isPaused ? "❚❚" : "▶"}</span>}
-                          {row.details.name}
+                    <div
+                      onClick={() => ready && playTrack(row.uri).catch((err) => console.error(err))}
+                      title={ready ? "Click to play" : "Player is still connecting…"}
+                      className={`group flex cursor-pointer items-center gap-3 px-4 py-1.5 text-sm ${
+                        isCurrent
+                          ? "bg-green-600/20 text-green-400"
+                          : hidden
+                            ? "text-neutral-300 opacity-40 hover:opacity-70"
+                            : "text-neutral-300 hover:bg-neutral-900"
+                      }`}
+                    >
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          toggleExpanded(row.songId);
+                        }}
+                        aria-expanded={expanded}
+                        aria-label={`${expanded ? "Hide" : "Show"} genre info for ${row.details.name}`}
+                        title={hasGenres ? "Genre info" : "No genre info yet"}
+                        className={`w-4 flex-shrink-0 text-xs ${hasGenres ? "text-green-500" : "text-neutral-600"} hover:text-neutral-200`}
+                      >
+                        {expanded ? "▾" : "▸"}
+                      </button>
+                      <input
+                        type="checkbox"
+                        checked={!hidden && selected.has(row.uri)}
+                        disabled={hidden}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (!hidden) toggleSelected(index, e.shiftKey);
+                        }}
+                        onChange={() => {}}
+                        aria-label={hidden ? `${row.details.name} is hidden` : `Select ${row.details.name}`}
+                        className="accent-green-600 disabled:cursor-not-allowed"
+                      />
+                      {row.details.image ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src={row.details.image} alt="" loading="lazy" className="h-9 w-9 flex-shrink-0 rounded object-cover" />
+                      ) : (
+                        <div className="h-9 w-9 flex-shrink-0 rounded bg-neutral-800" />
+                      )}
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-1.5">
+                          <span className="truncate font-medium">
+                            {isCurrent && <span className="mr-1">{isPaused ? "❚❚" : "▶"}</span>}
+                            {row.details.name}
+                          </span>
+                          {row.versions > 1 && (
+                            <span
+                              className="flex-shrink-0 rounded bg-neutral-800 px-1 text-[10px] text-neutral-400"
+                              title="Released more than once (e.g. single and album); counted as one song"
+                            >
+                              {row.versions} versions
+                            </span>
+                          )}
+                        </div>
+                        <div className="truncate text-xs text-neutral-500">{row.details.artists.join(", ")}</div>
+                      </div>
+                      {mode === "lost" && !selectedPlaceId && (
+                        <span className="hidden max-w-[200px] truncate text-xs text-neutral-500 md:block">
+                          {placeName(row.placeId)}
                         </span>
-                        {row.versions > 1 && (
-                          <span
-                            className="flex-shrink-0 rounded bg-neutral-800 px-1 text-[10px] text-neutral-400"
-                            title="Released more than once (e.g. single and album); counted as one song"
-                          >
-                            {row.versions} versions
-                          </span>
-                        )}
-                      </div>
-                      <div className="truncate text-xs text-neutral-500">{row.details.artists.join(", ")}</div>
+                      )}
+                      {mode === "homes" && (
+                        <div className="hidden max-w-[45%] flex-wrap justify-end gap-1 md:flex">
+                          {row.countedOtherHomes === 0 && (
+                            <span className="rounded-full bg-amber-900/40 px-2 py-0.5 text-[11px] text-amber-300">
+                              Only here
+                            </span>
+                          )}
+                          {row.otherPlaceIds.map((id) => (
+                            <PlaceChip
+                              key={id}
+                              name={placeName(id)}
+                              ignored={ignoredIds.has(id)}
+                              onClick={() => setSelectedPlaceId(id)}
+                              onRemove={id === LIKED_SONGS_ID ? undefined : () => removeSongsFromPlace([row.songId], id)}
+                            />
+                          ))}
+                        </div>
+                      )}
+                      {hidden && reason && reason.alsoIn.length > 0 && (
+                        <span className="max-w-[200px] flex-shrink-0 truncate text-[11px] text-neutral-400">
+                          also in {reason.alsoIn.map(placeName).join(", ")}
+                        </span>
+                      )}
+                      {mode === "homes" && selectedPlaceId && (!hidden || reason?.manual) && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (hidden) unhideRow(row, selectedPlaceId);
+                            else hideRows([row], selectedPlaceId);
+                          }}
+                          title={
+                            hidden
+                              ? "Show this song normally again"
+                              : "Move to the bottom of this playlist's list, greyed out and unselectable"
+                          }
+                          className={`flex-shrink-0 rounded border px-1.5 py-0.5 text-[10px] ${
+                            hidden
+                              ? "border-neutral-600 text-neutral-200 hover:border-neutral-400"
+                              : "border-neutral-800 text-neutral-500 opacity-0 hover:border-neutral-600 hover:text-neutral-200 focus:opacity-100 group-hover:opacity-100"
+                          }`}
+                        >
+                          {hidden ? "Unhide" : "Hide"}
+                        </button>
+                      )}
+                      <span className="w-24 flex-shrink-0 text-right text-xs text-neutral-500">{formatAddedAt(row.addedAt)}</span>
                     </div>
-                    {mode === "lost" && !selectedPlaceId && (
-                      <span className="hidden max-w-[200px] truncate text-xs text-neutral-500 md:block">
-                        {placeName(row.placeId)}
-                      </span>
+                    {expanded && (
+                      <GenrePanel
+                        genres={genresFor(row)}
+                        state={genreStatus[row.songId]}
+                        onGenerate={(force) => generateGenres(row, force)}
+                      />
                     )}
-                    {mode === "homes" && (
-                      <div className="hidden max-w-[45%] flex-wrap justify-end gap-1 md:flex">
-                        {row.countedOtherHomes === 0 && (
-                          <span className="rounded-full bg-amber-900/40 px-2 py-0.5 text-[11px] text-amber-300">
-                            Only here
-                          </span>
-                        )}
-                        {row.otherPlaceIds.map((id) => (
-                          <PlaceChip
-                            key={id}
-                            name={placeName(id)}
-                            ignored={ignoredIds.has(id)}
-                            onClick={() => setSelectedPlaceId(id)}
-                          />
-                        ))}
-                      </div>
-                    )}
-                    <span className="w-24 flex-shrink-0 text-right text-xs text-neutral-500">{formatAddedAt(row.addedAt)}</span>
                   </li>
                 );
               })}
@@ -742,7 +1221,9 @@ export function LostTracksView({ tabs }: { tabs: ReactNode }) {
                 <li className="px-4 py-6 text-center text-sm text-neutral-500">
                   {mode === "homes"
                     ? selectedPlaceId
-                      ? "No songs match this filter."
+                      ? hiddenRows.length > 0
+                        ? "Every song shown here is hidden."
+                        : "No songs match this filter."
                       : "Pick a playlist on the left."
                     : lostSongs.length === 0
                       ? "No lost songs. Everything in your library lives in at least two places."
@@ -771,7 +1252,52 @@ export function LostTracksView({ tabs }: { tabs: ReactNode }) {
                 {playbackError && <span className="truncate text-xs text-red-400">{playbackError}</span>}
               </div>
               {notice && (
-                <span className={`text-xs ${notice.kind === "ok" ? "text-green-400" : "text-red-400"}`}>{notice.text}</span>
+                <span className={`text-xs ${notice.kind === "ok" ? "text-green-400" : "text-red-400"}`}>
+                  {notice.text}
+                  {notice.onUndo && (
+                    <button type="button" onClick={notice.onUndo} className="ml-2 font-semibold underline hover:text-white">
+                      Undo
+                    </button>
+                  )}
+                </span>
+              )}
+              {mode === "homes" && selectedPlaceId && (
+                <button
+                  type="button"
+                  onClick={() => hideRows(selectedRows, selectedPlaceId)}
+                  disabled={selectedRows.length === 0}
+                  title="Move the checked songs to the bottom of this playlist's list, greyed out"
+                  className="rounded-full border border-neutral-700 px-3 py-1.5 text-sm text-neutral-300 hover:border-neutral-500 disabled:opacity-40"
+                >
+                  Hide {selectedRows.length}
+                </button>
+              )}
+              {removePlaceId && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!removeArmed) {
+                      setRemoveArmed(true);
+                      return;
+                    }
+                    setRemoveArmed(false);
+                    removeSongsFromPlace(selectedRows.map((r) => r.songId), removePlaceId);
+                  }}
+                  onMouseLeave={() => setRemoveArmed(false)}
+                  onBlur={() => setRemoveArmed(false)}
+                  disabled={removing || selectedRows.length === 0}
+                  className={`max-w-[360px] truncate rounded-full border px-3 py-1.5 text-sm disabled:opacity-40 ${
+                    removeArmed
+                      ? "border-red-600 bg-red-900/50 text-red-100"
+                      : "border-neutral-700 text-neutral-300 hover:border-red-500 hover:text-red-300"
+                  }`}
+                >
+                  {removing
+                    ? "Removing…"
+                    : removeArmed
+                      ? `Confirm: remove ${selectedRows.length}${wouldBeHomeless ? ` (${wouldBeHomeless} left with no home)` : ""}`
+                      : `Remove ${selectedRows.length} from ${placeName(removePlaceId)}`}
+                </button>
               )}
               <button
                 type="button"
