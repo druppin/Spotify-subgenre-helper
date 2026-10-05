@@ -4,6 +4,7 @@ import { useRef, useState, type FormEvent } from "react";
 import type { SpotifyPlaylist } from "@/lib/spotify/client";
 import type { Setup } from "@/lib/setups";
 import { SetupsDialog } from "./SetupsDialog";
+import { GenerateGenresDialog, PlaylistGenresDialog } from "./GenreDialogs";
 
 interface Props {
   playlists: SpotifyPlaylist[];
@@ -14,7 +15,12 @@ interface Props {
   onLoadSetup: (setup: Setup) => void;
   // null when there's no current track to remove.
   onRemoveFromSource: (() => void) | null;
+  currentTrackId: string | null;
+  onGenresGenerated: () => void;
 }
+
+const BUTTON =
+  "rounded-md border border-neutral-700 px-2.5 py-1 text-sm text-neutral-200 hover:border-green-600 hover:bg-green-600/10";
 
 export function QuickActions({
   playlists,
@@ -24,12 +30,20 @@ export function QuickActions({
   onPlaylistCreated,
   onLoadSetup,
   onRemoveFromSource,
+  currentTrackId,
+  onGenresGenerated,
 }: Props) {
   const dialogRef = useRef<HTMLDialogElement>(null);
   const setupsDialogRef = useRef<HTMLDialogElement>(null);
+  // Genre overlays mount only while open, so each opening starts fresh.
+  const [genreDialog, setGenreDialog] = useState<
+    { kind: "summary" | "generate"; playlistId: string | null } | null
+  >(null);
+  // Followed-only playlists can't have their tracks read (Spotify 403s).
+  const readablePlaylists = playlists.filter((p) => p.canModify || p.id === sourcePlaylistId);
 
   return (
-    <div className="flex items-center gap-3 border-b border-neutral-800 px-4 py-2">
+    <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-neutral-800 px-4 py-2">
       <span className="text-xs font-semibold uppercase tracking-wide text-neutral-500">
         Quick actions
       </span>
@@ -53,6 +67,30 @@ export function QuickActions({
       >
         Remove from source
       </button>
+      <button onClick={() => setGenreDialog({ kind: "summary", playlistId: sourcePlaylistId })} className={BUTTON}>
+        Playlist genres
+      </button>
+      <button onClick={() => setGenreDialog({ kind: "generate", playlistId: sourcePlaylistId })} className={BUTTON}>
+        Generate genres
+      </button>
+      {genreDialog?.kind === "summary" && (
+        <PlaylistGenresDialog
+          playlists={readablePlaylists}
+          initialPlaylistId={genreDialog.playlistId}
+          onClose={() => setGenreDialog(null)}
+          onGenerateMissing={(playlistId) => setGenreDialog({ kind: "generate", playlistId })}
+        />
+      )}
+      {genreDialog?.kind === "generate" && (
+        <GenerateGenresDialog
+          playlists={readablePlaylists}
+          initialPlaylistId={genreDialog.playlistId}
+          onClose={() => setGenreDialog(null)}
+          currentTrackId={currentTrackId}
+          sourcePlaylistId={sourcePlaylistId}
+          onGenerated={onGenresGenerated}
+        />
+      )}
       <NewPlaylistDialog dialogRef={dialogRef} onCreated={onPlaylistCreated} />
       <SetupsDialog
         dialogRef={setupsDialogRef}

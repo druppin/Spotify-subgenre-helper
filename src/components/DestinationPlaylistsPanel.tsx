@@ -1,7 +1,8 @@
 "use client";
 
-import { useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { SpotifyPlaylist } from "@/lib/spotify/client";
+import { fetchPlaylistGenres, type PlaylistGenreTrack } from "@/lib/playlistGenres";
 import { PlaylistThumb } from "./PlaylistThumb";
 
 interface Props {
@@ -15,6 +16,7 @@ interface Props {
   disabled: boolean;
   addedPlaylistIds: Set<string>;
   membershipStatus: "loading" | "ready" | "error";
+  genresVersion: number;
 }
 
 export function DestinationPlaylistsPanel({
@@ -28,9 +30,11 @@ export function DestinationPlaylistsPanel({
   disabled,
   addedPlaylistIds,
   membershipStatus,
+  genresVersion,
 }: Props) {
   const [busyId, setBusyId] = useState<string | null>(null);
   const [query, setQuery] = useState("");
+  const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
   const listRef = useRef<HTMLUListElement>(null);
   const scrollTopBeforePinRef = useRef<number | null>(null);
 
@@ -41,6 +45,15 @@ export function DestinationPlaylistsPanel({
     listRef.current.scrollTop = scrollTopBeforePinRef.current;
     scrollTopBeforePinRef.current = null;
   }, [pinnedIds]);
+
+  const toggleExpanded = (playlistId: string) => {
+    setExpandedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(playlistId)) next.delete(playlistId);
+      else next.add(playlistId);
+      return next;
+    });
+  };
 
   const handleTogglePin = (playlistId: string) => {
     scrollTopBeforePinRef.current = listRef.current?.scrollTop ?? null;
@@ -131,41 +144,55 @@ export function DestinationPlaylistsPanel({
         {visible.map((p) => {
           const isPinned = pinnedIds.includes(p.id);
           const isAdded = addedPlaylistIds.has(p.id);
+          const isExpanded = expandedIds.has(p.id);
           return (
-            <li key={p.id} className="flex items-center gap-1 px-3 py-1">
-              <button
-                onClick={() => handleTogglePin(p.id)}
-                onMouseDown={(e) => e.preventDefault()}
-                className={`flex-shrink-0 px-1 text-lg ${
-                  isPinned ? "text-yellow-400" : "text-neutral-600 hover:text-neutral-400"
-                }`}
-                aria-label={isPinned ? "Unpin from top" : "Pin to top"}
-                title={isPinned ? "Unpin from top" : "Pin to top"}
-              >
-                {isPinned ? "★" : "☆"}
-              </button>
-              <button
-                onClick={() => handleClick(p.id, isAdded)}
-                disabled={disabled || busyId === p.id}
-                title={isAdded ? "Click to remove the current track from this playlist" : undefined}
-                className={`flex min-w-0 flex-1 items-center gap-2 rounded-md border px-2 py-1.5 text-left text-sm disabled:opacity-50 ${
-                  isAdded
-                    ? "border-green-500 bg-green-600/15 text-green-300 hover:border-red-500 hover:bg-red-600/10 hover:text-red-300"
-                    : "border-neutral-700 text-neutral-200 hover:border-green-600 hover:bg-green-600/10"
-                }`}
-              >
-                <PlaylistThumb playlist={p} size={32} />
-                <div className="flex min-w-0 flex-1 items-center justify-between">
-                  <span className="truncate">{p.name}</span>
-                  {isAdded ? (
-                    <span className="flex-shrink-0 text-xs font-medium">✓ Added</span>
-                  ) : (
-                    <span className="flex-shrink-0 text-xs text-neutral-500">
-                      {p.tracks?.total ?? "?"}
-                    </span>
-                  )}
-                </div>
-              </button>
+            <li key={p.id} className="px-3 py-1">
+              <div className="flex items-center gap-1">
+                <button
+                  onClick={() => handleTogglePin(p.id)}
+                  onMouseDown={(e) => e.preventDefault()}
+                  className={`flex-shrink-0 px-1 text-lg ${
+                    isPinned ? "text-yellow-400" : "text-neutral-600 hover:text-neutral-400"
+                  }`}
+                  aria-label={isPinned ? "Unpin from top" : "Pin to top"}
+                  title={isPinned ? "Unpin from top" : "Pin to top"}
+                >
+                  {isPinned ? "★" : "☆"}
+                </button>
+                <button
+                  onClick={() => handleClick(p.id, isAdded)}
+                  disabled={disabled || busyId === p.id}
+                  title={isAdded ? "Click to remove the current track from this playlist" : undefined}
+                  className={`flex min-w-0 flex-1 items-center gap-2 rounded-md border px-2 py-1.5 text-left text-sm disabled:opacity-50 ${
+                    isAdded
+                      ? "border-green-500 bg-green-600/15 text-green-300 hover:border-red-500 hover:bg-red-600/10 hover:text-red-300"
+                      : "border-neutral-700 text-neutral-200 hover:border-green-600 hover:bg-green-600/10"
+                  }`}
+                >
+                  <PlaylistThumb playlist={p} size={32} />
+                  <div className="flex min-w-0 flex-1 items-center justify-between">
+                    <span className="truncate">{p.name}</span>
+                    {isAdded ? (
+                      <span className="flex-shrink-0 text-xs font-medium">✓ Added</span>
+                    ) : (
+                      <span className="flex-shrink-0 text-xs text-neutral-500">
+                        {p.tracks?.total ?? "?"}
+                      </span>
+                    )}
+                  </div>
+                </button>
+                <button
+                  onClick={() => toggleExpanded(p.id)}
+                  onMouseDown={(e) => e.preventDefault()}
+                  className="flex-shrink-0 px-1 text-neutral-500 hover:text-white"
+                  aria-expanded={isExpanded}
+                  aria-label={isExpanded ? "Hide songs and genres" : "Show songs and genres"}
+                  title={isExpanded ? "Hide songs and genres" : "Show songs and genres"}
+                >
+                  {isExpanded ? "▾" : "▸"}
+                </button>
+              </div>
+              {isExpanded && <PlaylistGenreList key={`${p.id}:${genresVersion}`} playlistId={p.id} />}
             </li>
           );
         })}
@@ -180,5 +207,56 @@ export function DestinationPlaylistsPanel({
         )}
       </ul>
     </div>
+  );
+}
+
+type GenreListState =
+  | { status: "loading" }
+  | { status: "error"; message: string }
+  | { status: "ready"; tracks: PlaylistGenreTrack[] };
+
+// Remounted (via key) when genres are regenerated, so the initial state is
+// all the reset it needs.
+function PlaylistGenreList({ playlistId }: { playlistId: string }) {
+  const [state, setState] = useState<GenreListState>({ status: "loading" });
+
+  useEffect(() => {
+    let cancelled = false;
+    fetchPlaylistGenres(playlistId)
+      .then((tracks) => !cancelled && setState({ status: "ready", tracks }))
+      .catch((err) => !cancelled && setState({ status: "error", message: String(err.message ?? err) }));
+    return () => {
+      cancelled = true;
+    };
+  }, [playlistId]);
+
+  if (state.status === "loading") {
+    return <p className="py-1.5 pl-9 text-xs text-neutral-500">Loading songs…</p>;
+  }
+  if (state.status === "error") {
+    return <p className="py-1.5 pl-9 text-xs text-red-400">{state.message}</p>;
+  }
+  if (state.tracks.length === 0) {
+    return <p className="py-1.5 pl-9 text-xs text-neutral-500">No songs in this playlist.</p>;
+  }
+  return (
+    <ul className="mt-1 max-h-72 space-y-1 overflow-y-auto border-l border-neutral-800 py-1 pl-3 ml-4">
+      {state.tracks.map((t, i) => (
+        <li key={`${t.id}-${i}`} className="text-xs">
+          <div className="truncate text-neutral-300" title={`${t.name} — ${t.artists.join(", ")}`}>
+            {t.name} <span className="text-neutral-500">— {t.artists.join(", ")}</span>
+          </div>
+          {t.subgenres && t.subgenres.length > 0 && (
+            <div className="mt-0.5 flex flex-wrap gap-1">
+              {t.subgenres.map((g) => (
+                <span key={g} className="rounded-full bg-green-600/15 px-1.5 py-px text-[10px] text-green-400">
+                  {g}
+                </span>
+              ))}
+            </div>
+          )}
+        </li>
+      ))}
+    </ul>
   );
 }

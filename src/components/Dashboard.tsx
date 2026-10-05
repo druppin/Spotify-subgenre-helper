@@ -31,6 +31,8 @@ function DashboardInner() {
   // playlist index, kept current locally as tracks are added/removed here.
   const [playlistIndex, setPlaylistIndex] = useState<Record<string, Set<string>>>({});
   const [playlistIndexStatus, setPlaylistIndexStatus] = useState<"loading" | "ready" | "error">("loading");
+  // Bumped after genres are generated so expanded playlist genre lists reload.
+  const [genresVersion, setGenresVersion] = useState(0);
 
   const { ready, playTrack, onTrackEnd } = usePlayer();
 
@@ -385,6 +387,8 @@ function DashboardInner() {
             onPlaylistCreated={handlePlaylistCreated}
             onLoadSetup={loadSetup}
             onRemoveFromSource={currentTrack ? removeCurrentFromSource : null}
+            currentTrackId={currentTrack?.id ?? null}
+            onGenresGenerated={() => setGenresVersion((v) => v + 1)}
           />
           <div className="min-h-0 flex-1 overflow-hidden">
             <NowPlayingPanel
@@ -410,6 +414,7 @@ function DashboardInner() {
             disabled={!currentTrack}
             addedPlaylistIds={addedPlaylistIds}
             membershipStatus={playlistIndexStatus}
+            genresVersion={genresVersion}
           />
         </div>
       </div>

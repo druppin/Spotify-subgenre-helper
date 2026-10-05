@@ -6,6 +6,7 @@ import { summarizeTrack, SUMMARY_PROMPT_VERSION } from "@/lib/llm/summarize";
 import type { LlmConfig, LlmProvider, TrackContext, TrackSummary } from "@/lib/llm/types";
 import { getCache } from "@/lib/cache";
 import { spotifyErrorResponse } from "@/lib/spotify/routeError";
+import { saveTrackGenres } from "@/lib/trackGenres";
 
 const summaryCache = getCache<TrackSummary>("track-summary");
 
@@ -43,9 +44,11 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   }
 
   const cacheKey = `${id}:${llmConfig.provider}:${llmConfig.model}:${SUMMARY_PROMPT_VERSION}`;
+  const modelLabel = `${llmConfig.provider}:${llmConfig.model}`;
   if (!forceRegenerate) {
     const cached = await summaryCache.get(cacheKey);
     if (cached) {
+      await saveTrackGenres(id, cached, modelLabel);
       return NextResponse.json({ summary: cached, context, cached: true });
     }
   }
@@ -53,6 +56,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   try {
     const summary = await summarizeTrack(context, llmConfig);
     await summaryCache.set(cacheKey, summary);
+    await saveTrackGenres(id, summary, modelLabel);
     return NextResponse.json({ summary, context, cached: false });
   } catch (err) {
     console.error("GET /api/track/[id]/summary (LLM) failed:", err);

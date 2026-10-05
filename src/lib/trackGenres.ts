@@ -1,0 +1,98 @@
+import { promises as fs } from "fs";
+import path from "path";
+import { getCache } from "@/lib/cache";
+import type { TrackSummary } from "@/lib/llm/types";
+
+/**
+ * The genres the AI settled on for each track, keyed by Spotify track id.
+ * Unlike the summary cache (keyed by model + prompt version, so a prompt
+ * tweak orphans every entry), this survives prompt/model changes and is
+ * what playlist genre views read from.
+ */
+export interface TrackGenres {
+  subgenres: string[];
+  moodVibe: string;
+  model: string;
+  updatedAt: number;
+}
+
+const NAMESPACE = "track-genres";
+const CACHE_DIR = path.join(process.cwd(), ".cache");
+const genreCache = getCache<TrackGenres>(NAMESPACE);
+
+// LLMs mix in non-breaking hyphens/spaces and inconsistent case, which
+// would split one genre into several when counting.
+export function normalizeGenre(genre: string): string {
+  return genre
+    .replace(/[‐-―]/g, "-")
+    .replace(/[  ]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase();
+}
+
+let backfill: Promise<void> | null = null;
+
+// The first time the store is used, seed it from summaries generated before
+// it existed. Writes the file directly (before the cache loads it) rather
+// than one cache.set per entry, each of which rewrites the whole file.
+function ensureBackfilled(): Promise<void> {
+  backfill ??= (async () => {
+    const storePath = path.join(CACHE_DIR, `${NAMESPACE}.json`);
+    try {
+      await fs.access(storePath);
+      return;
+    } catch {}
+    let summaries: Record<string, { value: TrackSummary }>;
+    try {
+      summaries = JSON.parse(await fs.readFile(path.join(CACHE_DIR, "track-summary.json"), "utf-8"));
+    } catch {
+      return;
+    }
+    const seeded: Record<string, { value: TrackGenres }> = {};
+    for (const [key, entry] of Object.entries(summaries)) {
+      // Summary keys are `${trackId}:${provider}:${model}:${promptVersion}`.
+      const [trackId, provider, ...rest] = key.split(":");
+      const summary = entry?.value;
+      if (!trackId || !Array.isArray(summary?.subgenres)) continue;
+      seeded[trackId] = {
+        value: {
+          subgenres: summary.subgenres.map(normalizeGenre).filter(Boolean),
+          moodVibe: summary.moodVibe ?? "",
+          model: `${provider}:${rest.slice(0, -1).join(":")}`,
+          updatedAt: Date.now(),
+        },
+      };
+    }
+    await fs.mkdir(CACHE_DIR, { recursive: true });
+    await fs.writeFile(storePath, JSON.stringify(seeded, null, 2), "utf-8");
+  })();
+  return backfill;
+}
+
+export async function getTrackGenres(trackIds: string[]): Promise<Record<string, TrackGenres>> {
+  await ensureBackfilled();
+  const result: Record<string, TrackGenres> = {};
+  for (const id of trackIds) {
+    const entry = await genreCache.get(id);
+    if (entry) result[id] = entry;
+  }
+  return result;
+}
+
+export async function saveTrackGenres(trackId: string, summary: TrackSummary, model: string): Promise<void> {
+  await ensureBackfilled();
+  const subgenres = summary.subgenres.map(normalizeGenre).filter(Boolean);
+  const existing = await genreCache.get(trackId);
+  // Skip the write (a full file rewrite) when nothing changed — this runs on
+  // every summary request, cached ones included.
+  if (
+    existing &&
+    existing.model === model &&
+    existing.moodVibe === summary.moodVibe &&
+    existing.subgenres.join("|") === subgenres.join("|")
+  ) {
+    return;
+  }
+  await genreCache.set(trackId, { subgenres, moodVibe: summary.moodVibe, model, updatedAt: Date.now() });
+}
