@@ -104,12 +104,15 @@ export function QuickActions({
   );
 }
 
-function NewPlaylistDialog({
+export function NewPlaylistDialog({
   dialogRef,
   onCreated,
+  showStar = true,
 }: {
   dialogRef: React.RefObject<HTMLDialogElement | null>;
   onCreated: (playlist: SpotifyPlaylist, star: boolean) => void;
+  // Starring only means something in the subgenre sorter's destination panel.
+  showStar?: boolean;
 }) {
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
@@ -210,12 +213,14 @@ function NewPlaylistDialog({
             />
             Collaborative
           </label>
-          <label className="flex items-center gap-2">
-            <input type="checkbox" checked={star} onChange={(e) => setStar(e.target.checked)} />
-            <span>
-              Star it <span className="text-yellow-400">★</span>
-            </span>
-          </label>
+          {showStar && (
+            <label className="flex items-center gap-2">
+              <input type="checkbox" checked={star} onChange={(e) => setStar(e.target.checked)} />
+              <span>
+                Star it <span className="text-yellow-400">★</span>
+              </span>
+            </label>
+          )}
         </div>
 
         {error && <p className="text-xs text-red-400">{error}</p>}

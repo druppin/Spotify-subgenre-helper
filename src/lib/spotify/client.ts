@@ -55,6 +55,42 @@ export interface SpotifyPlaylistTrackItem {
   track: SpotifyTrack | null;
 }
 
+// One entry of a playlist or Liked Songs, trimmed to what library-wide views
+// (the playlist index, the lost tracks finder) need to show it.
+export interface LibraryTrack {
+  uri: string;
+  name: string;
+  artists: string[];
+  // Smallest album image, for a thumbnail.
+  image: string | null;
+  // Recording code: a single and its album re-release usually share it.
+  isrc: string | null;
+  durationMs: number;
+  addedAt: string;
+}
+
+interface RawLibraryTrack {
+  uri: string;
+  name: string;
+  duration_ms?: number;
+  external_ids?: { isrc?: string };
+  artists: { name: string }[];
+  album?: { images?: SpotifyImage[] };
+}
+
+function toLibraryTrack(raw: RawLibraryTrack, addedAt: string): LibraryTrack {
+  const images = raw.album?.images ?? [];
+  return {
+    uri: raw.uri,
+    name: raw.name,
+    artists: raw.artists.map((a) => a.name),
+    image: images[images.length - 1]?.url ?? null,
+    isrc: raw.external_ids?.isrc?.toUpperCase() ?? null,
+    durationMs: raw.duration_ms ?? 0,
+    addedAt,
+  };
+}
+
 // Spotify's Feb 2026 migration renamed /playlists/{id}/tracks to
 // /playlists/{id}/items and, within it, each entry's "track" field to
 // "item". These describe the raw wire shape; getUserPlaylists() and
@@ -77,12 +113,26 @@ export class SpotifyApiError extends Error {
 }
 
 const TRANSIENT_STATUS_CODES = new Set([429, 500, 502, 503, 504]);
+// Spotify can answer a 429 with a Retry-After of minutes or hours. Waiting
+// that out silently looks like a hang, so longer waits fail instead.
+const MAX_RETRY_WAIT_MS = 30_000;
+
+function formatWait(ms: number): string {
+  const minutes = Math.ceil(ms / 60_000);
+  if (ms < 60_000) return `${Math.ceil(ms / 1000)} seconds`;
+  if (minutes < 120) return `${minutes} minute${minutes === 1 ? "" : "s"}`;
+  return `${Math.round(minutes / 60)} hours`;
+}
 
 function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 export class SpotifyClient {
+  // Called before sleeping out a rate limit, so long-running callers can
+  // show that they're waiting rather than stuck.
+  onRateLimitWait?: (waitMs: number) => void;
+
   constructor(private accessToken: string) {}
 
   private async request<T>(path: string, init?: RequestInit): Promise<T> {
@@ -125,7 +175,19 @@ export class SpotifyClient {
       if (TRANSIENT_STATUS_CODES.has(res.status) && !isLastAttempt) {
         const retryAfterHeader = res.headers.get("Retry-After");
         const retryAfterMs = retryAfterHeader ? Number(retryAfterHeader) * 1000 : NaN;
-        await sleep(Number.isFinite(retryAfterMs) ? retryAfterMs : 500 * attempt);
+        const waitMs = Number.isFinite(retryAfterMs) ? retryAfterMs : 500 * attempt;
+        if (res.status === 429) {
+          if (waitMs > MAX_RETRY_WAIT_MS) {
+            console.warn(`Spotify rate limit on ${path}: asked to wait ${formatWait(waitMs)}; giving up`);
+            throw new SpotifyApiError(
+              429,
+              `Spotify is rate-limiting this app and asked to wait ${formatWait(waitMs)} before trying again.`
+            );
+          }
+          console.warn(`Spotify rate limit on ${path}: waiting ${formatWait(waitMs)}`);
+          this.onRateLimitWait?.(waitMs);
+        }
+        await sleep(waitMs);
         continue;
       }
 
@@ -191,15 +253,54 @@ export class SpotifyClient {
     return items;
   }
 
-  async getPlaylistTrackUris(playlistId: string): Promise<string[]> {
-    const uris: string[] = [];
-    let url: string | null = `/playlists/${playlistId}/items?limit=100&fields=${encodeURIComponent("next,items(item(uri))")}`;
+  async getPlaylistLibraryTracks(playlistId: string): Promise<LibraryTrack[]> {
+    const tracks: LibraryTrack[] = [];
+    let url: string | null =
+      `/playlists/${playlistId}/items?limit=100&fields=` +
+      encodeURIComponent(
+        "next,items(added_at,item(uri,name,duration_ms,external_ids(isrc),artists(name),album(images)))"
+      );
     while (url) {
-      const page: { items: { item: { uri: string } | null }[]; next: string | null } = await this.request(url);
-      for (const raw of page.items) if (raw.item?.uri) uris.push(raw.item.uri);
+      const page: { items: { added_at: string; item: RawLibraryTrack | null }[]; next: string | null } =
+        await this.request(url);
+      for (const raw of page.items) if (raw.item?.uri) tracks.push(toLibraryTrack(raw.item, raw.added_at));
       url = page.next ? page.next.replace(API_BASE, "") : null;
     }
-    return uris;
+    return tracks;
+  }
+
+  // Liked Songs entries use "track" for the item; accept "item" too in case
+  // the Feb 2026 rename (see RawSpotifyPlaylistItem) reaches this endpoint.
+  async getLikedTracks(onPage?: (fetched: number, total: number) => void): Promise<LibraryTrack[]> {
+    type Page = {
+      items: { added_at: string; track?: RawLibraryTrack | null; item?: RawLibraryTrack | null }[];
+      next: string | null;
+      total: number;
+    };
+    const tracks: LibraryTrack[] = [];
+    let url: string | null = "/me/tracks?limit=50";
+    while (url) {
+      const page: Page = await this.request(url);
+      for (const raw of page.items) {
+        const track = raw.track ?? raw.item;
+        if (track?.uri) tracks.push(toLibraryTrack(track, raw.added_at));
+      }
+      onPage?.(tracks.length, page.total);
+      url = page.next ? page.next.replace(API_BASE, "") : null;
+    }
+    return tracks;
+  }
+
+  // Liked Songs has no snapshot_id; its size plus its newest entry changes
+  // whenever a track is liked or unliked, which is close enough to tell
+  // when a cached copy is stale.
+  async getLikedTracksMarker(): Promise<string> {
+    const page = await this.request<{
+      total: number;
+      items: { added_at: string; track?: { uri: string } | null; item?: { uri: string } | null }[];
+    }>("/me/tracks?limit=1");
+    const newest = page.items[0];
+    return `${page.total}:${newest?.added_at ?? ""}:${(newest?.track ?? newest?.item)?.uri ?? ""}`;
   }
 
   getTrack(trackId: string) {
@@ -238,6 +339,16 @@ export class SpotifyClient {
       method: "POST",
       body: JSON.stringify({ uris: [trackUri] }),
     });
+  }
+
+  async addTracksToPlaylist(playlistId: string, trackUris: string[]) {
+    // Spotify takes at most 100 URIs per request.
+    for (let i = 0; i < trackUris.length; i += 100) {
+      await this.request(`/playlists/${playlistId}/items`, {
+        method: "POST",
+        body: JSON.stringify({ uris: trackUris.slice(i, i + 100) }),
+      });
+    }
   }
 
   removeTrackFromPlaylist(playlistId: string, trackUri: string) {

@@ -5,6 +5,9 @@ export interface SpotifySessionData {
   accessToken?: string;
   refreshToken?: string;
   expiresAt?: number; // epoch ms
+  // Space-separated scopes Spotify actually granted, so features needing a
+  // scope added after login can ask for a reconnect instead of failing.
+  scope?: string;
   oauthState?: string;
 }
 

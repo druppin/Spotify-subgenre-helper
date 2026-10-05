@@ -1,8 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { SpotifyPlaylist, SpotifyPlaylistTrackItem } from "@/lib/spotify/client";
-import { PlayerProvider, usePlayer } from "./PlayerProvider";
+import { usePlayer } from "./PlayerProvider";
 import { SourcePlaylistPanel } from "./SourcePlaylistPanel";
 import { NowPlayingPanel } from "./NowPlayingPanel";
 import { DestinationPlaylistsPanel } from "./DestinationPlaylistsPanel";
@@ -10,7 +10,9 @@ import { PlaylistPicker } from "./PlaylistPicker";
 import { QuickActions } from "./QuickActions";
 import { loadLastSession, saveLastSession, type Setup } from "@/lib/setups";
 
-function DashboardInner() {
+// The subgenre sorting view. Rendered inside AppShell, which provides the
+// player and the tab bar shown in this view's header.
+export function Dashboard({ tabs }: { tabs: ReactNode }) {
   // Only ever mounted client-side (AuthGate renders it after a fetch), so
   // reading localStorage in the initializer can't cause a hydration mismatch.
   const [initialSession] = useState(loadLastSession);
@@ -356,7 +358,7 @@ function DashboardInner() {
   return (
     <div className="flex h-screen flex-col bg-neutral-950 text-white">
       <header className="flex items-center gap-3 border-b border-neutral-800 px-4 py-3">
-        <h1 className="text-lg font-semibold">Spotify Subgenre Assistant</h1>
+        {tabs}
         <div className="ml-auto">
           <PlaylistPicker
             playlists={playlists}
@@ -420,13 +422,5 @@ function DashboardInner() {
         </div>
       </div>
     </div>
-  );
-}
-
-export function Dashboard() {
-  return (
-    <PlayerProvider>
-      <DashboardInner />
-    </PlayerProvider>
   );
 }

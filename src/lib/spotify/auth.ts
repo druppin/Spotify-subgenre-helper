@@ -5,7 +5,8 @@ const AUTH_URL = "https://accounts.spotify.com/authorize";
 const TOKEN_URL = "https://accounts.spotify.com/api/token";
 
 // Scopes needed: Web Playback SDK ("streaming" + user read), reading/pinning
-// playlists, and modifying both the destination and source playlists.
+// playlists, modifying both the destination and source playlists, and
+// reading Liked Songs for the lost tracks finder.
 export const SPOTIFY_SCOPES = [
   "streaming",
   "user-read-email",
@@ -16,7 +17,12 @@ export const SPOTIFY_SCOPES = [
   "playlist-read-collaborative",
   "playlist-modify-public",
   "playlist-modify-private",
+  "user-library-read",
 ].join(" ");
+
+export function hasScope(grantedScope: string | undefined, scope: string): boolean {
+  return (grantedScope ?? "").split(" ").includes(scope);
+}
 
 function requireEnv(name: string): string {
   const value = process.env[name];
@@ -109,6 +115,7 @@ export async function getValidAccessToken(): Promise<string> {
   const refreshed = await refreshAccessToken(session.refreshToken);
   session.accessToken = refreshed.access_token;
   session.expiresAt = Date.now() + refreshed.expires_in * 1000;
+  if (refreshed.scope) session.scope = refreshed.scope;
   if (refreshed.refresh_token) {
     session.refreshToken = refreshed.refresh_token;
   }

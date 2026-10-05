@@ -23,6 +23,7 @@ export async function GET(request: NextRequest) {
   session.accessToken = token.access_token;
   session.refreshToken = token.refresh_token;
   session.expiresAt = Date.now() + token.expires_in * 1000;
+  session.scope = token.scope;
   await session.save();
 
   return NextResponse.redirect(new URL("/", request.url));

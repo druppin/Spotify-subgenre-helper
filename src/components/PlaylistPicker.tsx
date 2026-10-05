@@ -14,6 +14,9 @@ interface Props {
   // where a floating list would be clipped.
   fullWidth?: boolean;
   disabled?: boolean;
+  // Open the floating list above the button, for pickers at the bottom of
+  // the screen.
+  dropUp?: boolean;
 }
 
 export function PlaylistPicker({
@@ -23,6 +26,7 @@ export function PlaylistPicker({
   placeholder = "Choose a source playlist…",
   fullWidth = false,
   disabled = false,
+  dropUp = false,
 }: Props) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
@@ -79,8 +83,8 @@ export function PlaylistPicker({
 
       {open && (
         <div
-          className={`mt-1 overflow-hidden rounded-md border border-neutral-700 bg-neutral-900 shadow-xl ${
-            fullWidth ? "" : "absolute right-0 z-10 w-72"
+          className={`overflow-hidden rounded-md border border-neutral-700 bg-neutral-900 shadow-xl ${
+            fullWidth ? "mt-1" : `absolute right-0 z-10 w-72 ${dropUp ? "bottom-full mb-1" : "mt-1"}`
           }`}
         >
           <div className="border-b border-neutral-800 p-1.5">

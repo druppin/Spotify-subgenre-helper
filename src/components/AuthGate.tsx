@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Dashboard } from "./Dashboard";
+import { AppShell } from "./AppShell";
 
 export function AuthGate() {
   const [authenticated, setAuthenticated] = useState<boolean | null>(null);
@@ -32,5 +32,5 @@ export function AuthGate() {
     );
   }
 
-  return <Dashboard />;
+  return <AppShell />;
 }
