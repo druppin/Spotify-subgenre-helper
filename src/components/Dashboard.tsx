@@ -80,6 +80,16 @@ function DashboardInner() {
       : null
   );
 
+  // Keeps the song counts shown next to playlists current as tracks are
+  // added/removed here, without refetching the playlist list.
+  const adjustTrackCount = useCallback((playlistId: string, delta: number) => {
+    setPlaylists((prev) =>
+      prev.map((p) =>
+        p.id === playlistId && p.tracks ? { ...p, tracks: { total: Math.max(0, p.tracks.total + delta) } } : p
+      )
+    );
+  }, []);
+
   useEffect(() => {
     fetch("/api/playlists")
       .then((res) => res.json())
@@ -194,9 +204,12 @@ function DashboardInner() {
         body: JSON.stringify({ trackUri: uri }),
       }).catch((err) => console.error("Failed to remove track from source playlist:", err));
       setMembership(fromPlaylistId, uri, false);
-      return tracks.filter((item) => item.track?.uri !== uri);
+      const remaining = tracks.filter((item) => item.track?.uri !== uri);
+      // Removing by URI drops every copy of the track, not just one.
+      adjustTrackCount(fromPlaylistId, remaining.length - tracks.length);
+      return remaining;
     },
-    [pendingRemovalUri, setMembership]
+    [pendingRemovalUri, setMembership, adjustTrackCount]
   );
 
   const goNext = useCallback(() => {
@@ -268,9 +281,10 @@ function DashboardInner() {
     }).catch((err) => console.error("Failed to remove track from source playlist:", err));
     setMembership(sourcePlaylistId, uri, false);
     const tracks = sourceTracks.filter((item) => item.track?.uri !== uri);
+    adjustTrackCount(sourcePlaylistId, tracks.length - sourceTracks.length);
     setSourceTracks(tracks);
     setCurrentIndex(Math.max(Math.min(currentIndex, tracks.length - 1), 0));
-  }, [currentTrack, sourcePlaylistId, sourceTracks, currentIndex, setMembership]);
+  }, [currentTrack, sourcePlaylistId, sourceTracks, currentIndex, setMembership, adjustTrackCount]);
 
   const handleAddToPlaylist = useCallback(
     async (destinationPlaylistId: string) => {
@@ -287,12 +301,13 @@ function DashboardInner() {
       }
 
       setMembership(destinationPlaylistId, currentTrack.uri, true);
+      adjustTrackCount(destinationPlaylistId, 1);
 
       if (alsoRemoveFromSource) {
         setPendingRemovalUri(currentTrack.uri);
       }
     },
-    [currentTrack, alsoRemoveFromSource, setMembership]
+    [currentTrack, alsoRemoveFromSource, setMembership, adjustTrackCount]
   );
 
   const handleRemoveFromPlaylist = useCallback(
@@ -310,8 +325,11 @@ function DashboardInner() {
       }
 
       setMembership(destinationPlaylistId, currentTrack.uri, false);
+      // Assumes one copy; a duplicate elsewhere in the playlist would also be
+      // removed but isn't counted here.
+      adjustTrackCount(destinationPlaylistId, -1);
     },
-    [currentTrack, setMembership]
+    [currentTrack, setMembership, adjustTrackCount]
   );
 
   const addedPlaylistIds = new Set(
