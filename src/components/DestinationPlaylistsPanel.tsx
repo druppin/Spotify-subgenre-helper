@@ -30,6 +30,7 @@ export function DestinationPlaylistsPanel({
   membershipStatus,
 }: Props) {
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [query, setQuery] = useState("");
   const listRef = useRef<HTMLUListElement>(null);
   const scrollTopBeforePinRef = useRef<number | null>(null);
 
@@ -58,6 +59,10 @@ export function DestinationPlaylistsPanel({
     const bPinned = pinnedIds.includes(b.id) ? 0 : 1;
     return aPinned - bPinned;
   });
+  const normalizedQuery = query.trim().toLowerCase();
+  const visible = normalizedQuery
+    ? sorted.filter((p) => p.name.toLowerCase().includes(normalizedQuery))
+    : sorted;
 
   const handleClick = async (playlistId: string, isAdded: boolean) => {
     setBusyId(playlistId);
@@ -97,8 +102,33 @@ export function DestinationPlaylistsPanel({
         Also remove from source playlist
       </label>
 
+      <div className="px-3 pb-2">
+        <div className="relative">
+          <input
+            type="search"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Escape") setQuery("");
+            }}
+            placeholder="Search playlists…"
+            aria-label="Search playlists"
+            className="w-full rounded-md border border-neutral-700 bg-neutral-900 px-2 py-1.5 pr-7 text-sm outline-none placeholder:text-neutral-500 focus:border-green-600 [&::-webkit-search-cancel-button]:hidden"
+          />
+          {query && (
+            <button
+              onClick={() => setQuery("")}
+              className="absolute right-2 top-1/2 -translate-y-1/2 text-neutral-500 hover:text-white"
+              aria-label="Clear search"
+            >
+              ✕
+            </button>
+          )}
+        </div>
+      </div>
+
       <ul ref={listRef} className="flex-1 overflow-y-auto [overflow-anchor:none]">
-        {sorted.map((p) => {
+        {visible.map((p) => {
           const isPinned = pinnedIds.includes(p.id);
           const isAdded = addedPlaylistIds.has(p.id);
           return (
@@ -139,6 +169,9 @@ export function DestinationPlaylistsPanel({
             </li>
           );
         })}
+        {sorted.length > 0 && visible.length === 0 && (
+          <li className="px-3 py-2 text-sm text-neutral-500">No playlists match “{query.trim()}”.</li>
+        )}
         {sorted.length === 0 && (
           <li className="px-3 py-2 text-sm text-neutral-500">
             No playlists you can add to yet — you need to own or collaborate on a playlist for it
