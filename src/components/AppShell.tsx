@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { PlayerProvider } from "./PlayerProvider";
 import { Dashboard } from "./Dashboard";
 import { LostTracksView } from "./LostTracksView";
@@ -35,6 +35,20 @@ export function AppShell() {
   const [activeTab, setActiveTab] = useState<TabId>(loadTab);
   const [visited, setVisited] = useState<Set<TabId>>(() => new Set([activeTab]));
 
+  // Spotify can block the app for many hours after too many requests; say
+  // so up front instead of letting every action fail one at a time.
+  const [blockedUntil, setBlockedUntil] = useState<number | null>(null);
+  useEffect(() => {
+    const check = () =>
+      fetch("/api/spotify/status")
+        .then((res) => res.json())
+        .then((body) => setBlockedUntil(body.blockedUntil ?? null))
+        .catch(() => {});
+    check();
+    const timer = setInterval(check, 60_000);
+    return () => clearInterval(timer);
+  }, []);
+
   const selectTab = (id: TabId) => {
     setActiveTab(id);
     setVisited((prev) => (prev.has(id) ? prev : new Set(prev).add(id)));
@@ -67,6 +81,13 @@ export function AppShell() {
 
   return (
     <PlayerProvider>
+      {blockedUntil && (
+        <div className="fixed inset-x-0 bottom-0 z-50 bg-red-950/95 px-4 py-2 text-center text-sm text-red-200">
+          Spotify has blocked this app&apos;s requests until{" "}
+          {new Date(blockedUntil).toLocaleString(undefined, { weekday: "short", hour: "numeric", minute: "2-digit" })}{" "}
+          for making too many. Adding, removing, and scanning won&apos;t work until then.
+        </div>
+      )}
       {visited.has("subgenres") && (
         <div className={activeTab === "subgenres" ? "contents" : "hidden"}>
           <Dashboard tabs={tabs} />

@@ -25,7 +25,8 @@ export type LibraryIndex = Record<string, LibraryTrack[]>;
 
 const indexCache = getCache<IndexEntry>("playlist-index");
 const likedCache = getCache<LikedEntry>("liked-songs");
-const CONCURRENCY = 4;
+// Kept low: bursts of parallel requests are what draw Spotify's long blocks.
+const CONCURRENCY = 2;
 // Only used if Spotify ever omits snapshot_id, which normally tells us
 // exactly when a playlist changed.
 const NO_SNAPSHOT_MAX_AGE_MS = 60 * 60 * 1000;
@@ -127,7 +128,10 @@ async function syncIndex(spotify: SpotifyClient): Promise<LibraryIndex> {
       playlistProgress.fetched++;
     }
   };
-  await Promise.all(Array.from({ length: CONCURRENCY }, worker));
+  // Let every worker finish before saving, then save even if the sync
+  // failed: playlists downloaded before a rate limit hit are still good, and
+  // throwing them away means spending requests on them again next time.
+  const results = await Promise.allSettled(Array.from({ length: CONCURRENCY }, worker));
 
   // Written one at a time: FileCache rewrites its whole file on every set,
   // and overlapping writes to the same file could corrupt it.
@@ -135,6 +139,8 @@ async function syncIndex(spotify: SpotifyClient): Promise<LibraryIndex> {
     await indexCache.set(id, entry);
     index[id] = entry.tracks!;
   }
+  const failure = results.find((r): r is PromiseRejectedResult => r.status === "rejected");
+  if (failure) throw failure.reason;
   return index;
 }
 

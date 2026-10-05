@@ -22,7 +22,6 @@ export async function buildTrackContext(
   if (cached) return cached;
 
   const track = await spotify.getTrack(trackId);
-  const artists = await spotify.getArtists(track.artists.map((a) => a.id));
   const primaryArtistName = track.artists[0]?.name ?? "";
 
   const [lastfmTrack, lastfmArtist, audioFeaturesByTrack, musicbrainz] = await Promise.all([
@@ -38,7 +37,10 @@ export async function buildTrackContext(
     artistNames: track.artists.map((a) => a.name),
     albumName: track.album.name,
     releaseDate: track.album.release_date,
-    artistGenres: [...new Set(artists.flatMap((a) => a.genres ?? []))],
+    // Spotify returns no artist genres to development-mode apps (none of the
+    // first ~280 cached contexts got any), so fetching each artist just spent
+    // rate limit. Kept empty so the prompt and cached contexts keep their shape.
+    artistGenres: [],
     lastfmTrackTags: lastfmTrack,
     lastfmArtistTags: lastfmArtist.tags,
     lastfmArtistBio: lastfmArtist.bioSummary,

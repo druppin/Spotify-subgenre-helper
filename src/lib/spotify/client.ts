@@ -1,4 +1,5 @@
 import { fetchWithTimeout } from "@/lib/fetchWithTimeout";
+import { getCache } from "@/lib/cache";
 
 const API_BASE = "https://api.spotify.com/v1";
 
@@ -117,6 +118,62 @@ const TRANSIENT_STATUS_CODES = new Set([429, 500, 502, 503, 504]);
 // that out silently looks like a hang, so longer waits fail instead.
 const MAX_RETRY_WAIT_MS = 30_000;
 
+// Process-wide Spotify bookkeeping, on globalThis so every route shares it:
+// when Spotify has blocked the app (a long Retry-After), and how many
+// requests went out today, logged so it's visible what spends the budget.
+interface SpotifyUsage {
+  blockedUntil: number | null;
+  day: string;
+  requests: number;
+}
+const usageHolder = globalThis as typeof globalThis & { __spotifyUsage?: SpotifyUsage };
+usageHolder.__spotifyUsage ??= { blockedUntil: null, day: "", requests: 0 };
+const usage = usageHolder.__spotifyUsage;
+
+// The block is also saved to disk so a server restart doesn't forget it and
+// send more requests into a block Spotify is still enforcing.
+const blockCache = getCache<number>("spotify-block");
+let blockLoaded = false;
+
+async function currentBlock(): Promise<number | null> {
+  if (!blockLoaded) {
+    blockLoaded = true;
+    usage.blockedUntil = (await blockCache.get("blockedUntil")) ?? usage.blockedUntil;
+  }
+  return usage.blockedUntil && usage.blockedUntil > Date.now() ? usage.blockedUntil : null;
+}
+
+async function recordBlock(waitMs: number) {
+  usage.blockedUntil = Date.now() + waitMs;
+  await blockCache.set("blockedUntil", usage.blockedUntil, waitMs);
+}
+
+/** When Spotify's block on this app ends, or null if it isn't blocked. */
+export function getSpotifyBlockedUntil(): Promise<number | null> {
+  return currentBlock();
+}
+
+function countRequest(path: string) {
+  const today = new Date().toDateString();
+  if (usage.day !== today) {
+    usage.day = today;
+    usage.requests = 0;
+  }
+  usage.requests++;
+  if (usage.requests % 50 === 0) {
+    console.info(`[spotify] ${usage.requests} requests today (latest: ${path.split("?")[0]})`);
+  }
+}
+
+function blockedMessage(until: number): string {
+  const when = new Date(until).toLocaleString(undefined, {
+    weekday: "short",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+  return `Spotify has blocked this app's requests for ${formatWait(until - Date.now())} (until ${when}). Nothing is sent to Spotify until then.`;
+}
+
 function formatWait(ms: number): string {
   const minutes = Math.ceil(ms / 60_000);
   if (ms < 60_000) return `${Math.ceil(ms / 1000)} seconds`;
@@ -147,6 +204,11 @@ export class SpotifyClient {
     const TIMEOUT_MS = 8_000;
     for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
       const isLastAttempt = attempt === MAX_ATTEMPTS;
+      // Asking again during a block only earns another 429 (and may count
+      // against the app), so fail locally instead.
+      const blockedUntil = await currentBlock();
+      if (blockedUntil) throw new SpotifyApiError(429, blockedMessage(blockedUntil));
+      countRequest(path);
       let res: Response;
       try {
         res = await fetchWithTimeout(
@@ -172,18 +234,17 @@ export class SpotifyClient {
 
       if (res.ok) return this.parseResponse<T>(res);
 
+      const retryAfterHeader = res.headers.get("Retry-After");
+      const retryAfterMs = retryAfterHeader ? Number(retryAfterHeader) * 1000 : NaN;
+      if (res.status === 429 && retryAfterMs > MAX_RETRY_WAIT_MS) {
+        console.warn(`Spotify rate limit on ${path}: blocked for ${formatWait(retryAfterMs)}`);
+        await recordBlock(retryAfterMs);
+        throw new SpotifyApiError(429, blockedMessage(Date.now() + retryAfterMs));
+      }
+
       if (TRANSIENT_STATUS_CODES.has(res.status) && !isLastAttempt) {
-        const retryAfterHeader = res.headers.get("Retry-After");
-        const retryAfterMs = retryAfterHeader ? Number(retryAfterHeader) * 1000 : NaN;
         const waitMs = Number.isFinite(retryAfterMs) ? retryAfterMs : 500 * attempt;
         if (res.status === 429) {
-          if (waitMs > MAX_RETRY_WAIT_MS) {
-            console.warn(`Spotify rate limit on ${path}: asked to wait ${formatWait(waitMs)}; giving up`);
-            throw new SpotifyApiError(
-              429,
-              `Spotify is rate-limiting this app and asked to wait ${formatWait(waitMs)} before trying again.`
-            );
-          }
           console.warn(`Spotify rate limit on ${path}: waiting ${formatWait(waitMs)}`);
           this.onRateLimitWait?.(waitMs);
         }
