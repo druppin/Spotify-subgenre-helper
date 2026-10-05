@@ -9,6 +9,7 @@ interface Props {
   playlists: SpotifyPlaylist[];
   pinnedIds: string[];
   onTogglePin: (playlistId: string) => void;
+  onClearPins: () => void;
   onAddToPlaylist: (playlistId: string) => Promise<void>;
   alsoRemoveFromSource: boolean;
   onAlsoRemoveFromSourceChange: (value: boolean) => void;
@@ -23,6 +24,7 @@ export function DestinationPlaylistsPanel({
   playlists,
   pinnedIds,
   onTogglePin,
+  onClearPins,
   onAddToPlaylist,
   onRemoveFromPlaylist,
   alsoRemoveFromSource,
@@ -92,9 +94,21 @@ export function DestinationPlaylistsPanel({
 
   return (
     <div className="flex h-full flex-col overflow-hidden">
-      <h2 className="px-3 pt-3 text-sm font-semibold uppercase tracking-wide text-neutral-400">
-        Add to playlist
-      </h2>
+      <div className="flex items-center justify-between gap-2 px-3 pt-3">
+        <h2 className="text-sm font-semibold uppercase tracking-wide text-neutral-400">Add to playlist</h2>
+        {pinnedIds.length > 0 && (
+          <button
+            onClick={() => {
+              const n = pinnedIds.length;
+              if (window.confirm(`Unstar all ${n} starred playlist${n === 1 ? "" : "s"}?`)) onClearPins();
+            }}
+            className="text-xs text-neutral-500 hover:text-red-400"
+            title="Unstar every playlist (saved setups aren't affected)"
+          >
+            Clear stars ({pinnedIds.length})
+          </button>
+        )}
+      </div>
       {membershipStatus === "loading" && (
         <p className="px-3 pt-1 text-xs text-neutral-500">
           Checking which playlists already have this track…

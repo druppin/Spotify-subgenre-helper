@@ -407,6 +407,7 @@ function DashboardInner() {
             playlists={playlists}
             pinnedIds={pinnedIds}
             onTogglePin={togglePin}
+            onClearPins={() => setPinnedIds([])}
             onAddToPlaylist={handleAddToPlaylist}
             onRemoveFromPlaylist={handleRemoveFromPlaylist}
             alsoRemoveFromSource={alsoRemoveFromSource}
