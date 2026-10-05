@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getValidAccessToken } from "@/lib/spotify/auth";
 import { SpotifyClient } from "@/lib/spotify/client";
 import { spotifyErrorResponse } from "@/lib/spotify/routeError";
+import { recordOwnEdit } from "@/lib/playlistIndex";
 
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -12,8 +13,9 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   try {
     const accessToken = await getValidAccessToken();
     const client = new SpotifyClient(accessToken);
-    if (trackUri) await client.addTrackToPlaylist(id, trackUri);
-    else await client.addTracksToPlaylist(id, trackUris);
+    const uris: string[] = trackUri ? [trackUri] : trackUris;
+    const snapshotId = await client.addTracksToPlaylist(id, uris);
+    await recordOwnEdit(id, { added: uris }, snapshotId);
     return NextResponse.json({ ok: true });
   } catch (err) {
     return spotifyErrorResponse(err, "POST /api/playlists/[id]/add");

@@ -39,7 +39,11 @@ export function Dashboard({ tabs }: { tabs: ReactNode }) {
   const { ready, playTrack, onTrackEnd } = usePlayer();
 
   useEffect(() => {
-    fetch("/api/playlist-index")
+    // Cached membership for every playlist, refreshing only the starred
+    // destinations (the ones whose marks matter most) if they've changed —
+    // loading the sorter shouldn't cost a whole library scan.
+    const sync = initialSession.pinnedIds.join(",");
+    fetch(`/api/playlist-index${sync ? `?sync=${encodeURIComponent(sync)}` : ""}`)
       .then(async (res) => {
         const body = await res.json();
         if (!res.ok) throw new Error(body.error ?? `HTTP ${res.status}`);
@@ -61,7 +65,7 @@ export function Dashboard({ tabs }: { tabs: ReactNode }) {
         console.error("Failed to load playlist index:", err);
         setPlaylistIndexStatus("error");
       });
-  }, []);
+  }, [initialSession]);
 
   const setMembership = useCallback((playlistId: string, uri: string, present: boolean) => {
     setPlaylistIndex((prev) => {

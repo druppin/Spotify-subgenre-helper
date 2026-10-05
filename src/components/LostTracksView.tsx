@@ -2,7 +2,13 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { SpotifyPlaylist } from "@/lib/spotify/client";
-import { LIKED_SONGS_ID, type LibraryResponse, type LibraryTrackDetails } from "@/lib/library";
+import {
+  LIKED_SONGS_ID,
+  type LibraryCoverage,
+  type LibraryFetchMode,
+  type LibraryResponse,
+  type LibraryTrackDetails,
+} from "@/lib/library";
 import type { ScanProgressResponse } from "@/app/api/library/progress/route";
 import { groupSongs } from "@/lib/songIdentity";
 import { usePlayer } from "./PlayerProvider";
@@ -111,6 +117,72 @@ function LikedSongsThumb({ size = 32 }: { size?: number }) {
       aria-hidden
     >
       ♥
+    </div>
+  );
+}
+
+// What's saved of the library and how current it is, with what it would
+// cost (in Spotify requests) to bring it up to date.
+function CoverageBar({
+  coverage,
+  scanError,
+  onFetch,
+}: {
+  coverage: LibraryCoverage;
+  scanError: string | null;
+  onFetch: (mode: LibraryFetchMode) => void;
+}) {
+  const p = coverage.playlists;
+  const scanned = p.fresh + p.incomplete + p.changed;
+  const likedNeedsUpdate = coverage.likedSongs === "notScanned" || coverage.likedSongs === "unchecked";
+  const needsUpdate = p.changed + p.notScanned > 0 || likedNeedsUpdate;
+  const needsDetails = p.incomplete > 0 || coverage.likedSongs === "incomplete";
+  const likedLabel: Record<LibraryCoverage["likedSongs"], string> = {
+    fresh: "up to date",
+    incomplete: "saved, missing album details",
+    unchecked: "saved (not checked for changes)",
+    notScanned: "not scanned",
+    unreadable: "needs reconnecting",
+  };
+  const parts = [
+    `${scanned} of ${p.total} playlists saved`,
+    p.changed && `${p.changed} changed since`,
+    p.notScanned && `${p.notScanned} never scanned`,
+    p.incomplete && `${p.incomplete} missing album details`,
+    `Liked Songs ${likedLabel[coverage.likedSongs]}`,
+  ].filter(Boolean);
+  const likedNote = coverage.likedSongs === "notScanned" || coverage.likedSongs === "incomplete" ? " + Liked Songs" : "";
+  return (
+    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-neutral-800 bg-neutral-900/50 px-4 py-2 text-xs text-neutral-400">
+      <span>{parts.join(" · ")}</span>
+      {p.changed + p.notScanned > 0 && (
+        <span className="text-amber-400/80">
+          Songs in unsaved or changed playlists can show as lost when they aren&apos;t.
+        </span>
+      )}
+      {scanError && <span className="text-red-400">Last scan stopped: {scanError}</span>}
+      <span className="ml-auto flex gap-2">
+        {needsUpdate && (
+          <button
+            type="button"
+            onClick={() => onFetch("update")}
+            title="Download playlists that changed or were never scanned (and check Liked Songs for changes)"
+            className="rounded-md border border-neutral-700 px-2.5 py-1 text-neutral-200 hover:border-green-600 hover:bg-green-600/10"
+          >
+            Update (~{p.requestsToUpdate + (likedNeedsUpdate ? 1 : 0)} requests{likedNote})
+          </button>
+        )}
+        {(needsUpdate || needsDetails) && (
+          <button
+            type="button"
+            onClick={() => onFetch("complete")}
+            title="Also re-download saved playlists that are missing album details, so genre lookups never need Spotify"
+            className="rounded-md border border-neutral-700 px-2.5 py-1 text-neutral-200 hover:border-green-600 hover:bg-green-600/10"
+          >
+            Update and fill in details (~{p.requestsToComplete + 1} requests{likedNote})
+          </button>
+        )}
+      </span>
     </div>
   );
 }
@@ -248,7 +320,11 @@ export function LostTracksView({ tabs }: { tabs: ReactNode }) {
   const [likedSongsStatus, setLikedSongsStatus] = useState<LibraryResponse["likedSongs"]>("ok");
   const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
   const [error, setError] = useState<string | null>(null);
-  const [reloadKey, setReloadKey] = useState(0);
+  // Each load reads the saved library; fetchMode says how much to download
+  // from Spotify first. The first load downloads nothing.
+  const [load, setLoad] = useState<{ key: number; fetchMode: LibraryFetchMode }>({ key: 0, fetchMode: "none" });
+  const [coverage, setCoverage] = useState<LibraryCoverage | null>(null);
+  const [scanError, setScanError] = useState<string | null>(null);
   const [progress, setProgress] = useState<ScanProgressResponse | null>(null);
 
   const [mode, setMode] = useState<Mode>(() => (loadJson<Mode>(MODE_STORAGE_KEY, "lost") === "homes" ? "homes" : "lost"));
@@ -295,7 +371,7 @@ export function LostTracksView({ tabs }: { tabs: ReactNode }) {
 
   // The scan itself is one long request, so poll how far it's got.
   useEffect(() => {
-    if (status !== "loading") return;
+    if (status !== "loading" || load.fetchMode === "none") return;
     const timer = setInterval(() => {
       fetch("/api/library/progress")
         .then((res) => res.json())
@@ -303,17 +379,24 @@ export function LostTracksView({ tabs }: { tabs: ReactNode }) {
         .catch(() => {});
     }, 500);
     return () => clearInterval(timer);
-  }, [status]);
+  }, [status, load.fetchMode]);
 
   useEffect(() => {
     fetch("/api/playlists")
       .then((res) => res.json())
       .then((body) => setPlaylists(body.playlists ?? []));
-  }, [reloadKey]);
+  }, [load.key]);
+
+  const startLoad = (fetchMode: LibraryFetchMode) => {
+    setStatus("loading");
+    setProgress(null);
+    if (fetchMode !== "none") setScanError(null);
+    setLoad((prev) => ({ key: prev.key + 1, fetchMode }));
+  };
 
   useEffect(() => {
     let cancelled = false;
-    fetch("/api/library")
+    fetch(`/api/library?fetch=${load.fetchMode}`)
       .then(async (res) => {
         const body = await res.json();
         if (!res.ok) throw new Error(body.error ?? `HTTP ${res.status}`);
@@ -345,18 +428,27 @@ export function LostTracksView({ tabs }: { tabs: ReactNode }) {
           })
           .catch((err) => console.error("Failed to load stored genres:", err));
         setLikedSongsStatus(library.likedSongs);
+        setCoverage(library.coverage);
         setStatus("ready");
       })
       .catch((err) => {
         if (cancelled) return;
         console.error("Failed to load library:", err);
-        setError(String(err instanceof Error ? err.message : err));
+        const message = String(err instanceof Error ? err.message : err);
+        if (load.fetchMode !== "none") {
+          // A scan that stopped part way still saved what it downloaded;
+          // show the saved library with the reason it stopped.
+          setScanError(message);
+          setLoad((prev) => ({ key: prev.key + 1, fetchMode: "none" }));
+          return;
+        }
+        setError(message);
         setStatus("error");
       });
     return () => {
       cancelled = true;
     };
-  }, [reloadKey]);
+  }, [load]);
 
   const playlistsById = useMemo(() => new Map(playlists.map((p) => [p.id, p])), [playlists]);
   const placeName = useCallback(
@@ -827,17 +919,18 @@ export function LostTracksView({ tabs }: { tabs: ReactNode }) {
         </div>
         <button
           type="button"
-          onClick={() => {
-            setStatus("loading");
-            setProgress(null);
-            setReloadKey((k) => k + 1);
-          }}
+          onClick={() => startLoad("update")}
           disabled={status === "loading"}
+          title="Download playlists that changed or were never scanned"
           className="ml-auto rounded-md border border-neutral-700 px-3 py-1.5 text-sm text-neutral-300 hover:border-neutral-500 disabled:opacity-50"
         >
-          {status === "loading" ? "Scanning…" : "Rescan library"}
+          {status === "loading" && load.fetchMode !== "none" ? "Scanning…" : "Update library"}
         </button>
       </header>
+
+      {status === "ready" && coverage && (
+        <CoverageBar coverage={coverage} scanError={scanError} onFetch={startLoad} />
+      )}
 
       {likedSongsStatus === "missing_scope" && status === "ready" && (
         <div className="flex items-center gap-3 border-b border-amber-900/50 bg-amber-950/40 px-4 py-2 text-sm text-amber-300">
@@ -848,7 +941,11 @@ export function LostTracksView({ tabs }: { tabs: ReactNode }) {
         </div>
       )}
 
-      {status === "loading" && (
+      {status === "loading" && load.fetchMode === "none" && (
+        <div className="flex flex-1 items-center justify-center text-neutral-400">Loading your saved library…</div>
+      )}
+
+      {status === "loading" && load.fetchMode !== "none" && (
         <div className="flex flex-1 flex-col items-center justify-center gap-2 text-neutral-400">
           <p>Scanning your library…</p>
           <div className="my-2 flex flex-col gap-3">
@@ -879,15 +976,15 @@ export function LostTracksView({ tabs }: { tabs: ReactNode }) {
             )}
           </div>
           <p className="max-w-md text-center text-xs text-neutral-500">
-            The first scan downloads every playlist you can edit (and Liked Songs). After that, only
-            playlists that changed get downloaded again.
+            Only playlists that changed or haven&apos;t been saved yet are downloaded. What&apos;s downloaded is
+            kept even if the scan stops part way.
           </p>
         </div>
       )}
 
       {status === "error" && (
         <div className="flex flex-1 items-center justify-center">
-          <p className="rounded-md bg-red-900/30 px-3 py-2 text-sm text-red-400">Couldn&apos;t scan your library: {error}</p>
+          <p className="rounded-md bg-red-900/30 px-3 py-2 text-sm text-red-400">Couldn&apos;t load your library: {error}</p>
         </div>
       )}
 
@@ -1225,8 +1322,10 @@ export function LostTracksView({ tabs }: { tabs: ReactNode }) {
                         ? "Every song shown here is hidden."
                         : "No songs match this filter."
                       : "Pick a playlist on the left."
-                    : lostSongs.length === 0
-                      ? "No lost songs. Everything in your library lives in at least two places."
+                    : Object.keys(places).length === 0
+                      ? "Nothing saved yet. Playlists you open in the Subgenre sorter are saved as you go, or use Update above to scan."
+                      : lostSongs.length === 0
+                        ? "No lost songs. Everything saved lives in at least two places."
                       : "No lost songs match this filter."}
                 </li>
               )}

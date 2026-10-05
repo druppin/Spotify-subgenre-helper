@@ -25,7 +25,7 @@ export interface SpotifyPlaylist {
   // Not a raw Spotify field — computed in getUserPlaylists() from
   // owner.id/collaborative vs. the current user, so callers don't each
   // have to know the "own or collaborate" rule for which playlists accept
-  // track adds (see getPlaylistTracks's note on the same restriction).
+  // track adds (see getPlaylistLibraryTracks's note on the same restriction).
   canModify: boolean;
   // Changes whenever the playlist's contents change.
   snapshot_id?: string;
@@ -56,8 +56,9 @@ export interface SpotifyPlaylistTrackItem {
   track: SpotifyTrack | null;
 }
 
-// One entry of a playlist or Liked Songs, trimmed to what library-wide views
-// (the playlist index, the lost tracks finder) need to show it.
+// One entry of a playlist or Liked Songs: everything the app keeps about a
+// track, so that once any request has seen it (a library scan, a playlist
+// opened in the sorter, a genre lookup) nothing needs to ask Spotify again.
 export interface LibraryTrack {
   uri: string;
   name: string;
@@ -68,6 +69,16 @@ export interface LibraryTrack {
   isrc: string | null;
   durationMs: number;
   addedAt: string;
+  // Missing (undefined) on entries cached before these were collected;
+  // isCompleteTrack() tells the two apart.
+  album?: string | null;
+  releaseDate?: string | null;
+  // Largest album image, for the now-playing view.
+  imageLarge?: string | null;
+}
+
+export function isCompleteTrack(track: LibraryTrack): boolean {
+  return track.album !== undefined;
 }
 
 interface RawLibraryTrack {
@@ -76,10 +87,10 @@ interface RawLibraryTrack {
   duration_ms?: number;
   external_ids?: { isrc?: string };
   artists: { name: string }[];
-  album?: { images?: SpotifyImage[] };
+  album?: { name?: string; release_date?: string; images?: SpotifyImage[] };
 }
 
-function toLibraryTrack(raw: RawLibraryTrack, addedAt: string): LibraryTrack {
+export function toLibraryTrack(raw: RawLibraryTrack, addedAt: string): LibraryTrack {
   const images = raw.album?.images ?? [];
   return {
     uri: raw.uri,
@@ -89,21 +100,42 @@ function toLibraryTrack(raw: RawLibraryTrack, addedAt: string): LibraryTrack {
     isrc: raw.external_ids?.isrc?.toUpperCase() ?? null,
     durationMs: raw.duration_ms ?? 0,
     addedAt,
+    album: raw.album?.name ?? null,
+    releaseDate: raw.album?.release_date ?? null,
+    imageLarge: images[0]?.url ?? null,
+  };
+}
+
+/** A cached track in the shape the subgenre sorter's playlist views use. */
+export function toPlaylistTrackItem(track: LibraryTrack): SpotifyPlaylistTrackItem {
+  const images = [...new Set([track.imageLarge, track.image].filter((url): url is string => Boolean(url)))];
+  return {
+    added_at: track.addedAt,
+    track: {
+      id: track.uri.startsWith("spotify:track:") ? track.uri.slice("spotify:track:".length) : track.uri,
+      uri: track.uri,
+      name: track.name,
+      // Artist and album IDs aren't cached; nothing in the views uses them.
+      artists: track.artists.map((name) => ({ id: "", name })),
+      album: {
+        id: "",
+        name: track.album ?? "",
+        images: images.map((url) => ({ url, width: null, height: null })),
+        release_date: track.releaseDate ?? "",
+      },
+      duration_ms: track.durationMs,
+      explicit: false,
+    },
   };
 }
 
 // Spotify's Feb 2026 migration renamed /playlists/{id}/tracks to
-// /playlists/{id}/items and, within it, each entry's "track" field to
-// "item". These describe the raw wire shape; getUserPlaylists() and
-// getPlaylistTracks() normalize back to our stable SpotifyPlaylist /
-// SpotifyPlaylistTrackItem shapes above so the rest of the app is
-// insulated from that rename.
+// /playlists/{id}/items and, within it, the playlist's "tracks" count to
+// "items" (and each entry's "track" field to "item"). getUserPlaylists()
+// and getPlaylistLibraryTracks() normalize back to our stable shapes so the
+// rest of the app is insulated from that rename.
 interface RawSpotifyPlaylist extends Omit<SpotifyPlaylist, "tracks" | "canModify"> {
   items?: { total: number };
-}
-interface RawSpotifyPlaylistItem {
-  added_at: string;
-  item: SpotifyTrack | null;
 }
 
 export class SpotifyApiError extends Error {
@@ -299,27 +331,12 @@ export class SpotifyClient {
   // data for playlists the authenticated user owns or collaborates on —
   // playlists you just follow (including other users' or Spotify's own)
   // now 403 here even though they still show up in getUserPlaylists().
-  async getPlaylistTracks(playlistId: string): Promise<SpotifyPlaylistTrackItem[]> {
-    const items: SpotifyPlaylistTrackItem[] = [];
-    let url: string | null =
-      `/playlists/${playlistId}/items?limit=100&fields=` +
-      encodeURIComponent(
-        "next,items(added_at,item(id,uri,name,artists(id,name),album(id,name,images,release_date),duration_ms,explicit))"
-      );
-    while (url) {
-      const page: { items: RawSpotifyPlaylistItem[]; next: string | null } = await this.request(url);
-      items.push(...page.items.map((raw) => ({ added_at: raw.added_at, track: raw.item })));
-      url = page.next ? page.next.replace(API_BASE, "") : null;
-    }
-    return items;
-  }
-
   async getPlaylistLibraryTracks(playlistId: string): Promise<LibraryTrack[]> {
     const tracks: LibraryTrack[] = [];
     let url: string | null =
       `/playlists/${playlistId}/items?limit=100&fields=` +
       encodeURIComponent(
-        "next,items(added_at,item(uri,name,duration_ms,external_ids(isrc),artists(name),album(images)))"
+        "next,items(added_at,item(uri,name,duration_ms,external_ids(isrc),artists(name),album(name,release_date,images)))"
       );
     while (url) {
       const page: { items: { added_at: string; item: RawLibraryTrack | null }[]; next: string | null } =
@@ -331,7 +348,7 @@ export class SpotifyClient {
   }
 
   // Liked Songs entries use "track" for the item; accept "item" too in case
-  // the Feb 2026 rename (see RawSpotifyPlaylistItem) reaches this endpoint.
+  // the Feb 2026 "track" -> "item" rename reaches this endpoint.
   async getLikedTracks(onPage?: (fetched: number, total: number) => void): Promise<LibraryTrack[]> {
     type Page = {
       items: { added_at: string; track?: RawLibraryTrack | null; item?: RawLibraryTrack | null }[];
@@ -364,15 +381,15 @@ export class SpotifyClient {
     return `${page.total}:${newest?.added_at ?? ""}:${(newest?.track ?? newest?.item)?.uri ?? ""}`;
   }
 
-  getTrack(trackId: string) {
-    return this.request<SpotifyTrack>(`/tracks/${trackId}`);
+  async getTrackDetails(trackId: string): Promise<LibraryTrack> {
+    return toLibraryTrack(await this.request<RawLibraryTrack>(`/tracks/${trackId}`), "");
   }
 
-  // Spotify's Feb 2026 migration removed the batch GET /artists?ids=... —
-  // "fetch items individually instead" is their own guidance, so that's
-  // what this does now.
-  getArtists(artistIds: string[]): Promise<SpotifyArtist[]> {
-    return Promise.all(artistIds.map((id) => this.request<SpotifyArtist>(`/artists/${id}`)));
+  // One small request that says whether a cached copy of a playlist is
+  // still current, instead of downloading the whole playlist to find out.
+  async getPlaylistSnapshot(playlistId: string): Promise<string | null> {
+    const body = await this.request<{ snapshot_id?: string }>(`/playlists/${playlistId}?fields=snapshot_id`);
+    return body.snapshot_id ?? null;
   }
 
   async createPlaylist(options: {
@@ -395,37 +412,40 @@ export class SpotifyClient {
     return { ...rest, images: rest.images ?? [], tracks: items ?? { total: 0 }, canModify: true };
   }
 
-  addTrackToPlaylist(playlistId: string, trackUri: string) {
-    return this.request(`/playlists/${playlistId}/items`, {
-      method: "POST",
-      body: JSON.stringify({ uris: [trackUri] }),
-    });
+  // Adds and removes return the playlist's new snapshot_id, which lets the
+  // cached copy be updated in place rather than downloaded again.
+
+  addTrackToPlaylist(playlistId: string, trackUri: string): Promise<string | null> {
+    return this.addTracksToPlaylist(playlistId, [trackUri]);
   }
 
-  async addTracksToPlaylist(playlistId: string, trackUris: string[]) {
+  async addTracksToPlaylist(playlistId: string, trackUris: string[]): Promise<string | null> {
+    let snapshotId: string | null = null;
     // Spotify takes at most 100 URIs per request.
     for (let i = 0; i < trackUris.length; i += 100) {
-      await this.request(`/playlists/${playlistId}/items`, {
+      const body = await this.request<{ snapshot_id?: string }>(`/playlists/${playlistId}/items`, {
         method: "POST",
         body: JSON.stringify({ uris: trackUris.slice(i, i + 100) }),
       });
+      snapshotId = body?.snapshot_id ?? null;
     }
+    return snapshotId;
   }
 
-  async removeTracksFromPlaylist(playlistId: string, trackUris: string[]) {
+  removeTrackFromPlaylist(playlistId: string, trackUri: string): Promise<string | null> {
+    return this.removeTracksFromPlaylist(playlistId, [trackUri]);
+  }
+
+  async removeTracksFromPlaylist(playlistId: string, trackUris: string[]): Promise<string | null> {
+    let snapshotId: string | null = null;
     // Spotify takes at most 100 items per request.
     for (let i = 0; i < trackUris.length; i += 100) {
-      await this.request(`/playlists/${playlistId}/items`, {
+      const body = await this.request<{ snapshot_id?: string }>(`/playlists/${playlistId}/items`, {
         method: "DELETE",
         body: JSON.stringify({ items: trackUris.slice(i, i + 100).map((uri) => ({ uri })) }),
       });
+      snapshotId = body?.snapshot_id ?? null;
     }
-  }
-
-  removeTrackFromPlaylist(playlistId: string, trackUri: string) {
-    return this.request(`/playlists/${playlistId}/items`, {
-      method: "DELETE",
-      body: JSON.stringify({ items: [{ uri: trackUri }] }),
-    });
+    return snapshotId;
   }
 }

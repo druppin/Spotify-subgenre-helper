@@ -2,12 +2,13 @@ import { NextRequest, NextResponse } from "next/server";
 import { getValidAccessToken } from "@/lib/spotify/auth";
 import { SpotifyClient } from "@/lib/spotify/client";
 import { spotifyErrorResponse } from "@/lib/spotify/routeError";
+import { getPlaylistsListing, recordNewPlaylist } from "@/lib/playlistIndex";
 
 export async function GET() {
   try {
     const accessToken = await getValidAccessToken();
-    const client = new SpotifyClient(accessToken);
-    const playlists = await client.getUserPlaylists();
+    // Reused for a few minutes: both tabs and every scan want this list.
+    const playlists = await getPlaylistsListing(new SpotifyClient(accessToken));
     return NextResponse.json({ playlists });
   } catch (err) {
     return spotifyErrorResponse(err, "GET /api/playlists");
@@ -29,6 +30,7 @@ export async function POST(request: NextRequest) {
       isPublic: Boolean(body.isPublic),
       collaborative: Boolean(body.collaborative),
     });
+    await recordNewPlaylist(playlist);
     return NextResponse.json({ playlist });
   } catch (err) {
     return spotifyErrorResponse(err, "POST /api/playlists");

@@ -10,6 +10,8 @@ export interface Cache<V = unknown> {
   get(key: string): Promise<V | undefined>;
   set(key: string, value: V, ttlMs?: number): Promise<void>;
   delete(key: string): Promise<void>;
+  // Every unexpired entry, for building lookups across a whole namespace.
+  entries(): Promise<[string, V][]>;
 }
 
 interface Entry<V> {
@@ -39,6 +41,11 @@ export class InMemoryCache<V = unknown> implements Cache<V> {
 
   async delete(key: string): Promise<void> {
     this.store.delete(key);
+  }
+
+  async entries(): Promise<[string, V][]> {
+    const now = Date.now();
+    return [...this.store].filter(([, e]) => !e.expiresAt || e.expiresAt >= now).map(([k, e]) => [k, e.value]);
   }
 }
 
@@ -95,6 +102,12 @@ export class FileCache<V = unknown> implements Cache<V> {
     const map = await this.load();
     map.delete(key);
     await this.persist(map);
+  }
+
+  async entries(): Promise<[string, V][]> {
+    const map = await this.load();
+    const now = Date.now();
+    return [...map].filter(([, e]) => !e.expiresAt || e.expiresAt >= now).map(([k, e]) => [k, e.value]);
   }
 }
 

@@ -4,6 +4,7 @@ import { getArtistInfo, getTrackTags } from "@/lib/lastfm";
 import { getMusicBrainzInfo } from "@/lib/musicbrainz";
 import type { SpotifyClient } from "@/lib/spotify/client";
 import type { TrackContext } from "@/lib/llm/types";
+import { getTrackDetailsCached } from "@/lib/playlistIndex";
 
 // Bump the namespace whenever TrackContext gains a field, so contexts cached
 // before it existed get rebuilt instead of served without it.
@@ -21,8 +22,10 @@ export async function buildTrackContext(
   const cached = await contextCache.get(trackId);
   if (cached) return cached;
 
-  const track = await spotify.getTrack(trackId);
-  const primaryArtistName = track.artists[0]?.name ?? "";
+  // Free when a library scan, an opened playlist, or an earlier lookup has
+  // already seen this song; otherwise one Spotify request.
+  const track = await getTrackDetailsCached(spotify, trackId);
+  const primaryArtistName = track.artists[0] ?? "";
 
   const [lastfmTrack, lastfmArtist, audioFeaturesByTrack, musicbrainz] = await Promise.all([
     getTrackTags(primaryArtistName, track.name),
@@ -34,9 +37,9 @@ export async function buildTrackContext(
   const context: TrackContext = {
     trackId,
     trackName: track.name,
-    artistNames: track.artists.map((a) => a.name),
-    albumName: track.album.name,
-    releaseDate: track.album.release_date,
+    artistNames: track.artists,
+    albumName: track.album ?? "",
+    releaseDate: track.releaseDate ?? "",
     // Spotify returns no artist genres to development-mode apps (none of the
     // first ~280 cached contexts got any), so fetching each artist just spent
     // rate limit. Kept empty so the prompt and cached contexts keep their shape.
