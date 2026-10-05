@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { SpotifyTrack } from "@/lib/spotify/client";
 import type { TrackContext, TrackSummary } from "@/lib/llm/types";
 import { usePlayer } from "./PlayerProvider";
@@ -138,6 +138,24 @@ export function NowPlayingPanel({ track, onPrevious, onNext, canGoPrevious, canG
   const { ready, isPaused, position, duration, volume, playbackError, togglePlay, seek, setVolume } =
     usePlayer();
   const [retryNonce, setRetryNonce] = useState(0);
+  // Where the seek bar is while it's being dragged. Each change event would
+  // otherwise be its own seek request to Spotify — dozens per drag — so the
+  // bar moves locally and one seek goes out when it's let go.
+  const [scrubPosition, setScrubPosition] = useState<number | null>(null);
+  // Mirrors scrubPosition so a release right after the last change event
+  // seeks to where the bar actually is, whether or not React re-rendered.
+  const scrubRef = useRef<number | null>(null);
+  const scrubTo = (value: number) => {
+    scrubRef.current = value;
+    setScrubPosition(value);
+  };
+  const commitScrub = () => {
+    if (scrubRef.current === null) return;
+    seek(scrubRef.current);
+    scrubRef.current = null;
+    setScrubPosition(null);
+  };
+  const shownPosition = scrubPosition ?? position;
   const [forceNextFetch, setForceNextFetch] = useState(false);
 
   const refresh = (force: boolean) => {
@@ -170,13 +188,16 @@ export function NowPlayingPanel({ track, onPrevious, onNext, canGoPrevious, canG
 
       <div className="w-full max-w-md space-y-3">
         <div className="flex items-center gap-2">
-          <span className="w-10 text-right text-xs text-neutral-500">{formatMs(position)}</span>
+          <span className="w-10 text-right text-xs text-neutral-500">{formatMs(shownPosition)}</span>
           <input
             type="range"
             min={0}
             max={duration || 0}
-            value={Math.min(position, duration || 0)}
-            onChange={(e) => seek(Number(e.target.value))}
+            value={Math.min(shownPosition, duration || 0)}
+            onChange={(e) => scrubTo(Number(e.target.value))}
+            onPointerUp={commitScrub}
+            onKeyUp={commitScrub}
+            onBlur={commitScrub}
             disabled={!ready || !duration}
             className="flex-1 accent-green-600"
           />
