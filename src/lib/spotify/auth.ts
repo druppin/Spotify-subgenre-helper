@@ -101,6 +101,21 @@ export async function refreshAccessToken(refreshToken: string): Promise<SpotifyT
  * persisting the refreshed token back into the session) if it's expired or
  * close to expiring. Throws if there's no session to work with.
  */
+// Requests that find the token expired at the same moment (bulk genre
+// generation runs several at once) share one refresh instead of each
+// sending their own — and possibly saving a refresh token another
+// response's refresh has already replaced.
+const inFlightRefreshes = new Map<string, Promise<SpotifyTokenResponse>>();
+
+function refreshOnce(refreshToken: string): Promise<SpotifyTokenResponse> {
+  let refresh = inFlightRefreshes.get(refreshToken);
+  if (!refresh) {
+    refresh = refreshAccessToken(refreshToken).finally(() => inFlightRefreshes.delete(refreshToken));
+    inFlightRefreshes.set(refreshToken, refresh);
+  }
+  return refresh;
+}
+
 export async function getValidAccessToken(): Promise<string> {
   const session = await getSession();
   if (!session.accessToken || !session.refreshToken || !session.expiresAt) {
@@ -112,7 +127,7 @@ export async function getValidAccessToken(): Promise<string> {
     return session.accessToken;
   }
 
-  const refreshed = await refreshAccessToken(session.refreshToken);
+  const refreshed = await refreshOnce(session.refreshToken);
   session.accessToken = refreshed.access_token;
   session.expiresAt = Date.now() + refreshed.expires_in * 1000;
   if (refreshed.scope) session.scope = refreshed.scope;

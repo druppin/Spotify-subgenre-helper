@@ -8,6 +8,10 @@ import { PlaylistPicker } from "./PlaylistPicker";
 
 const DEFAULT_BATCH = 10;
 const MAX_BATCH = 50;
+// Songs analyzed at once. Each one also costs a few Spotify requests for its
+// context, so the cap stays modest to keep clear of Spotify's rate limits.
+const DEFAULT_CONCURRENCY = 3;
+const MAX_CONCURRENCY = 8;
 // Stop a run after this many failures in a row — usually the LLM provider
 // rate-limiting or rejecting the key, where carrying on just burns requests.
 const MAX_CONSECUTIVE_FAILURES = 3;
@@ -165,13 +169,14 @@ export function GenerateGenresDialog({
   const [reloadNonce, setReloadNonce] = useState(0);
   const loaded = usePlaylistGenres(playlistId, reloadNonce);
   const [batchSize, setBatchSize] = useState(DEFAULT_BATCH);
+  const [concurrency, setConcurrency] = useState(DEFAULT_CONCURRENCY);
   const [running, setRunning] = useState(false);
-  const [progress, setProgress] = useState<{ done: number; total: number; current: string | null } | null>(null);
+  const [progress, setProgress] = useState<{ done: number; total: number; current: string[] } | null>(null);
   const [results, setResults] = useState<RunResult[]>([]);
   const [stoppedReason, setStoppedReason] = useState<string | null>(null);
   const stopRef = useRef(false);
 
-  // Closing the overlay mid-run stops after the request in flight.
+  // Closing the overlay mid-run stops after the requests in flight.
   useEffect(
     () => () => {
       stopRef.current = true;
@@ -201,6 +206,7 @@ export function GenerateGenresDialog({
   })();
 
   const clampedBatch = Math.min(Math.max(Math.round(batchSize) || 1, 1), MAX_BATCH);
+  const clampedConcurrency = Math.min(Math.max(Math.round(concurrency) || 1, 1), MAX_CONCURRENCY);
 
   const run = async (queue: PlaylistGenreTrack[]) => {
     stopRef.current = false;
@@ -209,37 +215,49 @@ export function GenerateGenresDialog({
     setStoppedReason(null);
     let consecutiveFailures = 0;
     let anySucceeded = false;
+    let next = 0;
+    let done = 0;
+    // Keyed by track ID: two different songs can share a name.
+    const inFlight = new Map<string, string>();
+    const report = () => setProgress({ done, total: queue.length, current: [...inFlight.values()] });
+    report();
 
-    for (let i = 0; i < queue.length; i++) {
-      if (stopRef.current) {
-        setStoppedReason("Stopped.");
-        break;
-      }
-      const track = queue[i];
-      setProgress({ done: i, total: queue.length, current: track.name });
-      let result: RunResult;
-      try {
-        const res = await fetchWithTimeout(`/api/track/${track.id}/summary`, {}, 90_000);
-        const body = await res.json();
-        if (res.ok && body.summary) {
-          result = { id: track.id, name: track.name, ok: true, detail: body.summary.subgenres.join(", ") };
-        } else {
-          result = { id: track.id, name: track.name, ok: false, detail: body.summaryError ?? body.error ?? `HTTP ${res.status}` };
+    // Each worker takes the next song off the queue until it's empty or the
+    // run is stopped; requests already in flight always finish.
+    const worker = async () => {
+      while (next < queue.length && !stopRef.current) {
+        const track = queue[next++];
+        inFlight.set(track.id, track.name);
+        report();
+        let result: RunResult;
+        try {
+          const res = await fetchWithTimeout(`/api/track/${track.id}/summary`, {}, 90_000);
+          const body = await res.json();
+          if (res.ok && body.summary) {
+            result = { id: track.id, name: track.name, ok: true, detail: body.summary.subgenres.join(", ") };
+          } else {
+            result = { id: track.id, name: track.name, ok: false, detail: body.summaryError ?? body.error ?? `HTTP ${res.status}` };
+          }
+        } catch (err) {
+          result = { id: track.id, name: track.name, ok: false, detail: String(err) };
         }
-      } catch (err) {
-        result = { id: track.id, name: track.name, ok: false, detail: String(err) };
+        inFlight.delete(track.id);
+        done++;
+        report();
+        setResults((prev) => [...prev, result]);
+        if (result.ok) {
+          anySucceeded = true;
+          consecutiveFailures = 0;
+        } else if (++consecutiveFailures >= MAX_CONSECUTIVE_FAILURES && !stopRef.current) {
+          stopRef.current = true;
+          setStoppedReason(`Stopped after ${MAX_CONSECUTIVE_FAILURES} failures in a row — see the errors below.`);
+        }
       }
-      setResults((prev) => [...prev, result]);
-      if (result.ok) {
-        anySucceeded = true;
-        consecutiveFailures = 0;
-      } else if (++consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) {
-        setStoppedReason(`Stopped after ${MAX_CONSECUTIVE_FAILURES} failures in a row — see the errors below.`);
-        break;
-      }
-    }
+    };
+    await Promise.all(Array.from({ length: Math.min(clampedConcurrency, queue.length) }, worker));
+    if (stopRef.current && done < queue.length) setStoppedReason((r) => r ?? "Stopped.");
 
-    setProgress((p) => (p ? { ...p, done: p.total, current: null } : p));
+    setProgress((p) => (p ? { ...p, done: p.total, current: [] } : p));
     setRunning(false);
     if (anySucceeded) {
       onGenerated();
@@ -289,7 +307,17 @@ export function GenerateGenresDialog({
                   onChange={(e) => setBatchSize(Number(e.target.value))}
                   className="w-16 rounded-md border border-neutral-700 bg-neutral-950 px-2 py-1 text-sm outline-none focus:border-green-600"
                 />
-                songs
+                songs,
+                <input
+                  type="number"
+                  min={1}
+                  max={MAX_CONCURRENCY}
+                  value={concurrency}
+                  onChange={(e) => setConcurrency(Number(e.target.value))}
+                  title={`How many songs to analyze at the same time (1–${MAX_CONCURRENCY}). Higher is faster but more likely to hit rate limits.`}
+                  className="w-14 rounded-md border border-neutral-700 bg-neutral-950 px-2 py-1 text-sm outline-none focus:border-green-600"
+                />
+                at a time
               </label>
               <button
                 onClick={() => run(missing.slice(0, clampedBatch))}
@@ -311,7 +339,8 @@ export function GenerateGenresDialog({
               <div className="flex items-center justify-between text-sm">
                 <span className="truncate text-neutral-300">
                   {running
-                    ? `Analyzing ${progress.done + 1} of ${progress.total}: ${progress.current}`
+                    ? `Analyzed ${progress.done} of ${progress.total}` +
+                      (progress.current.length ? ` — now: ${progress.current.join(", ")}` : "")
                     : `Done — ${results.filter((r) => r.ok).length} of ${results.length} succeeded.`}
                 </span>
                 {running && (
@@ -319,7 +348,7 @@ export function GenerateGenresDialog({
                     onClick={() => (stopRef.current = true)}
                     className="flex-shrink-0 text-xs text-neutral-400 hover:text-red-400"
                   >
-                    Stop after this one
+                    {progress.current.length > 1 ? "Stop after these" : "Stop after this one"}
                   </button>
                 )}
               </div>

@@ -53,12 +53,15 @@ const CACHE_DIR = path.join(process.cwd(), ".cache");
 
 /**
  * One JSON file per namespace under .cache/. Simple, human-inspectable,
- * fine for a single-user local tool — not meant to survive concurrent
- * writers, which a personal dev server never has.
+ * fine for a single-user local tool. Writes within this process are
+ * serialized; it's not meant to survive multiple processes writing.
  */
 export class FileCache<V = unknown> implements Cache<V> {
   private filePath: string;
   private loaded: Map<string, Entry<V>> | null = null;
+  // Overlapping writeFile calls to one path can interleave and corrupt it
+  // (bulk genre generation runs several requests at once), so writes queue.
+  private writeChain: Promise<void> = Promise.resolve();
 
   constructor(namespace: string) {
     this.filePath = path.join(CACHE_DIR, `${namespace}.json`);
@@ -75,9 +78,13 @@ export class FileCache<V = unknown> implements Cache<V> {
     return this.loaded;
   }
 
-  private async persist(map: Map<string, Entry<V>>): Promise<void> {
-    await fs.mkdir(CACHE_DIR, { recursive: true });
-    await fs.writeFile(this.filePath, JSON.stringify(Object.fromEntries(map), null, 2), "utf-8");
+  private persist(map: Map<string, Entry<V>>): Promise<void> {
+    const write = this.writeChain.then(async () => {
+      await fs.mkdir(CACHE_DIR, { recursive: true });
+      await fs.writeFile(this.filePath, JSON.stringify(Object.fromEntries(map), null, 2), "utf-8");
+    });
+    this.writeChain = write.catch(() => {});
+    return write;
   }
 
   async get(key: string): Promise<V | undefined> {
