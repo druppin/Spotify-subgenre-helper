@@ -1565,6 +1565,9 @@ export function LostTracksView({ tabs }: { tabs: ReactNode }) {
                 className="rounded-full border border-neutral-700 px-3 py-1.5 text-sm text-neutral-300 hover:border-neutral-500 disabled:opacity-40"
               >
                 Clear selection
+                {selected.size > 0 && ` (${selectedRows.length}${
+                  selected.size > selectedRows.length ? ` + ${selected.size - selectedRows.length} not shown` : ""
+                })`}
               </button>
               {mode === "homes" && selectedPlaceId && (
                 <button
@@ -1624,12 +1627,22 @@ export function LostTracksView({ tabs }: { tabs: ReactNode }) {
                 disabled={adding || !destinationId || toAdd.length === 0}
                 title={
                   selectedRows.length > toAdd.length
-                    ? "Songs already in the chosen playlist (in any version) are skipped"
+                    ? `${selectedRows.length - toAdd.length} of the selected songs are already in ${
+                        destinationId ? placeName(destinationId) : "that playlist"
+                      } (in some version) and will be skipped`
                     : undefined
                 }
                 className="rounded-full bg-green-600 px-4 py-1.5 text-sm font-semibold text-white hover:bg-green-500 disabled:opacity-40"
               >
-                {adding ? "Adding…" : `Add ${toAdd.length} to playlist`}
+                {adding
+                  ? "Adding…"
+                  : selectedRows.length === 0
+                    ? "Add to playlist"
+                    : toAdd.length === selectedRows.length
+                      ? `Add ${toAdd.length} to playlist`
+                      : toAdd.length === 0
+                        ? `All ${selectedRows.length} already there`
+                        : `Add ${toAdd.length} of ${selectedRows.length} (${selectedRows.length - toAdd.length} already there)`}
               </button>
             </footer>
           </section>
