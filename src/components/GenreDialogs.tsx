@@ -22,7 +22,6 @@ const STEPS: { step: SummaryStep; label: string }[] = [
   { step: "musicbrainz", label: "MusicBrainz" },
   { step: "ai", label: "AI" },
 ];
-const SONG_TIMEOUT_MS = 90_000;
 // Stop a run after this many failures in a row — usually the LLM provider
 // rate-limiting or rejecting the key, where carrying on just burns requests.
 const MAX_CONSECUTIVE_FAILURES = 3;
@@ -165,33 +164,25 @@ function GenreSummary({ tracks, onGenerateMissing }: { tracks: PlaylistGenreTrac
 type RunResult = { id: string; name: string; ok: boolean; detail: string };
 type ActiveSong = { id: string; name: string; startedAt: number; steps: SummaryStep[] };
 
-// Asks for one song's summary, reporting each step as the server finishes
-// it. Resolves with the status and body the plain request would return.
-async function fetchSummaryWithProgress(
-  trackId: string,
-  onStep: (step: SummaryStep) => void
-): Promise<{ status: number; body: { summary?: { subgenres: string[] }; summaryError?: string; error?: string } }> {
-  // Unlike fetchWithTimeout, this signal also covers reading the streamed body.
-  const res = await fetch(`/api/track/${trackId}/summary?progress=1`, {
-    signal: AbortSignal.timeout(SONG_TIMEOUT_MS),
-  });
-  if (!res.body) throw new Error(`HTTP ${res.status}`);
+type RunMessage =
+  | { id: string; started: true }
+  | { id: string; step: SummaryStep }
+  | { id: string; status: number; body: { summary?: { subgenres: string[] }; summaryError?: string; error?: string } }
+  | { done: true };
+
+// Reads a newline-delimited JSON response, one message at a time.
+async function* readMessages(res: Response): AsyncGenerator<RunMessage> {
+  if (!res.body) return;
   const reader = res.body.pipeThrough(new TextDecoderStream()).getReader();
   let buffered = "";
   for (;;) {
     const { done, value } = await reader.read();
-    if (done) break;
+    if (done) return;
     buffered += value;
     const lines = buffered.split("\n");
     buffered = lines.pop() ?? "";
-    for (const line of lines) {
-      if (!line) continue;
-      const message = JSON.parse(line);
-      if (message.step) onStep(message.step);
-      else return message;
-    }
+    for (const line of lines) if (line) yield JSON.parse(line);
   }
-  throw new Error("The response ended before the result arrived.");
 }
 
 export function GenerateGenresDialog({
@@ -226,11 +217,22 @@ export function GenerateGenresDialog({
   const [results, setResults] = useState<RunResult[]>([]);
   const [stoppedReason, setStoppedReason] = useState<string | null>(null);
   const stopRef = useRef(false);
+  const runIdRef = useRef<string | null>(null);
+  const abortRef = useRef<AbortController | null>(null);
 
-  // Closing the overlay mid-run stops after the requests in flight.
+  // Asks the server to start no more songs; ones already running finish.
+  const stop = () => {
+    if (stopRef.current) return;
+    stopRef.current = true;
+    if (runIdRef.current) fetch(`/api/genre-runs?runId=${runIdRef.current}`, { method: "DELETE" }).catch(() => {});
+  };
+
+  // Closing the overlay mid-run drops the connection, which also tells the
+  // server to start no more songs.
   useEffect(
     () => () => {
       stopRef.current = true;
+      abortRef.current?.abort();
     },
     []
   );
@@ -266,50 +268,65 @@ export function GenerateGenresDialog({
     setStoppedReason(null);
     let consecutiveFailures = 0;
     let anySucceeded = false;
-    let next = 0;
     let done = 0;
     setActive([]);
     setProgress({ done, total: queue.length });
+    const names = new Map(queue.map((t) => [t.id, t.name]));
+    const runId = crypto.randomUUID();
+    runIdRef.current = runId;
+    const abort = new AbortController();
+    abortRef.current = abort;
 
-    // Each worker takes the next song off the queue until it's empty or the
-    // run is stopped; requests already in flight always finish.
-    const worker = async () => {
-      while (next < queue.length && !stopRef.current) {
-        const track = queue[next++];
-        setActive((prev) => [...prev, { id: track.id, name: track.name, startedAt: Date.now(), steps: [] }]);
-        let result: RunResult;
-        try {
-          const { status, body } = await fetchSummaryWithProgress(track.id, (step) =>
-            setActive((prev) => prev.map((s) => (s.id === track.id ? { ...s, steps: [...s.steps, step] } : s)))
-          );
-          if (status < 400 && body.summary) {
-            result = { id: track.id, name: track.name, ok: true, detail: body.summary.subgenres.join(", ") };
-          } else {
-            result = { id: track.id, name: track.name, ok: false, detail: body.summaryError ?? body.error ?? `HTTP ${status}` };
-          }
-        } catch (err) {
-          const timedOut = err instanceof Error && err.name === "TimeoutError";
-          result = {
-            id: track.id,
-            name: track.name,
-            ok: false,
-            detail: timedOut ? `Timed out after ${SONG_TIMEOUT_MS / 1000}s` : String(err),
-          };
-        }
-        setActive((prev) => prev.filter((s) => s.id !== track.id));
-        done++;
-        setProgress({ done, total: queue.length });
-        setResults((prev) => [...prev, result]);
-        if (result.ok) {
-          anySucceeded = true;
-          consecutiveFailures = 0;
-        } else if (++consecutiveFailures >= MAX_CONSECUTIVE_FAILURES && !stopRef.current) {
-          stopRef.current = true;
-          setStoppedReason(`Stopped after ${MAX_CONSECUTIVE_FAILURES} failures in a row — see the errors below.`);
-        }
+    // One request for the whole run: the server works through the songs in
+    // parallel and streams back every song's progress. (One request per song
+    // would be held to the browser's 6 connections per server.)
+    const finish = (id: string, result: RunResult) => {
+      setActive((prev) => prev.filter((s) => s.id !== id));
+      done++;
+      setProgress({ done, total: queue.length });
+      setResults((prev) => [...prev, result]);
+      if (result.ok) {
+        anySucceeded = true;
+        consecutiveFailures = 0;
+      } else if (++consecutiveFailures >= MAX_CONSECUTIVE_FAILURES && !stopRef.current) {
+        stop();
+        setStoppedReason(`Stopped after ${MAX_CONSECUTIVE_FAILURES} failures in a row — see the errors below.`);
       }
     };
-    await Promise.all(Array.from({ length: Math.min(clampedConcurrency, queue.length) }, worker));
+    try {
+      const res = await fetch("/api/genre-runs", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ runId, trackIds: queue.map((t) => t.id), concurrency: clampedConcurrency }),
+        signal: abort.signal,
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.error ?? `HTTP ${res.status}`);
+      }
+      for await (const message of readMessages(res)) {
+        if ("done" in message) break;
+        const name = names.get(message.id) ?? message.id;
+        if ("started" in message) {
+          setActive((prev) => [...prev, { id: message.id, name, startedAt: Date.now(), steps: [] }]);
+        } else if ("step" in message) {
+          const { id, step } = message;
+          setActive((prev) => prev.map((s) => (s.id === id ? { ...s, steps: [...s.steps, step] } : s)));
+        } else {
+          const { id, status, body } = message;
+          finish(
+            id,
+            status < 400 && body.summary
+              ? { id, name, ok: true, detail: body.summary.subgenres.join(", ") }
+              : { id, name, ok: false, detail: body.summaryError ?? body.error ?? `HTTP ${status}` }
+          );
+        }
+      }
+    } catch (err) {
+      if (!abort.signal.aborted) setStoppedReason(`The run failed: ${err instanceof Error ? err.message : String(err)}`);
+    }
+    runIdRef.current = null;
+    setActive([]);
     if (stopRef.current && done < queue.length) setStoppedReason((r) => r ?? "Stopped.");
 
     setProgress((p) => (p ? { ...p, done: p.total } : p));
@@ -415,7 +432,7 @@ export function GenerateGenresDialog({
                 </span>
                 {running && (
                   <button
-                    onClick={() => (stopRef.current = true)}
+                    onClick={stop}
                     className="flex-shrink-0 text-xs text-neutral-400 hover:text-red-400"
                   >
                     {active.length > 1 ? "Stop after these" : "Stop after this one"}
