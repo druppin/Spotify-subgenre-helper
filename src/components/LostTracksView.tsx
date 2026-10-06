@@ -15,6 +15,7 @@ import { usePlayer } from "./PlayerProvider";
 import { PlaylistPicker } from "./PlaylistPicker";
 import { PlaylistThumb } from "./PlaylistThumb";
 import { NewPlaylistDialog } from "./QuickActions";
+import { GenerateGenresDialog, PlaylistGenresDialog } from "./GenreDialogs";
 
 // One song as it appears in one place (Liked Songs or an editable playlist).
 // Versions of the same song (see groupSongs) share a songId, so a single in
@@ -65,6 +66,7 @@ const DESTINATION_STORAGE_KEY = "lostTracks.destinationId";
 const MODE_STORAGE_KEY = "lostTracks.mode";
 const HIDDEN_STORAGE_KEY = "lostTracks.hiddenByPlace";
 const HIDE_RULES_STORAGE_KEY = "lostTracks.hideIfAlsoIn";
+const SHOW_GENRES_STORAGE_KEY = "lostTracks.showGenres";
 
 function loadJson<T>(key: string, fallback: T): T {
   try {
@@ -105,6 +107,78 @@ function ProgressLine({ label, done, total }: { label: string; done: number; tot
           <div className="h-full rounded-full bg-green-600 transition-[width]" style={{ width: `${percent}%` }} />
         )}
       </div>
+    </div>
+  );
+}
+
+interface SelectByOption {
+  value: string;
+  name: string;
+  count: number;
+}
+
+// "Select songs [in / not in] [playlist or subgenre]": replaces the current
+// selection with the shown songs that match.
+function SelectByBar({
+  playlists,
+  genres,
+  onSelect,
+}: {
+  playlists: SelectByOption[];
+  genres: SelectByOption[];
+  onSelect: (matching: boolean, category: string) => void;
+}) {
+  const [matching, setMatching] = useState(true);
+  const [category, setCategory] = useState("");
+  // A choice that no longer applies to the shown songs falls back to none.
+  const available = [...playlists, ...genres].some((o) => o.value === category) ? category : "";
+  return (
+    <div className="flex flex-wrap items-center gap-2 border-b border-neutral-800 px-4 py-2 text-xs text-neutral-400">
+      <span>Select songs</span>
+      <select
+        value={matching ? "in" : "not-in"}
+        onChange={(e) => setMatching(e.target.value === "in")}
+        aria-label="In or not in"
+        className="rounded border border-neutral-700 bg-neutral-900 px-2 py-1 text-xs text-neutral-200"
+      >
+        <option value="in">in</option>
+        <option value="not-in">not in</option>
+      </select>
+      <select
+        value={available}
+        onChange={(e) => setCategory(e.target.value)}
+        aria-label="Playlist or subgenre"
+        className="max-w-xs rounded border border-neutral-700 bg-neutral-900 px-2 py-1 text-xs text-neutral-200"
+      >
+        <option value="">Choose a playlist or subgenre…</option>
+        {playlists.length > 0 && (
+          <optgroup label="Playlists">
+            {playlists.map((o) => (
+              <option key={o.value} value={o.value}>
+                {o.name} ({o.count})
+              </option>
+            ))}
+          </optgroup>
+        )}
+        {genres.length > 0 && (
+          <optgroup label="Subgenres">
+            {genres.map((o) => (
+              <option key={o.value} value={o.value}>
+                {o.name} ({o.count})
+              </option>
+            ))}
+          </optgroup>
+        )}
+      </select>
+      <button
+        type="button"
+        onClick={() => onSelect(matching, available)}
+        disabled={!available}
+        title="Replace the current selection with the shown songs that match"
+        className="rounded-md border border-neutral-700 px-2.5 py-1 text-neutral-200 hover:border-green-600 hover:bg-green-600/10 disabled:opacity-50 disabled:hover:border-neutral-700 disabled:hover:bg-transparent"
+      >
+        Select
+      </button>
     </div>
   );
 }
@@ -187,7 +261,9 @@ function CoverageBar({
   );
 }
 
-function GenrePanel({
+// A song's genre info as a column in its row: subgenres and mood, with
+// the AI's reasoning on hover, and a way to generate or regenerate it.
+function GenreCell({
   genres,
   state,
   onGenerate,
@@ -198,46 +274,53 @@ function GenrePanel({
   onGenerate: (force: boolean) => void;
 }) {
   const loading = state === "loading";
+  const error = state && state !== "loading" ? state.error : null;
   return (
-    <div className="space-y-2 border-l-2 border-green-700/50 bg-neutral-900/60 py-2 pl-[4.75rem] pr-4 text-sm">
+    <div className="w-64 flex-shrink-0" onClick={(e) => e.stopPropagation()}>
       {genres ? (
-        <>
-          <div className="flex items-start justify-between gap-2">
-            <p className="font-medium text-neutral-200">{genres.moodVibe || "No mood description."}</p>
-            <button
-              type="button"
-              onClick={() => onGenerate(true)}
-              disabled={loading}
-              title="Not right? Generate fresh genre info for this song."
-              className="flex-shrink-0 text-xs text-neutral-500 hover:text-green-400 disabled:opacity-50"
-            >
-              {loading ? "Generating…" : "↻ Regenerate"}
-            </button>
+        <div
+          title={[genres.moodVibe, genres.rationale].filter(Boolean).join("\n\n") || undefined}
+          className="flex items-start gap-1"
+        >
+          <div className="min-w-0 flex-1">
+            <div className="flex max-h-[2.5rem] flex-wrap gap-1 overflow-hidden">
+              {genres.subgenres.map((genre) => (
+                <span key={genre} className="rounded-full bg-green-600/20 px-1.5 py-px text-[11px] text-green-400">
+                  {genre}
+                </span>
+              ))}
+              {genres.subgenres.length === 0 && <span className="text-[11px] text-neutral-500">No subgenres listed.</span>}
+            </div>
+            {genres.moodVibe && <div className="mt-0.5 truncate text-[11px] text-neutral-500">{genres.moodVibe}</div>}
           </div>
-          <div className="flex flex-wrap gap-1">
-            {genres.subgenres.map((genre) => (
-              <span key={genre} className="rounded-full bg-green-600/20 px-2 py-0.5 text-xs text-green-400">
-                {genre}
-              </span>
-            ))}
-            {genres.subgenres.length === 0 && <span className="text-xs text-neutral-500">No subgenres listed.</span>}
-          </div>
-          {genres.rationale && <p className="text-xs text-neutral-500">{genres.rationale}</p>}
-        </>
-      ) : (
-        <div className="flex items-center gap-3">
-          <span className="text-xs text-neutral-500">No genre info for this song yet.</span>
           <button
             type="button"
-            onClick={() => onGenerate(false)}
+            onClick={() => onGenerate(true)}
             disabled={loading}
-            className="rounded-md border border-neutral-700 px-2.5 py-1 text-xs text-neutral-200 hover:border-green-600 hover:bg-green-600/10 disabled:opacity-50"
+            title="Not right? Generate fresh genre info for this song."
+            aria-label="Regenerate genre info"
+            className={`flex-shrink-0 text-xs text-neutral-500 hover:text-green-400 disabled:opacity-50 ${
+              loading ? "" : "opacity-0 focus:opacity-100 group-hover:opacity-100"
+            }`}
           >
-            {loading ? "Generating…" : "Generate genre info"}
+            {loading ? "…" : "↻"}
           </button>
         </div>
+      ) : (
+        <button
+          type="button"
+          onClick={() => onGenerate(false)}
+          disabled={loading}
+          className="rounded-md border border-neutral-800 px-2 py-0.5 text-[11px] text-neutral-400 hover:border-green-600 hover:bg-green-600/10 hover:text-neutral-200 disabled:opacity-50"
+        >
+          {loading ? "Generating…" : "Generate genre info"}
+        </button>
       )}
-      {state && state !== "loading" && <p className="text-xs text-red-400">{state.error}</p>}
+      {error && (
+        <div className="mt-0.5 truncate text-[11px] text-red-400" title={error}>
+          {error}
+        </div>
+      )}
     </div>
   );
 }
@@ -327,7 +410,7 @@ export function LostTracksView({ tabs }: { tabs: ReactNode }) {
   const [scanError, setScanError] = useState<string | null>(null);
   const [progress, setProgress] = useState<ScanProgressResponse | null>(null);
 
-  const [mode, setMode] = useState<Mode>(() => (loadJson<Mode>(MODE_STORAGE_KEY, "lost") === "homes" ? "homes" : "lost"));
+  const [mode, setMode] = useState<Mode>(() => (loadJson<Mode>(MODE_STORAGE_KEY, "homes") === "lost" ? "lost" : "homes"));
   // Places that don't count as a song's home — e.g. a catch-all playlist
   // that would otherwise make every song look filed.
   const [ignoredIds, setIgnoredIds] = useState<Set<string>>(() => new Set(loadJson<string[]>(IGNORED_STORAGE_KEY, [])));
@@ -352,7 +435,11 @@ export function LostTracksView({ tabs }: { tabs: ReactNode }) {
   const newPlaylistDialogRef = useRef<HTMLDialogElement>(null);
   // Stored genre info by Spotify track ID, loaded once the library is in.
   const [genres, setGenres] = useState<Record<string, SongGenres>>({});
-  const [expandedSongIds, setExpandedSongIds] = useState<Set<string>>(new Set());
+  // Genre overlays mount only while open, so each opening starts fresh.
+  const [genreDialog, setGenreDialog] = useState<
+    { kind: "summary" | "generate"; playlistId: string | null } | null
+  >(null);
+  const [showGenres, setShowGenres] = useState(() => loadJson<boolean>(SHOW_GENRES_STORAGE_KEY, true));
   // Songs hidden within a playlist in the homes view, as placeId -> track
   // URIs. Hidden songs still show, greyed out at the bottom, and can't be
   // selected. A song counts as hidden if any of its versions is listed.
@@ -493,23 +580,46 @@ export function LostTracksView({ tabs }: { tabs: ReactNode }) {
     return versions;
   }, [songOf]);
 
-  const genresFor = (row: SongRow): SongGenres | undefined => {
-    const own = genres[trackIdOf(row.uri)];
-    if (own) return own;
-    for (const uri of songVersions.get(row.songId) ?? []) {
-      const other = genres[trackIdOf(uri)];
-      if (other) return other;
-    }
-    return undefined;
+  const genresFor = useCallback(
+    (row: SongRow): SongGenres | undefined => {
+      const own = genres[trackIdOf(row.uri)];
+      if (own) return own;
+      for (const uri of songVersions.get(row.songId) ?? []) {
+        const other = genres[trackIdOf(uri)];
+        if (other) return other;
+      }
+      return undefined;
+    },
+    [genres, songVersions]
+  );
+
+  // Picks up genres generated in bulk so the genre column shows them.
+  const reloadGenres = () => {
+    const trackIds = Object.keys(trackDetails)
+      .filter((uri) => uri.startsWith("spotify:track:"))
+      .map(trackIdOf);
+    fetch("/api/track-genres", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ids: trackIds }),
+    })
+      .then((res) => res.json())
+      .then((body) => body.genres && setGenres(body.genres))
+      .catch((err) => console.error("Failed to reload stored genres:", err));
   };
 
-  const toggleExpanded = (songId: string) => {
-    setExpandedSongIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(songId)) next.delete(songId);
-      else next.add(songId);
-      return next;
+  // The genre overlays read playlists by id; Liked Songs isn't one, and
+  // followed-only playlists can't have their tracks read (Spotify 403s).
+  const genreDialogPlaylists = playlists.filter((p) => p.canModify);
+  const openGenreDialog = (kind: "summary" | "generate") =>
+    setGenreDialog({
+      kind,
+      playlistId: selectedPlaceId && genreDialogPlaylists.some((p) => p.id === selectedPlaceId) ? selectedPlaceId : null,
     });
+
+  const toggleShowGenres = () => {
+    setShowGenres(!showGenres);
+    saveJson(SHOW_GENRES_STORAGE_KEY, !showGenres);
   };
 
   const generateGenres = async (row: SongRow, force: boolean) => {
@@ -588,6 +698,10 @@ export function LostTracksView({ tabs }: { tabs: ReactNode }) {
       );
   }, [places, placeName, placeCounts, ignoredIds, placeQuery]);
 
+  // Homes mode always shows one playlist; open on the first once the
+  // library has loaded rather than an empty list.
+  if (mode === "homes" && !selectedPlaceId && placeList.length > 0) setSelectedPlaceId(placeList[0].id);
+
   const hiddenSets = useMemo(() => {
     const sets: Record<string, Set<string>> = {};
     for (const [placeId, uris] of Object.entries(hiddenByPlace)) sets[placeId] = new Set(uris);
@@ -665,6 +779,49 @@ export function LostTracksView({ tabs }: { tabs: ReactNode }) {
   // that counts, ready to remove from this playlist.
   const selectSongsLivingElsewhere = () => {
     setSelected(new Set(rows.filter((r) => r.countedOtherHomes > 0).map((r) => r.uri)));
+  };
+
+  // What the "Select songs in / not in" dropdown offers: the playlists and
+  // subgenres the shown songs actually have, with how many songs have each.
+  const selectByOptions = useMemo(() => {
+    const playlistCounts = new Map<string, number>();
+    const genreCounts = new Map<string, number>();
+    for (const row of rows) {
+      for (const id of new Set([row.placeId, ...row.otherPlaceIds])) {
+        playlistCounts.set(id, (playlistCounts.get(id) ?? 0) + 1);
+      }
+      for (const genre of new Set(genresFor(row)?.subgenres ?? [])) {
+        genreCounts.set(genre, (genreCounts.get(genre) ?? 0) + 1);
+      }
+    }
+    // Every song shown in a playlist is in it, so it's no use as a choice.
+    if (mode === "homes" && selectedPlaceId) playlistCounts.delete(selectedPlaceId);
+    const byCount = (a: { name: string; count: number }, b: { name: string; count: number }) =>
+      b.count - a.count || a.name.localeCompare(b.name);
+    return {
+      playlists: [...playlistCounts]
+        .map(([id, count]) => ({ value: `playlist:${id}`, name: placeName(id), count }))
+        .sort(byCount),
+      genres: [...genreCounts]
+        .map(([genre, count]) => ({ value: `genre:${genre}`, name: genre, count }))
+        .sort(byCount),
+    };
+  }, [rows, genresFor, mode, selectedPlaceId, placeName]);
+
+  // Checks every shown song that is (or isn't) in a playlist or has (or
+  // hasn't) a subgenre. Songs with no genre info yet are left out of
+  // "not in subgenre", since it isn't known whether they belong.
+  const selectBy = (matching: boolean, category: string) => {
+    let has: (row: SongRow) => boolean | undefined;
+    if (category.startsWith("playlist:")) {
+      const id = category.slice("playlist:".length);
+      has = (row) => row.placeId === id || row.otherPlaceIds.includes(id);
+    } else {
+      const genre = category.slice("genre:".length);
+      has = (row) => genresFor(row)?.subgenres.includes(genre);
+    }
+    setSelected(new Set(rows.filter((r) => (matching ? has(r) === true : has(r) === false)).map((r) => r.uri)));
+    lastToggledIndexRef.current = null;
   };
 
   const saveHidden = (next: Record<string, string[]>) => {
@@ -902,8 +1059,8 @@ export function LostTracksView({ tabs }: { tabs: ReactNode }) {
         <div className="ml-4 flex rounded-md border border-neutral-700 p-0.5 text-sm" role="group" aria-label="View">
           {(
             [
-              ["lost", "Lost songs"],
-              ["homes", "Where songs live"],
+              ["homes", "My playlists"],
+              ["lost", "Lost tracks"],
             ] as const
           ).map(([id, label]) => (
             <button
@@ -919,10 +1076,44 @@ export function LostTracksView({ tabs }: { tabs: ReactNode }) {
         </div>
         <button
           type="button"
+          onClick={() => openGenreDialog("summary")}
+          title="See which subgenres make up a playlist"
+          className="ml-auto rounded-md border border-neutral-700 px-3 py-1.5 text-sm text-neutral-300 hover:border-green-600 hover:bg-green-600/10"
+        >
+          Playlist genres
+        </button>
+        <button
+          type="button"
+          onClick={() => openGenreDialog("generate")}
+          title="Generate genre info for a playlist's songs that don't have it yet"
+          className="rounded-md border border-neutral-700 px-3 py-1.5 text-sm text-neutral-300 hover:border-green-600 hover:bg-green-600/10"
+        >
+          Generate genres
+        </button>
+        {genreDialog?.kind === "summary" && (
+          <PlaylistGenresDialog
+            playlists={genreDialogPlaylists}
+            initialPlaylistId={genreDialog.playlistId}
+            onClose={() => setGenreDialog(null)}
+            onGenerateMissing={(playlistId) => setGenreDialog({ kind: "generate", playlistId })}
+          />
+        )}
+        {genreDialog?.kind === "generate" && (
+          <GenerateGenresDialog
+            playlists={genreDialogPlaylists}
+            initialPlaylistId={genreDialog.playlistId}
+            onClose={() => setGenreDialog(null)}
+            currentTrackId={null}
+            sourcePlaylistId={null}
+            onGenerated={reloadGenres}
+          />
+        )}
+        <button
+          type="button"
           onClick={() => startLoad("update")}
           disabled={status === "loading"}
           title="Download playlists that changed or were never scanned"
-          className="ml-auto rounded-md border border-neutral-700 px-3 py-1.5 text-sm text-neutral-300 hover:border-neutral-500 disabled:opacity-50"
+          className="rounded-md border border-neutral-700 px-3 py-1.5 text-sm text-neutral-300 hover:border-neutral-500 disabled:opacity-50"
         >
           {status === "loading" && load.fetchMode !== "none" ? "Scanning…" : "Update library"}
         </button>
@@ -1137,7 +1328,27 @@ export function LostTracksView({ tabs }: { tabs: ReactNode }) {
                 <option value="title">Title</option>
                 {mode === "homes" && <option value="fewest">Fewest other homes</option>}
               </select>
+              <button
+                type="button"
+                onClick={toggleShowGenres}
+                aria-pressed={showGenres}
+                title={showGenres ? "Hide the genre column" : "Show each song's subgenres and mood in a column"}
+                className={`rounded border px-2 py-1 text-sm ${
+                  showGenres
+                    ? "border-green-700 bg-green-600/10 text-green-400"
+                    : "border-neutral-700 text-neutral-400 hover:text-neutral-200"
+                }`}
+              >
+                Genres
+              </button>
             </div>
+            {rows.length > 0 && (
+              <SelectByBar
+                playlists={selectByOptions.playlists}
+                genres={selectByOptions.genres}
+                onSelect={selectBy}
+              />
+            )}
             {mode === "homes" && selectedPlaceId && (
               <div className="flex flex-wrap items-center gap-2 border-b border-neutral-800 px-4 py-2 text-xs text-neutral-400">
                 <span>Hide songs also in:</span>
@@ -1184,8 +1395,6 @@ export function LostTracksView({ tabs }: { tabs: ReactNode }) {
                 const hidden = index >= rows.length;
                 const reason = hidden && selectedPlaceId ? hiddenReason(row.songId, selectedPlaceId) : null;
                 const isCurrent = row.uri === currentUri;
-                const expanded = expandedSongIds.has(row.songId);
-                const hasGenres = genresFor(row) !== undefined;
                 return (
                   <li key={row.songId}>
                     {hidden && index === rows.length && (
@@ -1204,19 +1413,6 @@ export function LostTracksView({ tabs }: { tabs: ReactNode }) {
                             : "text-neutral-300 hover:bg-neutral-900"
                       }`}
                     >
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          toggleExpanded(row.songId);
-                        }}
-                        aria-expanded={expanded}
-                        aria-label={`${expanded ? "Hide" : "Show"} genre info for ${row.details.name}`}
-                        title={hasGenres ? "Genre info" : "No genre info yet"}
-                        className={`w-4 flex-shrink-0 text-xs ${hasGenres ? "text-green-500" : "text-neutral-600"} hover:text-neutral-200`}
-                      >
-                        {expanded ? "▾" : "▸"}
-                      </button>
                       <input
                         type="checkbox"
                         checked={!hidden && selected.has(row.uri)}
@@ -1302,15 +1498,15 @@ export function LostTracksView({ tabs }: { tabs: ReactNode }) {
                           {hidden ? "Unhide" : "Hide"}
                         </button>
                       )}
+                      {showGenres && (
+                        <GenreCell
+                          genres={genresFor(row)}
+                          state={genreStatus[row.songId]}
+                          onGenerate={(force) => generateGenres(row, force)}
+                        />
+                      )}
                       <span className="w-24 flex-shrink-0 text-right text-xs text-neutral-500">{formatAddedAt(row.addedAt)}</span>
                     </div>
-                    {expanded && (
-                      <GenrePanel
-                        genres={genresFor(row)}
-                        state={genreStatus[row.songId]}
-                        onGenerate={(force) => generateGenres(row, force)}
-                      />
-                    )}
                   </li>
                 );
               })}

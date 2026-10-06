@@ -8,7 +8,7 @@ import type { OrganizeStats } from "@/lib/organizeLog";
 
 const TABS = [
   { id: "subgenres", label: "Subgenre sorter" },
-  { id: "lost", label: "Lost tracks" },
+  { id: "lost", label: "My library" },
 ] as const;
 type TabId = (typeof TABS)[number]["id"];
 
@@ -37,20 +37,20 @@ function OrganizedCount({ stats }: { stats: OrganizeStats }) {
       className="ml-2 text-xs text-neutral-500"
       title={
         `Since tracking began: ${stats.songsOrganized} songs (${stats.bySource.sorter} sorter, ` +
-        `${stats.bySource["lost-tracks"]} Lost tracks), ${stats.adds} adds. ` +
-        `Moves: ${stats.movesBySource.sorter} sorter, ${stats.movesBySource["lost-tracks"]} Lost tracks. ` +
-        `Removals: ${stats.removalsBySource.sorter} sorter, ${stats.removalsBySource["lost-tracks"]} Lost tracks. ` +
+        `${stats.bySource["lost-tracks"]} My library), ${stats.adds} adds. ` +
+        `Moves: ${stats.movesBySource.sorter} sorter, ${stats.movesBySource["lost-tracks"]} My library. ` +
+        `Removals: ${stats.removalsBySource.sorter} sorter, ${stats.removalsBySource["lost-tracks"]} My library. ` +
         `A removal counts as a move when the song was also added to another playlist within 2 hours. ` +
         `Moves and removals are only counted from when tracking began.` +
         (estimated
           ? ` Before that (estimated from when songs were added to your playlists): ${before.sorter} sorter, ` +
-            `${before["lost-tracks"]} Lost tracks — an upper bound that may include adds made in Spotify itself.`
+            `${before["lost-tracks"]} My library — an upper bound that may include adds made in Spotify itself.`
           : "")
       }
     >
       {approx}
       {sorter + lost} songs organized · Subgenre sorter {approx}
-      {sorter} · Lost tracks {approx}
+      {sorter} · My library {approx}
       {lost} · {stats.moves} move{stats.moves === 1 ? "" : "s"} · {stats.removals} removal
       {stats.removals === 1 ? "" : "s"}
     </span>
