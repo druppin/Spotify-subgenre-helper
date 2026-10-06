@@ -10,6 +10,13 @@ import { getTrackDetailsCached } from "@/lib/playlistIndex";
 // before it existed get rebuilt instead of served without it.
 const contextCache = getCache<TrackContext>("track-context-v3");
 
+// The sources a context is built from, reported as each one finishes so a
+// caller can show per-song progress.
+export const CONTEXT_STEPS = ["spotify", "lastfm", "audio", "musicbrainz"] as const;
+export type ContextStep = (typeof CONTEXT_STEPS)[number];
+// The full set for a summary: the context sources, then the AI itself.
+export type SummaryStep = ContextStep | "ai";
+
 /**
  * Pulls Spotify metadata + artist genre tags + Last.fm tags/bio + ReccoBeats
  * audio-feature data into one JSON object per track. Cached per track ID
@@ -17,21 +24,30 @@ const contextCache = getCache<TrackContext>("track-context-v3");
  */
 export async function buildTrackContext(
   trackId: string,
-  spotify: SpotifyClient
+  spotify: SpotifyClient,
+  onStep?: (step: ContextStep) => void
 ): Promise<TrackContext> {
   const cached = await contextCache.get(trackId);
-  if (cached) return cached;
+  if (cached) {
+    for (const step of CONTEXT_STEPS) onStep?.(step);
+    return cached;
+  }
+
+  const reported = <T>(step: ContextStep, promise: Promise<T>) =>
+    promise.then((value) => {
+      onStep?.(step);
+      return value;
+    });
 
   // Free when a library scan, an opened playlist, or an earlier lookup has
   // already seen this song; otherwise one Spotify request.
-  const track = await getTrackDetailsCached(spotify, trackId);
+  const track = await reported("spotify", getTrackDetailsCached(spotify, trackId));
   const primaryArtistName = track.artists[0] ?? "";
 
-  const [lastfmTrack, lastfmArtist, audioFeaturesByTrack, musicbrainz] = await Promise.all([
-    getTrackTags(primaryArtistName, track.name),
-    getArtistInfo(primaryArtistName),
-    getAudioFeatures([trackId]),
-    getMusicBrainzInfo(primaryArtistName, track.name),
+  const [[lastfmTrack, lastfmArtist], audioFeaturesByTrack, musicbrainz] = await Promise.all([
+    reported("lastfm", Promise.all([getTrackTags(primaryArtistName, track.name), getArtistInfo(primaryArtistName)])),
+    reported("audio", getAudioFeatures([trackId])),
+    reported("musicbrainz", getMusicBrainzInfo(primaryArtistName, track.name)),
   ]);
 
   const context: TrackContext = {

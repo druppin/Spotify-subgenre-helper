@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getValidAccessToken } from "@/lib/spotify/auth";
 import { SpotifyClient, SpotifyApiError } from "@/lib/spotify/client";
-import { buildTrackContext } from "@/lib/context";
+import { buildTrackContext, type SummaryStep } from "@/lib/context";
 import { summarizeTrack, SUMMARY_PROMPT_VERSION } from "@/lib/llm/summarize";
 import type { LlmConfig, LlmProvider, TrackContext, TrackSummary } from "@/lib/llm/types";
 import { getCache } from "@/lib/cache";
@@ -18,9 +18,35 @@ function llmConfigFromEnv(): LlmConfig | null {
   return { provider, apiKey, model };
 }
 
+/**
+ * With ?progress=1 the response is newline-delimited JSON: a
+ * {"step": ...} line as each source (and then the AI) finishes, ending with
+ * {"status": ..., "body": ...} — the status and body the plain request would
+ * have returned. Bulk genre generation uses it to show each song's progress.
+ */
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const forceRegenerate = new URL(request.url).searchParams.get("force") === "true";
+  const searchParams = new URL(request.url).searchParams;
+  const forceRegenerate = searchParams.get("force") === "true";
+  if (searchParams.get("progress") !== "1") return summarize(id, forceRegenerate);
+
+  const encoder = new TextEncoder();
+  const stream = new ReadableStream({
+    async start(controller) {
+      const send = (line: unknown) => controller.enqueue(encoder.encode(JSON.stringify(line) + "\n"));
+      const res = await summarize(id, forceRegenerate, (step) => send({ step }));
+      send({ status: res.status, body: await res.json() });
+      controller.close();
+    },
+  });
+  return new Response(stream, { headers: { "Content-Type": "application/x-ndjson" } });
+}
+
+async function summarize(
+  id: string,
+  forceRegenerate: boolean,
+  onStep?: (step: SummaryStep) => void
+): Promise<NextResponse> {
 
   // Track context (Spotify metadata + artist genres + Last.fm tags + audio
   // features) is independent of the AI summary and always worth returning —
@@ -30,7 +56,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   try {
     const accessToken = await getValidAccessToken();
     const client = new SpotifyClient(accessToken);
-    context = await buildTrackContext(id, client);
+    context = await buildTrackContext(id, client, onStep);
   } catch (err) {
     return spotifyErrorResponse(err, "GET /api/track/[id]/summary (context)");
   }
@@ -49,12 +75,14 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     const cached = await summaryCache.get(cacheKey);
     if (cached) {
       await saveTrackGenres(id, cached, modelLabel);
+      onStep?.("ai");
       return NextResponse.json({ summary: cached, context, cached: true });
     }
   }
 
   try {
     const summary = await summarizeTrack(context, llmConfig);
+    onStep?.("ai");
     await summaryCache.set(cacheKey, summary);
     await saveTrackGenres(id, summary, modelLabel);
     return NextResponse.json({ summary, context, cached: false });

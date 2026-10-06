@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import type { SpotifyPlaylist } from "@/lib/spotify/client";
 import { fetchPlaylistGenres, summarizeGenres, type PlaylistGenreTrack } from "@/lib/playlistGenres";
-import { fetchWithTimeout } from "@/lib/fetchWithTimeout";
+import type { SummaryStep } from "@/lib/context";
 import { PlaylistPicker } from "./PlaylistPicker";
 
 const DEFAULT_BATCH = 10;
@@ -12,6 +12,15 @@ const MAX_BATCH = 50;
 // context, so the cap stays modest to keep clear of Spotify's rate limits.
 const DEFAULT_CONCURRENCY = 3;
 const MAX_CONCURRENCY = 8;
+// Per-song steps shown while analyzing, in the order they usually finish.
+const STEPS: { step: SummaryStep; label: string }[] = [
+  { step: "spotify", label: "Spotify" },
+  { step: "lastfm", label: "Last.fm" },
+  { step: "audio", label: "Audio" },
+  { step: "musicbrainz", label: "MusicBrainz" },
+  { step: "ai", label: "AI" },
+];
+const SONG_TIMEOUT_MS = 90_000;
 // Stop a run after this many failures in a row — usually the LLM provider
 // rate-limiting or rejecting the key, where carrying on just burns requests.
 const MAX_CONSECUTIVE_FAILURES = 3;
@@ -152,6 +161,36 @@ function GenreSummary({ tracks, onGenerateMissing }: { tracks: PlaylistGenreTrac
 }
 
 type RunResult = { id: string; name: string; ok: boolean; detail: string };
+type ActiveSong = { id: string; name: string; startedAt: number; steps: SummaryStep[] };
+
+// Asks for one song's summary, reporting each step as the server finishes
+// it. Resolves with the status and body the plain request would return.
+async function fetchSummaryWithProgress(
+  trackId: string,
+  onStep: (step: SummaryStep) => void
+): Promise<{ status: number; body: { summary?: { subgenres: string[] }; summaryError?: string; error?: string } }> {
+  // Unlike fetchWithTimeout, this signal also covers reading the streamed body.
+  const res = await fetch(`/api/track/${trackId}/summary?progress=1`, {
+    signal: AbortSignal.timeout(SONG_TIMEOUT_MS),
+  });
+  if (!res.body) throw new Error(`HTTP ${res.status}`);
+  const reader = res.body.pipeThrough(new TextDecoderStream()).getReader();
+  let buffered = "";
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffered += value;
+    const lines = buffered.split("\n");
+    buffered = lines.pop() ?? "";
+    for (const line of lines) {
+      if (!line) continue;
+      const message = JSON.parse(line);
+      if (message.step) onStep(message.step);
+      else return message;
+    }
+  }
+  throw new Error("The response ended before the result arrived.");
+}
 
 export function GenerateGenresDialog({
   playlists,
@@ -171,7 +210,15 @@ export function GenerateGenresDialog({
   const [batchSize, setBatchSize] = useState(DEFAULT_BATCH);
   const [concurrency, setConcurrency] = useState(DEFAULT_CONCURRENCY);
   const [running, setRunning] = useState(false);
-  const [progress, setProgress] = useState<{ done: number; total: number; current: string[] } | null>(null);
+  const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
+  const [active, setActive] = useState<ActiveSong[]>([]);
+  // Ticks while running so each song's elapsed time stays current.
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (!running) return;
+    const timer = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, [running]);
   const [results, setResults] = useState<RunResult[]>([]);
   const [stoppedReason, setStoppedReason] = useState<string | null>(null);
   const stopRef = useRef(false);
@@ -217,33 +264,37 @@ export function GenerateGenresDialog({
     let anySucceeded = false;
     let next = 0;
     let done = 0;
-    // Keyed by track ID: two different songs can share a name.
-    const inFlight = new Map<string, string>();
-    const report = () => setProgress({ done, total: queue.length, current: [...inFlight.values()] });
-    report();
+    setActive([]);
+    setProgress({ done, total: queue.length });
 
     // Each worker takes the next song off the queue until it's empty or the
     // run is stopped; requests already in flight always finish.
     const worker = async () => {
       while (next < queue.length && !stopRef.current) {
         const track = queue[next++];
-        inFlight.set(track.id, track.name);
-        report();
+        setActive((prev) => [...prev, { id: track.id, name: track.name, startedAt: Date.now(), steps: [] }]);
         let result: RunResult;
         try {
-          const res = await fetchWithTimeout(`/api/track/${track.id}/summary`, {}, 90_000);
-          const body = await res.json();
-          if (res.ok && body.summary) {
+          const { status, body } = await fetchSummaryWithProgress(track.id, (step) =>
+            setActive((prev) => prev.map((s) => (s.id === track.id ? { ...s, steps: [...s.steps, step] } : s)))
+          );
+          if (status < 400 && body.summary) {
             result = { id: track.id, name: track.name, ok: true, detail: body.summary.subgenres.join(", ") };
           } else {
-            result = { id: track.id, name: track.name, ok: false, detail: body.summaryError ?? body.error ?? `HTTP ${res.status}` };
+            result = { id: track.id, name: track.name, ok: false, detail: body.summaryError ?? body.error ?? `HTTP ${status}` };
           }
         } catch (err) {
-          result = { id: track.id, name: track.name, ok: false, detail: String(err) };
+          const timedOut = err instanceof Error && err.name === "TimeoutError";
+          result = {
+            id: track.id,
+            name: track.name,
+            ok: false,
+            detail: timedOut ? `Timed out after ${SONG_TIMEOUT_MS / 1000}s` : String(err),
+          };
         }
-        inFlight.delete(track.id);
+        setActive((prev) => prev.filter((s) => s.id !== track.id));
         done++;
-        report();
+        setProgress({ done, total: queue.length });
         setResults((prev) => [...prev, result]);
         if (result.ok) {
           anySucceeded = true;
@@ -257,7 +308,7 @@ export function GenerateGenresDialog({
     await Promise.all(Array.from({ length: Math.min(clampedConcurrency, queue.length) }, worker));
     if (stopRef.current && done < queue.length) setStoppedReason((r) => r ?? "Stopped.");
 
-    setProgress((p) => (p ? { ...p, done: p.total, current: [] } : p));
+    setProgress((p) => (p ? { ...p, done: p.total } : p));
     setRunning(false);
     if (anySucceeded) {
       onGenerated();
@@ -339,8 +390,7 @@ export function GenerateGenresDialog({
               <div className="flex items-center justify-between text-sm">
                 <span className="truncate text-neutral-300">
                   {running
-                    ? `Analyzed ${progress.done} of ${progress.total}` +
-                      (progress.current.length ? ` — now: ${progress.current.join(", ")}` : "")
+                    ? `Analyzed ${progress.done} of ${progress.total}`
                     : `Done — ${results.filter((r) => r.ok).length} of ${results.length} succeeded.`}
                 </span>
                 {running && (
@@ -348,7 +398,7 @@ export function GenerateGenresDialog({
                     onClick={() => (stopRef.current = true)}
                     className="flex-shrink-0 text-xs text-neutral-400 hover:text-red-400"
                   >
-                    {progress.current.length > 1 ? "Stop after these" : "Stop after this one"}
+                    {active.length > 1 ? "Stop after these" : "Stop after this one"}
                   </button>
                 )}
               </div>
@@ -360,6 +410,42 @@ export function GenerateGenresDialog({
               </div>
               {stoppedReason && <p className="text-xs text-amber-400">{stoppedReason}</p>}
             </div>
+          )}
+
+          {active.length > 0 && (
+            <ul className="space-y-2">
+              {active.map((song) => (
+                <li key={song.id} className="rounded-md border border-neutral-800 bg-neutral-950/60 px-3 py-2">
+                  <div className="flex items-baseline justify-between gap-2 text-sm">
+                    <span className="truncate text-neutral-200">{song.name}</span>
+                    <span className="flex-shrink-0 text-xs tabular-nums text-neutral-500">
+                      {Math.max(0, Math.floor((now - song.startedAt) / 1000))}s
+                    </span>
+                  </div>
+                  <div className="mt-1.5 h-1 rounded-full bg-neutral-800">
+                    <div
+                      className="h-1 rounded-full bg-green-600 transition-[width]"
+                      style={{ width: `${(song.steps.length / STEPS.length) * 100}%` }}
+                    />
+                  </div>
+                  <div className="mt-1.5 flex flex-wrap gap-x-3 gap-y-0.5 text-[11px]">
+                    {STEPS.map(({ step, label }) => {
+                      const finished = song.steps.includes(step);
+                      // The AI only starts once every source is in.
+                      const working = !finished && (step === "ai" ? song.steps.length === STEPS.length - 1 : step === "spotify" || song.steps.includes("spotify"));
+                      return (
+                        <span
+                          key={step}
+                          className={finished ? "text-green-400" : working ? "animate-pulse text-neutral-300" : "text-neutral-600"}
+                        >
+                          {finished ? "✓" : "·"} {label}
+                        </span>
+                      );
+                    })}
+                  </div>
+                </li>
+              ))}
+            </ul>
           )}
 
           {results.length > 0 && (
