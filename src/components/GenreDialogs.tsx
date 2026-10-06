@@ -8,10 +8,12 @@ import { PlaylistPicker } from "./PlaylistPicker";
 
 const DEFAULT_BATCH = 10;
 const MAX_BATCH = 50;
-// Songs analyzed at once. Each one also costs a few Spotify requests for its
-// context, so the cap stays modest to keep clear of Spotify's rate limits.
+// Songs analyzed at once. A song whose Spotify details aren't saved yet
+// costs a Spotify request, so the normal cap stays modest to keep clear of
+// Spotify's rate limits; the user can opt into the higher one.
 const DEFAULT_CONCURRENCY = 3;
 const MAX_CONCURRENCY = 8;
+const RAISED_MAX_CONCURRENCY = 25;
 // Per-song steps shown while analyzing, in the order they usually finish.
 const STEPS: { step: SummaryStep; label: string }[] = [
   { step: "spotify", label: "Spotify" },
@@ -209,6 +211,8 @@ export function GenerateGenresDialog({
   const loaded = usePlaylistGenres(playlistId, reloadNonce);
   const [batchSize, setBatchSize] = useState(DEFAULT_BATCH);
   const [concurrency, setConcurrency] = useState(DEFAULT_CONCURRENCY);
+  const [raisedConcurrency, setRaisedConcurrency] = useState(false);
+  const maxConcurrency = raisedConcurrency ? RAISED_MAX_CONCURRENCY : MAX_CONCURRENCY;
   const [running, setRunning] = useState(false);
   const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
   const [active, setActive] = useState<ActiveSong[]>([]);
@@ -253,7 +257,7 @@ export function GenerateGenresDialog({
   })();
 
   const clampedBatch = Math.min(Math.max(Math.round(batchSize) || 1, 1), MAX_BATCH);
-  const clampedConcurrency = Math.min(Math.max(Math.round(concurrency) || 1, 1), MAX_CONCURRENCY);
+  const clampedConcurrency = Math.min(Math.max(Math.round(concurrency) || 1, 1), maxConcurrency);
 
   const run = async (queue: PlaylistGenreTrack[]) => {
     stopRef.current = false;
@@ -362,10 +366,10 @@ export function GenerateGenresDialog({
                 <input
                   type="number"
                   min={1}
-                  max={MAX_CONCURRENCY}
+                  max={maxConcurrency}
                   value={concurrency}
                   onChange={(e) => setConcurrency(Number(e.target.value))}
-                  title={`How many songs to analyze at the same time (1–${MAX_CONCURRENCY}). Higher is faster but more likely to hit rate limits.`}
+                  title={`How many songs to analyze at the same time (1–${maxConcurrency}). Higher is faster but more likely to hit rate limits.`}
                   className="w-14 rounded-md border border-neutral-700 bg-neutral-950 px-2 py-1 text-sm outline-none focus:border-green-600"
                 />
                 at a time
@@ -382,6 +386,22 @@ export function GenerateGenresDialog({
               >
                 Analyze all {missing.length}
               </button>
+              <label className="flex basis-full items-start gap-2 text-xs text-neutral-400">
+                <input
+                  type="checkbox"
+                  checked={raisedConcurrency}
+                  onChange={(e) => {
+                    setRaisedConcurrency(e.target.checked);
+                    if (!e.target.checked) setConcurrency((c) => Math.min(c, MAX_CONCURRENCY));
+                  }}
+                  className="mt-0.5 accent-green-600"
+                />
+                <span>
+                  Allow up to {RAISED_MAX_CONCURRENCY} at a time (normally {MAX_CONCURRENCY}). Songs whose Spotify info
+                  isn&apos;t saved yet each cost a Spotify request, so this can send Spotify more requests at once than
+                  expected and risk getting the app temporarily blocked.
+                </span>
+              </label>
             </div>
           )}
 
