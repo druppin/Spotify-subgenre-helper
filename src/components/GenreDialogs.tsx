@@ -8,7 +8,9 @@ import type { SummaryStep } from "@/lib/context";
 import { PlaylistPicker } from "./PlaylistPicker";
 
 const DEFAULT_BATCH = 10;
-const MAX_BATCH = 50;
+const MAX_BATCH = 1000;
+// Batches bigger than this ask first, since each song is one AI request.
+const CONFIRM_BATCH_OVER = 50;
 // Songs analyzed at once. A song whose Spotify details aren't saved yet
 // costs a Spotify request, so the normal cap stays modest to keep clear of
 // Spotify's rate limits; the user can opt into the higher one.
@@ -163,13 +165,19 @@ function GenreSummary({ tracks, onGenerateMissing }: { tracks: PlaylistGenreTrac
   );
 }
 
-type RunResult = { id: string; name: string; ok: boolean; detail: string };
+// songSpecific: a failure about that song alone (e.g. the AI named no
+// subgenres), which doesn't count toward stopping the run.
+type RunResult = { id: string; name: string; ok: boolean; detail: string; songSpecific?: boolean };
 type ActiveSong = { id: string; name: string; startedAt: number; steps: SummaryStep[] };
 
 type RunMessage =
   | { id: string; started: true }
   | { id: string; step: SummaryStep }
-  | { id: string; status: number; body: { summary?: { subgenres: string[] }; summaryError?: string; error?: string } }
+  | {
+      id: string;
+      status: number;
+      body: { summary?: { subgenres: string[] }; summaryError?: string; error?: string; songSpecific?: boolean };
+    }
   | { done: true };
 
 // Reads a newline-delimited JSON response, one message at a time.
@@ -206,6 +214,7 @@ export function GenerateGenresDialog({
   const [concurrency, setConcurrency] = useState(DEFAULT_CONCURRENCY);
   const [raisedConcurrency, setRaisedConcurrency] = useState(false);
   const [refreshSources, setRefreshSources] = useState(false);
+  const [keepGoing, setKeepGoing] = useState(false);
   const maxConcurrency = raisedConcurrency ? RAISED_MAX_CONCURRENCY : MAX_CONCURRENCY;
   const [running, setRunning] = useState(false);
   const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
@@ -291,6 +300,8 @@ export function GenerateGenresDialog({
       if (result.ok) {
         anySucceeded = true;
         consecutiveFailures = 0;
+      } else if (keepGoing || result.songSpecific) {
+        // Neither a reason to stop nor proof the run is healthy again.
       } else if (++consecutiveFailures >= MAX_CONSECUTIVE_FAILURES && !stopRef.current) {
         stop();
         setStoppedReason(`Stopped after ${MAX_CONSECUTIVE_FAILURES} failures in a row — see the errors below.`);
@@ -321,7 +332,13 @@ export function GenerateGenresDialog({
             id,
             status < 400 && body.summary
               ? { id, name, ok: true, detail: body.summary.subgenres.join(", ") }
-              : { id, name, ok: false, detail: body.summaryError ?? body.error ?? `HTTP ${status}` }
+              : {
+                  id,
+                  name,
+                  ok: false,
+                  detail: body.summaryError ?? body.error ?? `HTTP ${status}`,
+                  songSpecific: body.songSpecific === true,
+                }
           );
         }
       }
@@ -401,7 +418,16 @@ export function GenerateGenresDialog({
                 </p>
               )}
               <button
-                onClick={() => run(missing.slice(0, clampedBatch))}
+                onClick={() => {
+                  const queue = missing.slice(0, clampedBatch);
+                  if (
+                    queue.length > CONFIRM_BATCH_OVER &&
+                    !window.confirm(`Analyze ${queue.length} songs? That's ${queue.length} AI requests.`)
+                  ) {
+                    return;
+                  }
+                  run(queue);
+                }}
                 className="rounded-md bg-green-600 px-3 py-1 text-sm font-semibold text-white"
               >
                 Analyze {Math.min(clampedBatch, missing.length)}
@@ -412,6 +438,19 @@ export function GenerateGenresDialog({
               >
                 Analyze all {missing.length}
               </button>
+              <label className="flex basis-full items-start gap-2 text-xs text-neutral-400">
+                <input
+                  type="checkbox"
+                  checked={keepGoing}
+                  onChange={(e) => setKeepGoing(e.target.checked)}
+                  className="mt-0.5 accent-green-600"
+                />
+                <span>
+                  Keep going after failures. Normally the run stops after {MAX_CONSECUTIVE_FAILURES} failures in a row
+                  (usually a rate limit or a bad API key, where carrying on wastes requests). Songs the AI couldn&apos;t
+                  name subgenres for never stop it.
+                </span>
+              </label>
               <label className="flex basis-full items-start gap-2 text-xs text-neutral-400">
                 <input
                   type="checkbox"

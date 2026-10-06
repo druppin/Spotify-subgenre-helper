@@ -86,6 +86,8 @@ export async function summarizeTrackById(
       return NextResponse.json({
         context,
         summaryError: "The AI couldn't name any subgenres for this song, so nothing was saved. Try again.",
+        // About this song alone, not a sign the AI or a source is down.
+        songSpecific: true,
       });
     }
     await summaryCache.set(cacheKey, summary);
