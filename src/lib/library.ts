@@ -1,7 +1,18 @@
 // Shared between /api/library and the views that read it.
+import type { SpotifyPlaylist } from "@/lib/spotify/client";
 
 // The place ID used for Liked Songs alongside playlist IDs.
 export const LIKED_SONGS_ID = "liked";
+
+// Lets Liked Songs be picked in a PlaylistPicker alongside real playlists.
+export const LIKED_SONGS_PICKER_ENTRY: SpotifyPlaylist = {
+  id: LIKED_SONGS_ID,
+  name: "Liked Songs",
+  images: [],
+  owner: { id: "", display_name: null },
+  collaborative: false,
+  canModify: false,
+};
 
 export interface LibraryTrackDetails {
   name: string;

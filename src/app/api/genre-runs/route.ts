@@ -11,7 +11,12 @@ import { summarizeTrackById } from "@/lib/trackSummary";
  */
 
 const MAX_CONCURRENCY = 25;
-const SONG_TIMEOUT_MS = 90_000;
+// Only a backstop for a song that's truly stuck: every source and the AI
+// have their own timeouts, and a song can spend minutes waiting its turn
+// in the MusicBrainz queue (one request a second, shared by every song
+// running). Giving up doesn't stop the song — it still finishes and saves
+// in the background — so a tight limit just reports successes as failures.
+const SONG_TIMEOUT_MS = 10 * 60_000;
 
 // Runs in progress, and whether each has been asked to stop: no new songs
 // start, songs already running finish.
@@ -20,19 +25,20 @@ const runs = new Map<string, { stopping: boolean }>();
 function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
   let timer: ReturnType<typeof setTimeout>;
   const timeout = new Promise<never>((_, reject) => {
-    timer = setTimeout(() => reject(new Error(`Timed out after ${ms / 1000}s`)), ms);
+    timer = setTimeout(() => reject(new Error(`Timed out after ${ms / 60_000} minutes`)), ms);
   });
   return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
 }
 
 /**
- * Body: { runId, trackIds, concurrency }. Responds with newline-delimited
+ * Body: { runId, trackIds, concurrency, refresh }. refresh looks each song
+ * up again, pulling the latest MusicBrainz data instead of what's saved. Responds with newline-delimited
  * JSON: {"id","started":true} when a song starts, {"id","step"} as each of
  * its sources finishes, {"id","status","body"} with what the single-song
  * summary route would have returned, and finally {"done":true}.
  */
 export async function POST(request: NextRequest) {
-  const { runId, trackIds, concurrency } = await request.json();
+  const { runId, trackIds, concurrency, refresh } = await request.json();
   if (typeof runId !== "string" || !Array.isArray(trackIds)) {
     return NextResponse.json({ error: "runId and trackIds are required" }, { status: 400 });
   }
@@ -63,7 +69,11 @@ export async function POST(request: NextRequest) {
           send({ id, started: true });
           try {
             const res = await withTimeout(
-              summarizeTrackById(id, false, { accessToken, onStep: (step) => send({ id, step }) }),
+              summarizeTrackById(id, false, {
+                accessToken,
+                onStep: (step) => send({ id, step }),
+                refreshSources: refresh === true,
+              }),
               SONG_TIMEOUT_MS
             );
             send({ id, status: res.status, body: await res.json() });

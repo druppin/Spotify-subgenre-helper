@@ -24,7 +24,8 @@ export type SummaryStep = ContextStep | "ai";
  * so repeat plays of the same track (or a summary retry) don't re-fetch —
  * but only when every lookup worked, so a rate-limited or timed-out source
  * isn't remembered as "no data" for good. refresh fetches again anyway
- * (for regenerating), falling back to the cached copy if a lookup fails.
+ * (for regenerating), skipping MusicBrainz's artist/album cache too, and
+ * falls back to the cached copy if a lookup fails.
  */
 export async function buildTrackContext(
   trackId: string,
@@ -59,7 +60,7 @@ export async function buildTrackContext(
       Promise.all([getTrackTags(primaryArtistName, track.name, onFailure), getArtistInfo(primaryArtistName, onFailure)])
     ),
     reported("audio", getAudioFeatures([trackId], onFailure)),
-    reported("musicbrainz", getMusicBrainzInfo(primaryArtistName, track.name, onFailure)),
+    reported("musicbrainz", getMusicBrainzInfo(primaryArtistName, track.name, onFailure, refresh)),
   ]);
 
   const context: TrackContext = {

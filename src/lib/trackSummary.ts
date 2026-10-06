@@ -23,11 +23,17 @@ function llmConfigFromEnv(): LlmConfig | null {
  * each source (and then the AI) as it finishes, for per-song progress.
  * accessToken skips the session lookup — needed once a streamed response
  * has started, when a token refresh could no longer save its cookie.
+ * refreshSources looks the song up again (latest MusicBrainz data
+ * included) instead of using what's saved; forceRegenerate implies it.
  */
 export async function summarizeTrackById(
   id: string,
   forceRegenerate: boolean,
-  { onStep, accessToken }: { onStep?: (step: SummaryStep) => void; accessToken?: string } = {}
+  {
+    onStep,
+    accessToken,
+    refreshSources = false,
+  }: { onStep?: (step: SummaryStep) => void; accessToken?: string; refreshSources?: boolean } = {}
 ): Promise<NextResponse> {
   // Track context (Spotify metadata + artist genres + Last.fm tags + audio
   // features) is independent of the AI summary and always worth returning —
@@ -37,7 +43,7 @@ export async function summarizeTrackById(
   let lookupFailed: boolean;
   try {
     const client = new SpotifyClient(accessToken ?? (await getValidAccessToken()));
-    ({ context, lookupFailed } = await buildTrackContext(id, client, onStep, forceRegenerate));
+    ({ context, lookupFailed } = await buildTrackContext(id, client, onStep, forceRegenerate || refreshSources));
   } catch (err) {
     return spotifyErrorResponse(err, "track summary (context)");
   }

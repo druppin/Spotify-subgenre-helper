@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import type { SpotifyPlaylist } from "@/lib/spotify/client";
 import {
   LIKED_SONGS_ID,
+  LIKED_SONGS_PICKER_ENTRY,
   type LibraryCoverage,
   type LibraryFetchMode,
   type LibraryResponse,
@@ -41,16 +42,6 @@ interface SongGenres {
   moodVibe: string;
   rationale?: string;
 }
-
-// Lets Liked Songs be picked in a PlaylistPicker alongside real playlists.
-const LIKED_SONGS_PICKER_ENTRY: SpotifyPlaylist = {
-  id: LIKED_SONGS_ID,
-  name: "Liked Songs",
-  images: [],
-  owner: { id: "", display_name: null },
-  collaborative: false,
-  canModify: false,
-};
 
 function trackIdOf(uri: string): string {
   return uri.split(":")[2] ?? uri;
@@ -608,13 +599,16 @@ export function LostTracksView({ tabs }: { tabs: ReactNode }) {
       .catch((err) => console.error("Failed to reload stored genres:", err));
   };
 
-  // The genre overlays read playlists by id; Liked Songs isn't one, and
-  // followed-only playlists can't have their tracks read (Spotify 403s).
+  // Followed-only playlists can't have their tracks read (Spotify 403s).
+  // The genre overlays offer Liked Songs themselves.
   const genreDialogPlaylists = playlists.filter((p) => p.canModify);
   const openGenreDialog = (kind: "summary" | "generate") =>
     setGenreDialog({
       kind,
-      playlistId: selectedPlaceId && genreDialogPlaylists.some((p) => p.id === selectedPlaceId) ? selectedPlaceId : null,
+      playlistId:
+        selectedPlaceId === LIKED_SONGS_ID || genreDialogPlaylists.some((p) => p.id === selectedPlaceId)
+          ? selectedPlaceId
+          : null,
     });
 
   const toggleShowGenres = () => {

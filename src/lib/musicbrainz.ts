@@ -1,4 +1,5 @@
 import { fetchWithTimeout } from "@/lib/fetchWithTimeout";
+import { getCache } from "@/lib/cache";
 
 const API_BASE = "https://musicbrainz.org/ws/2";
 // MusicBrainz requires a descriptive User-Agent and allows ~1 request/sec.
@@ -28,6 +29,15 @@ const EMPTY: MusicBrainzInfo = {
   releaseGroupGenres: [],
   artistGenres: [],
 };
+
+// Artist and album genre lookups, by request path. Many songs share an
+// artist or album, and each lookup is a second of the shared MusicBrainz
+// budget. Kept a month, since genre votes do change; `fresh` skips it.
+const lookupCache = getCache<unknown>("musicbrainz-lookups");
+const LOOKUP_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
+// Lookups already on their way, so songs by the same artist running at
+// the same time share one request.
+const inFlight = new Map<string, Promise<unknown>>();
 
 // Serializes every request in this process onto one ~1/sec schedule.
 let queue: Promise<unknown> = Promise.resolve();
@@ -64,6 +74,28 @@ function get<T>(path: string, onFailure?: () => void): Promise<T | null> {
   const result = queue.then(run);
   queue = result.catch(() => {});
   return result;
+}
+
+// get, for lookups worth sharing between songs. Only successful answers
+// are kept; a failure is retried by the next song that asks.
+function getShared<T>(path: string, onFailure: (() => void) | undefined, fresh: boolean): Promise<T | null> {
+  const pending = inFlight.get(path);
+  if (pending) return pending as Promise<T | null>;
+  const lookup = (async () => {
+    if (!fresh) {
+      const cached = await lookupCache.get(path);
+      if (cached !== undefined) return cached as T;
+    }
+    let failed = false;
+    const result = await get<T>(path, () => {
+      failed = true;
+      onFailure?.();
+    });
+    if (result && !failed) await lookupCache.set(path, result, LOOKUP_MAX_AGE_MS);
+    return result;
+  })().finally(() => inFlight.delete(path));
+  inFlight.set(path, lookup);
+  return lookup;
 }
 
 function toVotes(items: { name: string; count: number }[] | undefined): GenreVote[] {
@@ -107,10 +139,15 @@ interface SearchRecording {
   releases?: { "release-group"?: { id: string } }[];
 }
 
+/**
+ * MusicBrainz genre votes for a song. Artist and album lookups come from a
+ * month-long cache when they can; fresh pulls the latest from MusicBrainz.
+ */
 export async function getMusicBrainzInfo(
   artist: string,
   trackName: string,
-  onFailure?: () => void
+  onFailure?: () => void,
+  fresh = false
 ): Promise<MusicBrainzInfo> {
   if (!artist || !trackName) return EMPTY;
 
@@ -139,12 +176,20 @@ export async function getMusicBrainzInfo(
     .find((r) => r["release-group"])?.["release-group"]?.id;
 
   const releaseGroup = releaseGroupId
-    ? await get<{ genres?: { name: string; count: number }[] }>(`/release-group/${releaseGroupId}?inc=genres`, onFailure)
+    ? await getShared<{ genres?: { name: string; count: number }[] }>(
+        `/release-group/${releaseGroupId}?inc=genres`,
+        onFailure,
+        fresh
+      )
     : null;
 
   const artistGenres: MusicBrainzInfo["artistGenres"] = [];
   for (const credit of credits.slice(0, MAX_ARTISTS)) {
-    const a = await get<{ genres?: { name: string; count: number }[] }>(`/artist/${credit.artist.id}?inc=genres`, onFailure);
+    const a = await getShared<{ genres?: { name: string; count: number }[] }>(
+      `/artist/${credit.artist.id}?inc=genres`,
+      onFailure,
+      fresh
+    );
     artistGenres.push({ artist: credit.artist.name, genres: toVotes(a?.genres) });
   }
 

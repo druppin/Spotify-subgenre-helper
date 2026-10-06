@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import type { SpotifyPlaylist } from "@/lib/spotify/client";
 import { fetchPlaylistGenres, summarizeGenres, type PlaylistGenreTrack } from "@/lib/playlistGenres";
+import { LIKED_SONGS_PICKER_ENTRY } from "@/lib/library";
 import type { SummaryStep } from "@/lib/context";
 import { PlaylistPicker } from "./PlaylistPicker";
 
@@ -82,6 +83,7 @@ function Overlay({
 
 interface CommonProps {
   // Playlists whose tracks we can read: owned/collaborative, plus the source.
+  // Liked Songs is offered alongside them.
   playlists: SpotifyPlaylist[];
   initialPlaylistId: string | null;
   onClose: () => void;
@@ -99,7 +101,7 @@ export function PlaylistGenresDialog({
   return (
     <Overlay title="Playlist genres" onClose={onClose}>
       <PlaylistPicker
-        playlists={playlists}
+        playlists={[LIKED_SONGS_PICKER_ENTRY, ...playlists]}
         selectedId={playlistId}
         onSelect={setPlaylistId}
         placeholder="Choose a playlist…"
@@ -203,6 +205,7 @@ export function GenerateGenresDialog({
   const [batchSize, setBatchSize] = useState(DEFAULT_BATCH);
   const [concurrency, setConcurrency] = useState(DEFAULT_CONCURRENCY);
   const [raisedConcurrency, setRaisedConcurrency] = useState(false);
+  const [refreshSources, setRefreshSources] = useState(false);
   const maxConcurrency = raisedConcurrency ? RAISED_MAX_CONCURRENCY : MAX_CONCURRENCY;
   const [running, setRunning] = useState(false);
   const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
@@ -297,7 +300,7 @@ export function GenerateGenresDialog({
       const res = await fetch("/api/genre-runs", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ runId, trackIds: queue.map((t) => t.id), concurrency: clampedConcurrency }),
+        body: JSON.stringify({ runId, trackIds: queue.map((t) => t.id), concurrency: clampedConcurrency, refresh: refreshSources }),
         signal: abort.signal,
       });
       if (!res.ok) {
@@ -345,7 +348,7 @@ export function GenerateGenresDialog({
   return (
     <Overlay title="Generate genres" onClose={onClose}>
       <PlaylistPicker
-        playlists={playlists}
+        playlists={[LIKED_SONGS_PICKER_ENTRY, ...playlists]}
         selectedId={playlistId}
         onSelect={setPlaylistId}
         placeholder="Choose a playlist…"
@@ -386,11 +389,17 @@ export function GenerateGenresDialog({
                   max={maxConcurrency}
                   value={concurrency}
                   onChange={(e) => setConcurrency(Number(e.target.value))}
-                  title={`How many songs to analyze at the same time (1–${maxConcurrency}). Higher is faster but more likely to hit rate limits.`}
+                  title={`How many songs to analyze at the same time (1–${maxConcurrency}). Above about 3 rarely helps: every song waits its turn for MusicBrainz, which allows one request a second.`}
                   className="w-14 rounded-md border border-neutral-700 bg-neutral-950 px-2 py-1 text-sm outline-none focus:border-green-600"
                 />
                 at a time
               </label>
+              {clampedConcurrency > 3 && (
+                <p className="basis-full text-xs text-neutral-500">
+                  More than about 3 at a time won&apos;t go much faster: every song queues for MusicBrainz, which
+                  allows one request a second (roughly 12–15 songs a minute).
+                </p>
+              )}
               <button
                 onClick={() => run(missing.slice(0, clampedBatch))}
                 className="rounded-md bg-green-600 px-3 py-1 text-sm font-semibold text-white"
@@ -403,6 +412,18 @@ export function GenerateGenresDialog({
               >
                 Analyze all {missing.length}
               </button>
+              <label className="flex basis-full items-start gap-2 text-xs text-neutral-400">
+                <input
+                  type="checkbox"
+                  checked={refreshSources}
+                  onChange={(e) => setRefreshSources(e.target.checked)}
+                  className="mt-0.5 accent-green-600"
+                />
+                <span>
+                  Pull the latest MusicBrainz data (and Last.fm and audio info) instead of what&apos;s saved. Slower:
+                  saved artist and album lookups are skipped. ↻ Regenerate on a single song always does this.
+                </span>
+              </label>
               <label className="flex basis-full items-start gap-2 text-xs text-neutral-400">
                 <input
                   type="checkbox"
