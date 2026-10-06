@@ -1031,11 +1031,8 @@ export function LostTracksView({ tabs }: { tabs: ReactNode }) {
         uris.map((uri) => [uri, now]),
         true
       );
-      setSelected((prev) => {
-        const next = new Set(prev);
-        for (const uri of uris) next.delete(uri);
-        return next;
-      });
+      // The songs stay selected (until Clear selection), ready to add to
+      // another playlist too.
       setNotice({
         kind: "ok",
         text: `Added ${uris.length} song${uris.length === 1 ? "" : "s"} to ${placeName(destinationId)}.`,
@@ -1410,7 +1407,9 @@ export function LostTracksView({ tabs }: { tabs: ReactNode }) {
                           ? "bg-green-600/20 text-green-400"
                           : hidden
                             ? "text-neutral-300 opacity-40 hover:opacity-70"
-                            : "text-neutral-300 hover:bg-neutral-900"
+                            : selected.has(row.uri)
+                              ? "bg-neutral-800 text-neutral-100 hover:bg-neutral-700/80"
+                              : "text-neutral-300 hover:bg-neutral-900"
                       }`}
                     >
                       <input
@@ -1556,6 +1555,17 @@ export function LostTracksView({ tabs }: { tabs: ReactNode }) {
                   )}
                 </span>
               )}
+              <button
+                type="button"
+                onClick={() => {
+                  setSelected(new Set());
+                  lastToggledIndexRef.current = null;
+                }}
+                disabled={selected.size === 0}
+                className="rounded-full border border-neutral-700 px-3 py-1.5 text-sm text-neutral-300 hover:border-neutral-500 disabled:opacity-40"
+              >
+                Clear selection
+              </button>
               {mode === "homes" && selectedPlaceId && (
                 <button
                   type="button"

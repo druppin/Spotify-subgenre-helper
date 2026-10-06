@@ -6,7 +6,7 @@ import { summarizeTrack, SUMMARY_PROMPT_VERSION } from "@/lib/llm/summarize";
 import type { LlmConfig, LlmProvider, TrackContext, TrackSummary } from "@/lib/llm/types";
 import { getCache } from "@/lib/cache";
 import { spotifyErrorResponse } from "@/lib/spotify/routeError";
-import { saveTrackGenres } from "@/lib/trackGenres";
+import { canonicalizeGenres, saveTrackGenres } from "@/lib/trackGenres";
 
 const summaryCache = getCache<TrackSummary>("track-summary");
 
@@ -59,7 +59,8 @@ export async function summarizeTrackById(
     if (cached && cached.subgenres.length > 0) {
       await saveTrackGenres(id, cached, modelLabel);
       onStep?.("ai");
-      return NextResponse.json({ summary: cached, context, cached: true });
+      const summary = { ...cached, subgenres: await canonicalizeGenres(cached.subgenres) };
+      return NextResponse.json({ summary, context, cached: true });
     }
   }
 
@@ -83,7 +84,9 @@ export async function summarizeTrackById(
     }
     await summaryCache.set(cacheKey, summary);
     await saveTrackGenres(id, summary, modelLabel);
-    return NextResponse.json({ summary, context, cached: false });
+    // Shown with the same spellings the stored genres are read back with.
+    const shown = { ...summary, subgenres: await canonicalizeGenres(summary.subgenres) };
+    return NextResponse.json({ summary: shown, context, cached: false });
   } catch (err) {
     console.error("track summary (LLM) failed:", err);
     if (err instanceof SpotifyApiError) {

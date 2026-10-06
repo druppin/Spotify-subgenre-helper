@@ -31,6 +31,55 @@ export function normalizeGenre(genre: string): string {
     .toLowerCase();
 }
 
+// Spellings that differ only by hyphens or spaces ("pop-punk", "pop punk",
+// "synthpop" / "synth-pop") are one genre and share a key.
+function genreKey(genre: string): string {
+  return genre.replace(/[-\s]/g, "");
+}
+
+// Each genre key's display spelling: the one used on the most songs, then
+// the one with fewer hyphens. Rebuilt after any save.
+let canonicalSpellings: Promise<Map<string, string>> | null = null;
+
+function getCanonicalSpellings(): Promise<Map<string, string>> {
+  canonicalSpellings ??= (async () => {
+    await ensureBackfilled();
+    const counts = new Map<string, Map<string, number>>();
+    for (const [, entry] of await genreCache.entries()) {
+      for (const genre of new Set(entry.subgenres)) {
+        const key = genreKey(genre);
+        let spellings = counts.get(key);
+        if (!spellings) counts.set(key, (spellings = new Map()));
+        spellings.set(genre, (spellings.get(genre) ?? 0) + 1);
+      }
+    }
+    const hyphens = (genre: string) => genre.split("-").length;
+    const canonical = new Map<string, string>();
+    for (const [key, spellings] of counts) {
+      const [best] = [...spellings].sort(
+        ([a, n], [b, m]) => m - n || hyphens(a) - hyphens(b) || a.localeCompare(b)
+      );
+      canonical.set(key, best[0]);
+    }
+    return canonical;
+  })();
+  return canonicalSpellings;
+}
+
+// Normalizes a song's subgenres and merges spelling variants into one
+// display spelling, so they count and filter as a single genre.
+export async function canonicalizeGenres(subgenres: string[]): Promise<string[]> {
+  const spellings = await getCanonicalSpellings();
+  return [
+    ...new Set(
+      subgenres
+        .map(normalizeGenre)
+        .filter(Boolean)
+        .map((genre) => spellings.get(genreKey(genre)) ?? genre)
+    ),
+  ];
+}
+
 let backfill: Promise<void> | null = null;
 
 // The first time the store is used, seed it from summaries generated before
@@ -77,7 +126,9 @@ export async function getTrackGenres(trackIds: string[]): Promise<Record<string,
   const result: Record<string, TrackGenres> = {};
   for (const id of trackIds) {
     const entry = await genreCache.get(id);
-    if (entry && entry.subgenres.length > 0) result[id] = entry;
+    if (entry && entry.subgenres.length > 0) {
+      result[id] = { ...entry, subgenres: await canonicalizeGenres(entry.subgenres) };
+    }
   }
   return result;
 }
@@ -97,4 +148,5 @@ export async function saveTrackGenres(trackId: string, summary: TrackSummary, mo
     return;
   }
   await genreCache.set(trackId, { subgenres, moodVibe: summary.moodVibe, model, updatedAt: Date.now() });
+  canonicalSpellings = null;
 }
