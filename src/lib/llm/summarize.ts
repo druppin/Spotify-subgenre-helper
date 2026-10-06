@@ -65,10 +65,21 @@ function parseSummary(raw: string): TrackSummary {
   };
 }
 
+// Models occasionally return broken or wrongly shaped JSON; asking again
+// usually gets a good answer, so one malformed reply isn't an error yet.
+const MAX_PARSE_ATTEMPTS = 2;
+
 export async function summarizeTrack(
   context: TrackContext,
   config: LlmConfig
 ): Promise<TrackSummary> {
-  const raw = await callLlm(config, SYSTEM_PROMPT, buildUserPrompt(context));
-  return parseSummary(raw);
+  for (let attempt = 1; ; attempt++) {
+    const raw = await callLlm(config, SYSTEM_PROMPT, buildUserPrompt(context));
+    try {
+      return parseSummary(raw);
+    } catch (err) {
+      if (attempt >= MAX_PARSE_ATTEMPTS) throw err;
+      console.warn(`Malformed summary for ${context.trackId} (attempt ${attempt}), retrying:`, err);
+    }
+  }
 }

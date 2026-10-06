@@ -93,7 +93,8 @@ async function fetchBatch(trackIds: string[]): Promise<ReccoBeatsAudioFeaturesIt
  * context.
  */
 export async function getAudioFeatures(
-  trackIds: string[]
+  trackIds: string[],
+  onFailure?: () => void
 ): Promise<Record<string, AudioFeatures | null>> {
   const result: Record<string, AudioFeatures | null> = Object.fromEntries(
     trackIds.map((id) => [id, null])
@@ -113,6 +114,7 @@ export async function getAudioFeatures(
     }
   } catch (err) {
     console.error("ReccoBeats audio-features request failed, continuing without it:", err);
+    onFailure?.();
   }
   return result;
 }

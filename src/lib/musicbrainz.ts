@@ -35,7 +35,9 @@ let lastRequestAt = 0;
 
 const MAX_ATTEMPTS = 3;
 
-function get<T>(path: string): Promise<T | null> {
+// A 404 just means nothing's there; anything else that comes back empty
+// (errors, timeouts, still rate-limited after retrying) goes to onFailure.
+function get<T>(path: string, onFailure?: () => void): Promise<T | null> {
   const run = async (): Promise<T | null> => {
     for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
       // Back off further on each retry: 503 is MusicBrainz's rate-limit reply.
@@ -50,11 +52,13 @@ function get<T>(path: string): Promise<T | null> {
           10_000
         );
         if (res.ok) return (await res.json()) as T;
-        if (res.status !== 503) return null;
+        if (res.status === 404) return null;
+        if (res.status !== 503) break;
       } catch {
-        return null;
+        break;
       }
     }
+    onFailure?.();
     return null;
   };
   const result = queue.then(run);
@@ -103,14 +107,19 @@ interface SearchRecording {
   releases?: { "release-group"?: { id: string } }[];
 }
 
-export async function getMusicBrainzInfo(artist: string, trackName: string): Promise<MusicBrainzInfo> {
+export async function getMusicBrainzInfo(
+  artist: string,
+  trackName: string,
+  onFailure?: () => void
+): Promise<MusicBrainzInfo> {
   if (!artist || !trackName) return EMPTY;
 
   let matches: SearchRecording[] = [];
   for (const title of candidateTitles(trackName)) {
     const query = `recording:${luceneQuote(title)} AND artist:${luceneQuote(artist)}`;
     const search = await get<{ recordings?: SearchRecording[] }>(
-      `/recording?limit=10&query=${encodeURIComponent(query)}`
+      `/recording?limit=10&query=${encodeURIComponent(query)}`,
+      onFailure
     );
     matches = (search?.recordings ?? []).filter((r) => r.score >= MIN_MATCH_SCORE);
     if (matches.length > 0) break;
@@ -130,12 +139,12 @@ export async function getMusicBrainzInfo(artist: string, trackName: string): Pro
     .find((r) => r["release-group"])?.["release-group"]?.id;
 
   const releaseGroup = releaseGroupId
-    ? await get<{ genres?: { name: string; count: number }[] }>(`/release-group/${releaseGroupId}?inc=genres`)
+    ? await get<{ genres?: { name: string; count: number }[] }>(`/release-group/${releaseGroupId}?inc=genres`, onFailure)
     : null;
 
   const artistGenres: MusicBrainzInfo["artistGenres"] = [];
   for (const credit of credits.slice(0, MAX_ARTISTS)) {
-    const a = await get<{ genres?: { name: string; count: number }[] }>(`/artist/${credit.artist.id}?inc=genres`);
+    const a = await get<{ genres?: { name: string; count: number }[] }>(`/artist/${credit.artist.id}?inc=genres`, onFailure);
     artistGenres.push({ artist: credit.artist.name, genres: toVotes(a?.genres) });
   }
 

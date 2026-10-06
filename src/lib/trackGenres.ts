@@ -70,12 +70,14 @@ function ensureBackfilled(): Promise<void> {
   return backfill;
 }
 
+// Entries with no subgenres (saved before empty answers were refused)
+// count as missing, so they show up to be generated again.
 export async function getTrackGenres(trackIds: string[]): Promise<Record<string, TrackGenres>> {
   await ensureBackfilled();
   const result: Record<string, TrackGenres> = {};
   for (const id of trackIds) {
     const entry = await genreCache.get(id);
-    if (entry) result[id] = entry;
+    if (entry && entry.subgenres.length > 0) result[id] = entry;
   }
   return result;
 }

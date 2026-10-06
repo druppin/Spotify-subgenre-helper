@@ -44,6 +44,9 @@ async function callOpenAiCompatible(
         ],
         response_format: { type: "json_object" },
         temperature: 0.4,
+        // OpenRouter otherwise may route to a host that silently ignores
+        // response_format, which is where malformed JSON came from.
+        ...(config.provider === "openrouter" && { provider: { require_parameters: true } }),
       }),
     },
     20_000

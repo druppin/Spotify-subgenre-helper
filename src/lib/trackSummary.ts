@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getValidAccessToken } from "@/lib/spotify/auth";
 import { SpotifyClient, SpotifyApiError } from "@/lib/spotify/client";
-import { buildTrackContext, type SummaryStep } from "@/lib/context";
+import { buildTrackContext, hasGenreEvidence, type SummaryStep } from "@/lib/context";
 import { summarizeTrack, SUMMARY_PROMPT_VERSION } from "@/lib/llm/summarize";
 import type { LlmConfig, LlmProvider, TrackContext, TrackSummary } from "@/lib/llm/types";
 import { getCache } from "@/lib/cache";
@@ -34,9 +34,10 @@ export async function summarizeTrackById(
   // a flaky/rate-limited LLM shouldn't hide data we already successfully
   // fetched.
   let context: TrackContext;
+  let lookupFailed: boolean;
   try {
     const client = new SpotifyClient(accessToken ?? (await getValidAccessToken()));
-    context = await buildTrackContext(id, client, onStep);
+    ({ context, lookupFailed } = await buildTrackContext(id, client, onStep, forceRegenerate));
   } catch (err) {
     return spotifyErrorResponse(err, "track summary (context)");
   }
@@ -53,16 +54,33 @@ export async function summarizeTrackById(
   const modelLabel = `${llmConfig.provider}:${llmConfig.model}`;
   if (!forceRegenerate) {
     const cached = await summaryCache.get(cacheKey);
-    if (cached) {
+    // An answer with no subgenres (usually from an empty lookup) is no
+    // answer; ask again rather than serving it.
+    if (cached && cached.subgenres.length > 0) {
       await saveTrackGenres(id, cached, modelLabel);
       onStep?.("ai");
       return NextResponse.json({ summary: cached, context, cached: true });
     }
   }
 
+  // With nothing to go on, the AI can only answer "unknown" — and saving
+  // that would mark the song as done. Leave it missing to try again later.
+  if (lookupFailed && !hasGenreEvidence(context)) {
+    return NextResponse.json({
+      context,
+      summaryError: "Couldn't look this song up (Last.fm, MusicBrainz, and ReccoBeats all failed or timed out). Try again.",
+    });
+  }
+
   try {
     const summary = await summarizeTrack(context, llmConfig);
     onStep?.("ai");
+    if (summary.subgenres.length === 0) {
+      return NextResponse.json({
+        context,
+        summaryError: "The AI couldn't name any subgenres for this song, so nothing was saved. Try again.",
+      });
+    }
     await summaryCache.set(cacheKey, summary);
     await saveTrackGenres(id, summary, modelLabel);
     return NextResponse.json({ summary, context, cached: false });
