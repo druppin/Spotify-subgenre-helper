@@ -74,12 +74,17 @@ export async function summarizeTrack(
   config: LlmConfig
 ): Promise<TrackSummary> {
   for (let attempt = 1; ; attempt++) {
-    const raw = await callLlm(config, SYSTEM_PROMPT, buildUserPrompt(context));
+    const { text, host } = await callLlm(config, SYSTEM_PROMPT, buildUserPrompt(context));
     try {
-      return parseSummary(raw);
+      return parseSummary(text);
     } catch (err) {
-      if (attempt >= MAX_PARSE_ATTEMPTS) throw err;
-      console.warn(`Malformed summary for ${context.trackId} (attempt ${attempt}), retrying:`, err);
+      // Naming the host makes a bad one easy to spot and add to the
+      // ignore list in providers.ts.
+      const from = host ? ` from ${host}` : "";
+      if (attempt >= MAX_PARSE_ATTEMPTS) {
+        throw new Error(`${err instanceof Error ? err.message : String(err)}${from ? ` (${from.trim()})` : ""}`);
+      }
+      console.warn(`Malformed summary for ${context.trackId}${from} (attempt ${attempt}), retrying:`, err);
     }
   }
 }
