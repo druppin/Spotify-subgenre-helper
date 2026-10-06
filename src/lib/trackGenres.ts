@@ -31,14 +31,29 @@ export function normalizeGenre(genre: string): string {
     .toLowerCase();
 }
 
+// Abbreviations and symbols that name the same thing, applied before
+// comparing (the shown spelling is still one the AI actually used).
+const GENRE_ALIASES: [RegExp, string][] = [
+  [/&/g, " and "], // drum & bass, r&b
+  [/\s'?n'?\s/g, " and "], // drum 'n' bass, rock n roll
+  [/\b(dnb|d and b)\b/g, "drum and bass"],
+  [/\brnb\b/g, "r and b"],
+  [/\balt\b/g, "alternative"], // alt rock, alt-rock
+  [/\bpsych\b/g, "psychedelic"], // psych rock, psych-pop
+];
+
 // Spellings that differ only by hyphens or spaces ("pop-punk", "pop punk",
-// "synthpop" / "synth-pop") are one genre and share a key.
+// "synthpop" / "synth-pop") or by an alias above are one genre and share
+// a key.
 function genreKey(genre: string): string {
-  return genre.replace(/[-\s]/g, "");
+  let key = genre;
+  for (const [pattern, replacement] of GENRE_ALIASES) key = key.replace(pattern, replacement);
+  return key.replace(/[-\s]/g, "");
 }
 
 // Each genre key's display spelling: the one used on the most songs, then
-// the one with fewer hyphens. Rebuilt after any save.
+// the one with fewer hyphens, then the spelled-out one ("drum & bass" over
+// "dnb"). Rebuilt after any save.
 let canonicalSpellings: Promise<Map<string, string>> | null = null;
 
 function getCanonicalSpellings(): Promise<Map<string, string>> {
@@ -57,7 +72,7 @@ function getCanonicalSpellings(): Promise<Map<string, string>> {
     const canonical = new Map<string, string>();
     for (const [key, spellings] of counts) {
       const [best] = [...spellings].sort(
-        ([a, n], [b, m]) => m - n || hyphens(a) - hyphens(b) || a.localeCompare(b)
+        ([a, n], [b, m]) => m - n || hyphens(a) - hyphens(b) || b.length - a.length || a.localeCompare(b)
       );
       canonical.set(key, best[0]);
     }
