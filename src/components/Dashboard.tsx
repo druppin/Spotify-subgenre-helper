@@ -167,7 +167,7 @@ export function Dashboard({ tabs }: { tabs: ReactNode }) {
       fetch(`/api/playlists/${playlistId}/tracks`, {
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ trackUri: uri }),
+        body: JSON.stringify({ trackUri: uri, source: "sorter" }),
         keepalive: true,
       });
     };
@@ -179,6 +179,7 @@ export function Dashboard({ tabs }: { tabs: ReactNode }) {
   // playlist's tracks before the Web Playback SDK has connected.
   useEffect(() => {
     if (currentTrack && ready) {
+      console.debug("[skip] current track effect → playTrack", currentTrack.uri, currentTrack.name);
       playTrack(currentTrack.uri).catch((err) => console.error(err));
     }
   }, [currentTrack, ready, playTrack]);
@@ -209,7 +210,7 @@ export function Dashboard({ tabs }: { tabs: ReactNode }) {
       fetch(`/api/playlists/${fromPlaylistId}/tracks`, {
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ trackUri: uri }),
+        body: JSON.stringify({ trackUri: uri, source: "sorter" }),
       }).catch((err) => console.error("Failed to remove track from source playlist:", err));
       setMembership(fromPlaylistId, uri, false);
       const remaining = tracks.filter((item) => item.track?.uri !== uri);
@@ -227,7 +228,17 @@ export function Dashboard({ tabs }: { tabs: ReactNode }) {
     // If the current track just got removed, whatever was after it slides
     // into its old position — so the target is the same index, not +1.
     const target = hadPending ? currentIndex : currentIndex + 1;
-    setCurrentIndex(Math.max(Math.min(target, tracks.length - 1), 0));
+    const nextIndex = Math.max(Math.min(target, tracks.length - 1), 0);
+    console.debug("[skip] goNext", {
+      fromIndex: currentIndex,
+      fromUri: sourceTracks[currentIndex]?.track?.uri,
+      pendingRemovalUri,
+      tracksBefore: sourceTracks.length,
+      tracksAfter: tracks.length,
+      toIndex: nextIndex,
+      toUri: tracks[nextIndex]?.track?.uri,
+    });
+    setCurrentIndex(nextIndex);
   }, [sourceTracks, sourcePlaylistId, currentIndex, pendingRemovalUri, flushPendingRemoval]);
 
   useEffect(() => {
@@ -285,7 +296,7 @@ export function Dashboard({ tabs }: { tabs: ReactNode }) {
     fetch(`/api/playlists/${sourcePlaylistId}/tracks`, {
       method: "DELETE",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ trackUri: uri }),
+      body: JSON.stringify({ trackUri: uri, source: "sorter" }),
     }).catch((err) => console.error("Failed to remove track from source playlist:", err));
     setMembership(sourcePlaylistId, uri, false);
     const tracks = sourceTracks.filter((item) => item.track?.uri !== uri);
@@ -301,7 +312,7 @@ export function Dashboard({ tabs }: { tabs: ReactNode }) {
       const res = await fetch(`/api/playlists/${destinationPlaylistId}/add`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ trackUri: currentTrack.uri }),
+        body: JSON.stringify({ trackUri: currentTrack.uri, source: "sorter" }),
       });
       if (!res.ok) {
         console.error("Failed to add track to playlist:", await res.text());
@@ -325,7 +336,7 @@ export function Dashboard({ tabs }: { tabs: ReactNode }) {
       const res = await fetch(`/api/playlists/${destinationPlaylistId}/tracks`, {
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ trackUri: currentTrack.uri }),
+        body: JSON.stringify({ trackUri: currentTrack.uri, source: "sorter" }),
       });
       if (!res.ok) {
         console.error("Failed to remove track from playlist:", await res.text());

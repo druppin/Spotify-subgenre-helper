@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { PlayerProvider } from "./PlayerProvider";
 import { Dashboard } from "./Dashboard";
 import { LostTracksView } from "./LostTracksView";
+import type { OrganizeStats } from "@/lib/organizeLog";
 
 const TABS = [
   { id: "subgenres", label: "Subgenre sorter" },
@@ -23,6 +24,39 @@ function loadTab(): TabId {
   return "subgenres";
 }
 
+// Songs this app has filed into playlists, per tool: exact since tracking
+// began, plus an estimate (shown with ~) for the time before that.
+function OrganizedCount({ stats }: { stats: OrganizeStats }) {
+  const before = stats.before?.bySource ?? { sorter: 0, "lost-tracks": 0 };
+  const sorter = before.sorter + stats.bySource.sorter;
+  const lost = before["lost-tracks"] + stats.bySource["lost-tracks"];
+  const estimated = (stats.before?.songs ?? 0) > 0;
+  const approx = estimated ? "~" : "";
+  return (
+    <span
+      className="ml-2 text-xs text-neutral-500"
+      title={
+        `Since tracking began: ${stats.songsOrganized} songs (${stats.bySource.sorter} sorter, ` +
+        `${stats.bySource["lost-tracks"]} Lost tracks), ${stats.adds} adds. ` +
+        `Moves: ${stats.movesBySource.sorter} sorter, ${stats.movesBySource["lost-tracks"]} Lost tracks. ` +
+        `Removals: ${stats.removalsBySource.sorter} sorter, ${stats.removalsBySource["lost-tracks"]} Lost tracks. ` +
+        `A removal counts as a move when the song was also added to another playlist within 2 hours. ` +
+        `Moves and removals are only counted from when tracking began.` +
+        (estimated
+          ? ` Before that (estimated from when songs were added to your playlists): ${before.sorter} sorter, ` +
+            `${before["lost-tracks"]} Lost tracks — an upper bound that may include adds made in Spotify itself.`
+          : "")
+      }
+    >
+      {approx}
+      {sorter + lost} songs organized · Subgenre sorter {approx}
+      {sorter} · Lost tracks {approx}
+      {lost} · {stats.moves} move{stats.moves === 1 ? "" : "s"} · {stats.removals} removal
+      {stats.removals === 1 ? "" : "s"}
+    </span>
+  );
+}
+
 /**
  * Top-level layout: one shared player, with each tool as a tab. Tabs stay
  * mounted once visited (just hidden) so switching away doesn't lose a
@@ -38,12 +72,19 @@ export function AppShell() {
   // Spotify can block the app for many hours after too many requests; say
   // so up front instead of letting every action fail one at a time.
   const [blockedUntil, setBlockedUntil] = useState<number | null>(null);
+  const [organized, setOrganized] = useState<OrganizeStats | null>(null);
   useEffect(() => {
-    const check = () =>
+    // Both answered locally by the server; neither touches Spotify.
+    const check = () => {
       fetch("/api/spotify/status")
         .then((res) => res.json())
         .then((body) => setBlockedUntil(body.blockedUntil ?? null))
         .catch(() => {});
+      fetch("/api/organize-stats")
+        .then((res) => res.json())
+        .then((body: OrganizeStats) => setOrganized(body))
+        .catch(() => {});
+    };
     check();
     const timer = setInterval(check, 60_000);
     return () => clearInterval(timer);
@@ -76,6 +117,7 @@ export function AppShell() {
           {tab.label}
         </button>
       ))}
+      {organized && <OrganizedCount stats={organized} />}
     </nav>
   );
 

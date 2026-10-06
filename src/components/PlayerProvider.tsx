@@ -17,7 +17,15 @@ interface SpotifyPlayerState {
   paused: boolean;
   position: number;
   duration: number;
-  track_window: { current_track: { uri: string; name: string } };
+  track_window: { current_track: SpotifyPlayerTrack };
+}
+interface SpotifyPlayerTrack {
+  uri: string;
+  name: string;
+  // Set when Spotify "relinked" the requested track to a different version
+  // playable in the user's market: uri is then the substitute's, and this
+  // holds the uri that was actually requested.
+  linked_from?: { uri: string | null };
 }
 interface SpotifyPlayer {
   connect(): Promise<boolean>;
@@ -90,6 +98,16 @@ const TRANSIENT_STATUS_CODES = new Set([502, 503, 504]);
 
 class PermanentPlaybackError extends Error {}
 
+function isRequestedTrack(track: SpotifyPlayerTrack, requestedUri: string): boolean {
+  return track.uri === requestedUri || track.linked_from?.uri === requestedUri;
+}
+
+const BOUNCE_WINDOW_MS = 15_000;
+// How close to its end a track must have gotten before a stop counts as it
+// finishing (state events are sparse, so this is estimated from wall time).
+const TRACK_END_MARGIN_MS = 5_000;
+const MAX_BOUNCE_CORRECTIONS = 2;
+
 function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -148,8 +166,16 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const latestRequestedUriRef = useRef<string | null>(null);
   const playChainRef = useRef<Promise<void>>(Promise.resolve());
   const lastStateRef = useRef<SpotifyPlayerState | null>(null);
+  const lastStateAtRef = useRef(0);
   const endedUriRef = useRef<string | null>(null);
   const trackEndHandlerRef = useRef<((uri: string) => void) | null>(null);
+  // Guards against Spotify jumping back to a track we didn't ask for right
+  // after starting the one we did (observed after skipping: the requested
+  // track starts, then the previous one restarts with no request from us).
+  const requestedAtRef = useRef(0);
+  const sawRequestedPlayingRef = useRef(false);
+  const bounceCorrectionsRef = useRef(0);
+  const playTrackRef = useRef<((uri: string) => Promise<void>) | null>(null);
 
   useEffect(() => {
     const script = document.createElement("script");
@@ -174,9 +200,12 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         const state = arg as SpotifyPlayerState | null;
         if (!state) return;
         const prev = lastStateRef.current;
+        const prevAt = lastStateAtRef.current;
         lastStateRef.current = state;
+        lastStateAtRef.current = Date.now();
         console.debug("[player] state", {
           uri: state.track_window.current_track.uri,
+          linkedFrom: state.track_window.current_track.linked_from?.uri ?? undefined,
           paused: state.paused,
           position: state.position,
           duration: state.duration,
@@ -185,23 +214,49 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         // playing → paused transition back at position 0. Requiring the
         // track to still be the one we last requested filters out the same
         // transition that happens briefly while switching to a new track.
-        const endedUri = prev?.track_window.current_track.uri;
+        // It must also have actually played to near its end: right after
+        // startup Spotify often starts a track and immediately stops it back
+        // at 0 (device not fully active yet), which would otherwise count as
+        // "ended" and auto-advance — over and over, racing through the
+        // playlist.
+        const requestedUri = latestRequestedUriRef.current;
+        const prevEstimatedPosition = prev ? prev.position + (Date.now() - prevAt) : 0;
         if (
           prev &&
-          endedUri &&
+          requestedUri &&
+          isRequestedTrack(prev.track_window.current_track, requestedUri) &&
           !prev.paused &&
           state.paused &&
           state.position === 0 &&
-          endedUri === latestRequestedUriRef.current &&
-          endedUriRef.current !== endedUri
+          prev.duration > 0 &&
+          prevEstimatedPosition >= prev.duration - TRACK_END_MARGIN_MS &&
+          endedUriRef.current !== requestedUri
         ) {
-          endedUriRef.current = endedUri;
-          trackEndHandlerRef.current?.(endedUri);
+          endedUriRef.current = requestedUri;
+          trackEndHandlerRef.current?.(requestedUri);
+        }
+        const stateUri = state.track_window.current_track.uri;
+        if (requestedUri && isRequestedTrack(state.track_window.current_track, requestedUri)) {
+          sawRequestedPlayingRef.current = true;
+        } else if (
+          requestedUri &&
+          sawRequestedPlayingRef.current &&
+          Date.now() - requestedAtRef.current < BOUNCE_WINDOW_MS &&
+          bounceCorrectionsRef.current < MAX_BOUNCE_CORRECTIONS
+        ) {
+          bounceCorrectionsRef.current++;
+          sawRequestedPlayingRef.current = false;
+          console.debug("[play] Spotify switched to a track we didn't request; re-requesting", {
+            requestedUri,
+            stateUri,
+          });
+          playTrackRef.current?.(requestedUri).catch((err) => console.error(err));
         }
         setIsPaused(state.paused);
         setPosition(state.position);
         setDuration(state.duration);
-        setCurrentUri(state.track_window.current_track.uri);
+        const track = state.track_window.current_track;
+        setCurrentUri(track.linked_from?.uri ?? track.uri);
       });
       player.addListener("initialization_error", (arg) => console.error("Spotify SDK init error", arg));
       player.addListener("authentication_error", (arg) => console.error("Spotify SDK auth error", arg));
@@ -231,7 +286,11 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   }, [isPaused, duration]);
 
   const playTrack = useCallback((uri: string): Promise<void> => {
+    if (uri !== latestRequestedUriRef.current) bounceCorrectionsRef.current = 0;
     latestRequestedUriRef.current = uri;
+    requestedAtRef.current = Date.now();
+    sawRequestedPlayingRef.current = false;
+    console.debug("[play] requested", uri);
     endedUriRef.current = null;
     const deviceId = deviceIdRef.current;
 
@@ -241,7 +300,10 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     const next = playChainRef.current.then(async () => {
       // Superseded by a newer request before this one's turn came up (the
       // user has since moved on) — no need to actually play it at all.
-      if (latestRequestedUriRef.current !== uri) return;
+      if (latestRequestedUriRef.current !== uri) {
+        console.debug("[play] superseded before sending", uri);
+        return;
+      }
       if (!deviceId) throw new Error("Player not ready yet");
 
       setPlaybackError(null);
@@ -264,9 +326,13 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
             },
             body: JSON.stringify({ uris: [uri] }),
           });
-          if (res.ok || res.status === 204) return;
+          if (res.ok || res.status === 204) {
+            console.debug("[play] Spotify accepted", uri, `attempt ${attempt}`);
+            return;
+          }
 
           const body = await res.text();
+          console.debug("[play] Spotify rejected", uri, res.status, body.slice(0, 200));
           const message = `Failed to start playback: ${res.status} ${body}`;
           // Spotify answers 403 "Restriction violated" for a moment right
           // after a track finishes (exactly when autoplay fires), and 404
@@ -297,6 +363,10 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     playChainRef.current = next.catch(() => {});
     return next;
   }, []);
+
+  useEffect(() => {
+    playTrackRef.current = playTrack;
+  }, [playTrack]);
 
   const togglePlay = useCallback(async () => {
     const deviceId = deviceIdRef.current;

@@ -806,7 +806,7 @@ export function LostTracksView({ tabs }: { tabs: ReactNode }) {
       const res = await fetch(`/api/playlists/${placeId}/tracks`, {
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ trackUris: entries.map(([uri]) => uri) }),
+        body: JSON.stringify({ trackUris: entries.map(([uri]) => uri), source: "lost-tracks" }),
       });
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
@@ -838,7 +838,7 @@ export function LostTracksView({ tabs }: { tabs: ReactNode }) {
       const res = await fetch(`/api/playlists/${placeId}/add`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ trackUris: entries.map(([uri]) => uri) }),
+        body: JSON.stringify({ trackUris: entries.map(([uri]) => uri), source: "lost-tracks" }),
       });
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
@@ -861,7 +861,7 @@ export function LostTracksView({ tabs }: { tabs: ReactNode }) {
       const res = await fetch(`/api/playlists/${destinationId}/add`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ trackUris: uris }),
+        body: JSON.stringify({ trackUris: uris, source: "lost-tracks" }),
       });
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
