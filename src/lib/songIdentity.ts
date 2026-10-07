@@ -4,7 +4,9 @@ import type { LibraryTrackDetails } from "@/lib/library";
 // recording; a radio edit vs. an extended mix is well outside it.
 const SAME_RECORDING_MAX_DIFF_MS = 3_000;
 
-const VERSION_TAG = /\b(remaster(ed)?|single version|album version|mono|stereo|explicit|clean)\b/;
+// "Original mix" is how DJ stores name the plain version, which Spotify
+// leaves untagged.
+const VERSION_TAG = /\b(remaster(ed)?|single version|album version|original mix|mono|stereo|explicit|clean)\b/;
 
 /**
  * Lowercased title without featured-artist credits or tags that only mark a
@@ -17,6 +19,27 @@ export function normalizeTitle(title: string): string {
     .replace(/\s*[([]\s*(feat\.?|ft\.?|featuring|with)\s[^)\]]*[)\]]/g, "")
     .replace(/\s*[([]([^)\]]*)[)\]]/g, (whole, inner: string) => (VERSION_TAG.test(inner) ? "" : whole))
     .replace(/\s+-\s+(.*)$/, (whole, tail: string) => (VERSION_TAG.test(tail) ? "" : whole))
+    .replace(/[^\p{L}\p{N}]+/gu, " ")
+    .trim();
+}
+
+/**
+ * Title with every bracketed part and " - " suffix dropped, and accents and
+ * punctuation folded away: "Café Del Mar - Energy 52 Remix" and "Cafe del
+ * Mar (Original Mix)" are both "cafe del mar". Finds every version of a song;
+ * normalizeTitle then tells the versions apart.
+ */
+export function baseTitle(title: string): string {
+  return foldText(title.replace(/\s*[([][^)\]]*[)\]]/g, "").replace(/\s+-\s+.*$/, ""));
+}
+
+/** Lowercase, without accents or punctuation, for comparing names. */
+export function foldText(text: string): string {
+  return text
+    .normalize("NFKD")
+    .replace(/\p{M}/gu, "")
+    .toLowerCase()
+    .replace(/&/g, " and ")
     .replace(/[^\p{L}\p{N}]+/gu, " ")
     .trim();
 }

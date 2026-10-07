@@ -50,6 +50,9 @@ without ever inventing context that isn't actually in the data.
   OpenRouter via a couple of env vars, no code changes
 - Full Spotify playback control (play/pause/seek/skip) via the Web Playback
   SDK, so you can actually listen before you decide
+- A local, key-protected [library API](docs/api.md) so other programs (DJ
+  software, file taggers) can look up a song's genres by ISRC or artist +
+  title, or export them all
 
 ## Tech stack
 

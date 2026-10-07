@@ -181,14 +181,23 @@ function parentKeys(genre: string, parents: Set<string>): string[] {
   return found;
 }
 
-// Normalizes a song's subgenres, merges spelling variants into one display
-// spelling (so they count and filter as a single genre), and adds the
-// broader genres they belong to after the song's own.
-export async function canonicalizeGenres(subgenres: string[]): Promise<string[]> {
+// Normalizes a song's subgenres and merges spelling variants into one
+// display spelling (so they count and filter as a single genre). `broader`
+// holds the genres they belong to that the song isn't tagged with itself.
+export async function describeGenres(subgenres: string[]): Promise<{ own: string[]; broader: string[] }> {
   const { spellings, parents } = await getGenreIndex();
-  const own = subgenres.map(normalizeGenre).filter(Boolean);
-  const keys = [...own.map(genreKey), ...own.flatMap((genre) => parentKeys(genre, parents))];
-  return [...new Set(keys.map((key, i) => spellings.get(key) ?? own[i]))];
+  const normalized = subgenres.map(normalizeGenre).filter(Boolean);
+  const own = [...new Set(normalized.map((genre) => spellings.get(genreKey(genre)) ?? genre))];
+  const broader = [
+    ...new Set(normalized.flatMap((genre) => parentKeys(genre, parents)).map((key) => spellings.get(key)!)),
+  ].filter((genre) => !own.includes(genre));
+  return { own, broader };
+}
+
+// The song's own genres, then the broader ones they belong to.
+export async function canonicalizeGenres(subgenres: string[]): Promise<string[]> {
+  const { own, broader } = await describeGenres(subgenres);
+  return [...own, ...broader];
 }
 
 // The first time the store is used, fill it from the JSON file genres used
@@ -240,6 +249,30 @@ export async function getTrackGenres(trackIds: string[]): Promise<Record<string,
     }
   }
   return result;
+}
+
+/** Like getTrackGenres, with own and broader genres kept apart. */
+export async function getTrackGenreDetails(
+  trackIds: string[]
+): Promise<Record<string, Omit<TrackGenres, "subgenres"> & { own: string[]; broader: string[] }>> {
+  ensureBackfilled();
+  const result: Awaited<ReturnType<typeof getTrackGenreDetails>> = {};
+  for (const id of trackIds) {
+    const entry = readGenres(id);
+    if (!entry || entry.subgenres.length === 0) continue;
+    const { subgenres, ...rest } = entry;
+    result[id] = { ...rest, ...(await describeGenres(subgenres)) };
+  }
+  return result;
+}
+
+/** Every track ID with stored genres. */
+export function listTracksWithGenres(): string[] {
+  ensureBackfilled();
+  const rows = sql(
+    "SELECT track_id FROM track_genres g WHERE EXISTS (SELECT 1 FROM track_genre_tags t WHERE t.track_id = g.track_id)"
+  ).all() as { track_id: string }[];
+  return rows.map((row) => row.track_id);
 }
 
 export async function saveTrackGenres(trackId: string, summary: TrackSummary, model: string): Promise<void> {

@@ -34,7 +34,9 @@ CREATE TABLE IF NOT EXISTS tracks (
   album TEXT,
   release_date TEXT,
   -- 0 when cached before album details were collected
-  complete INTEGER NOT NULL
+  complete INTEGER NOT NULL,
+  -- Title without any version or credit (see baseTitle), for lookups by name.
+  base_title TEXT
 );
 CREATE INDEX IF NOT EXISTS tracks_id ON tracks(id);
 CREATE INDEX IF NOT EXISTS tracks_isrc ON tracks(isrc);
@@ -75,8 +77,18 @@ CREATE TABLE IF NOT EXISTS track_genre_tags (
 );
 CREATE INDEX IF NOT EXISTS track_genre_tags_genre ON track_genre_tags(genre);
 
--- One-time imports already done (see markDone).
+-- One-time imports already done (see once).
 CREATE TABLE IF NOT EXISTS done_once (key TEXT PRIMARY KEY);
+
+-- Keys for the /api/v1 API. Only a hash of each key is kept.
+-- Managed with scripts/api-token.mjs.
+CREATE TABLE IF NOT EXISTS api_tokens (
+  id INTEGER PRIMARY KEY,
+  name TEXT NOT NULL,
+  token_hash TEXT NOT NULL UNIQUE,
+  created_at INTEGER NOT NULL,
+  last_used_at INTEGER
+);
 
 CREATE VIEW IF NOT EXISTS place_songs AS
 SELECT p.id AS place_id, p.name AS place_name, pt.position, pt.added_at,
@@ -96,24 +108,50 @@ JOIN track_genre_tags tag ON tag.track_id = g.track_id
 LEFT JOIN tracks t ON t.id = g.track_id;
 `;
 
+// Columns added after their table was first created, which CREATE TABLE IF
+// NOT EXISTS won't add to an existing database.
+const ADDED_COLUMNS: { table: string; column: string; declaration: string }[] = [
+  { table: "tracks", column: "base_title", declaration: "TEXT" },
+];
+// Indexes on added columns, created once the columns exist.
+const LATE_INDEXES = "CREATE INDEX IF NOT EXISTS tracks_base_title ON tracks(base_title);";
+// Bumped whenever the schema changes, so a dev server's open connection
+// picks the change up without a restart.
+const SCHEMA_VERSION = 2;
+
 interface DbState {
   db: DatabaseSync;
   statements: Map<string, StatementSync>;
+  schemaVersion: number;
 }
 
 // On globalThis so dev-server reloads reuse one connection.
 const holder = globalThis as typeof globalThis & { __libraryDb?: DbState };
 
+function setUpSchema(db: DatabaseSync) {
+  db.exec(SCHEMA);
+  for (const { table, column, declaration } of ADDED_COLUMNS) {
+    const columns = db.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[];
+    if (!columns.some((c) => c.name === column)) db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${declaration}`);
+  }
+  db.exec(LATE_INDEXES);
+}
+
 function state(): DbState {
-  if (!holder.__libraryDb) {
+  let current = holder.__libraryDb;
+  if (!current) {
     mkdirSync(path.dirname(DB_PATH), { recursive: true });
     const db = new DatabaseSync(DB_PATH);
     // WAL lets a sqlite3 shell read while the app writes.
     db.exec("PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON; PRAGMA busy_timeout = 5000;");
-    db.exec(SCHEMA);
-    holder.__libraryDb = { db, statements: new Map() };
+    current = holder.__libraryDb = { db, statements: new Map(), schemaVersion: 0 };
   }
-  return holder.__libraryDb;
+  if (current.schemaVersion !== SCHEMA_VERSION) {
+    setUpSchema(current.db);
+    current.statements.clear();
+    current.schemaVersion = SCHEMA_VERSION;
+  }
+  return current;
 }
 
 /** A prepared statement, reused across calls with the same SQL. */

@@ -2,6 +2,7 @@ import { existsSync, readFileSync } from "fs";
 import path from "path";
 import { once, sql, transaction } from "@/lib/db";
 import { LIKED_SONGS_ID } from "@/lib/library";
+import { baseTitle } from "@/lib/songIdentity";
 import { isCompleteTrack, type LibraryTrack } from "@/lib/spotify/client";
 
 /*
@@ -51,10 +52,10 @@ function toLibraryTrack(row: TrackRow, addedAt: string): LibraryTrack {
 // Complete details never get replaced by incomplete ones from an older copy.
 function upsertTrack(track: LibraryTrack) {
   sql(
-    `INSERT INTO tracks (uri, name, artists, image, image_large, isrc, duration_ms, album, release_date, complete)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `INSERT INTO tracks (uri, name, artists, image, image_large, isrc, duration_ms, album, release_date, complete, base_title)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT (uri) DO UPDATE SET
-       name = excluded.name, artists = excluded.artists, image = excluded.image,
+       name = excluded.name, base_title = excluded.base_title, artists = excluded.artists, image = excluded.image,
        image_large = excluded.image_large, isrc = excluded.isrc, duration_ms = excluded.duration_ms,
        album = excluded.album, release_date = excluded.release_date, complete = excluded.complete
      WHERE excluded.complete >= tracks.complete`
@@ -68,7 +69,8 @@ function upsertTrack(track: LibraryTrack) {
     track.durationMs,
     track.album ?? null,
     track.releaseDate ?? null,
-    isCompleteTrack(track) ? 1 : 0
+    isCompleteTrack(track) ? 1 : 0,
+    baseTitle(track.name)
   );
 }
 
@@ -152,6 +154,41 @@ export function getTrack(uri: string): LibraryTrack | null {
   return row ? toLibraryTrack(row, "") : null;
 }
 
+/** Every cached release of a recording. */
+export function findTracksByIsrc(isrc: string): LibraryTrack[] {
+  importLegacyCache();
+  const rows = sql("SELECT * FROM tracks WHERE isrc = ?").all(isrc.trim().toUpperCase()) as unknown as TrackRow[];
+  return rows.map((row) => toLibraryTrack(row, ""));
+}
+
+/** Every cached version of a song title, by baseTitle. */
+export function findTracksByBaseTitle(base: string): LibraryTrack[] {
+  importLegacyCache();
+  const rows = sql("SELECT * FROM tracks WHERE base_title = ?").all(base) as unknown as TrackRow[];
+  return rows.map((row) => toLibraryTrack(row, ""));
+}
+
+export interface PlaceSummary {
+  id: string;
+  name: string | null;
+  kind: "playlist" | "liked";
+  trackCount: number;
+  fetchedAt: number;
+}
+
+export function listPlaces(): PlaceSummary[] {
+  importLegacyCache();
+  return sql(
+    `SELECT p.id, p.name, p.kind, p.fetched_at AS fetchedAt,
+            (SELECT count(*) FROM place_tracks pt WHERE pt.place_id = p.id) AS trackCount
+     FROM places p ORDER BY p.kind = 'liked' DESC, p.name COLLATE NOCASE`
+  ).all() as unknown as PlaceSummary[];
+}
+
+export function getPlaceSummary(id: string): PlaceSummary | undefined {
+  return listPlaces().find((place) => place.id === id);
+}
+
 /** Records a song looked up on its own, outside any playlist. */
 export function saveTrack(track: LibraryTrack) {
   importLegacyCache();
@@ -179,10 +216,15 @@ let imported = false;
 
 // Copies the library from the JSON files it used to live in, the first
 // time the database is used, so nothing has to be downloaded again. The
-// JSON files are left in place.
+// JSON files are left in place. Also fills in columns added later.
 function importLegacyCache() {
   if (imported) return;
   imported = true;
+  once("backfill:base_title", () => {
+    const rows = sql("SELECT uri, name FROM tracks WHERE base_title IS NULL").all() as { uri: string; name: string }[];
+    const update = sql("UPDATE tracks SET base_title = ? WHERE uri = ?");
+    for (const { uri, name } of rows) update.run(baseTitle(name), uri);
+  });
   once("import:library-json", () => {
     type IndexEntry = { snapshotId: string | null; tracks?: LibraryTrack[]; version?: number; fetchedAt: number };
     for (const [id, entry] of readLegacy<IndexEntry>("playlist-index")) {

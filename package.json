@@ -5,7 +5,8 @@
   "scripts": {
     "dev": "node scripts/dev.js",
     "build": "next build",
-    "start": "next start",
+    "start": "next start -H 127.0.0.1",
+    "api-token": "node scripts/api-token.mjs",
     "lint": "eslint"
   },
   "dependencies": {
