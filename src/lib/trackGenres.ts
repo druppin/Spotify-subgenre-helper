@@ -1,13 +1,14 @@
-import { promises as fs } from "fs";
+import { existsSync, readFileSync } from "fs";
 import path from "path";
-import { getCache } from "@/lib/cache";
+import { once, sql, transaction } from "@/lib/db";
 import type { TrackSummary } from "@/lib/llm/types";
 
 /**
  * The genres the AI settled on for each track, keyed by Spotify track id.
  * Unlike the summary cache (keyed by model + prompt version, so a prompt
  * tweak orphans every entry), this survives prompt/model changes and is
- * what playlist genre views read from.
+ * what playlist genre views read from. Stored in the library database
+ * (track_genres, track_genre_tags — see db.ts).
  */
 export interface TrackGenres {
   subgenres: string[];
@@ -16,9 +17,29 @@ export interface TrackGenres {
   updatedAt: number;
 }
 
-const NAMESPACE = "track-genres";
 const CACHE_DIR = path.join(process.cwd(), ".cache");
-const genreCache = getCache<TrackGenres>(NAMESPACE);
+
+function readGenres(trackId: string): TrackGenres | undefined {
+  const row = sql("SELECT mood_vibe, model, updated_at FROM track_genres WHERE track_id = ?").get(trackId) as
+    | { mood_vibe: string; model: string; updated_at: number }
+    | undefined;
+  if (!row) return undefined;
+  const tags = sql("SELECT genre FROM track_genre_tags WHERE track_id = ? ORDER BY position").all(trackId) as {
+    genre: string;
+  }[];
+  return { subgenres: tags.map((t) => t.genre), moodVibe: row.mood_vibe, model: row.model, updatedAt: row.updated_at };
+}
+
+function writeGenres(trackId: string, genres: TrackGenres) {
+  sql(
+    `INSERT INTO track_genres (track_id, mood_vibe, model, updated_at) VALUES (?, ?, ?, ?)
+     ON CONFLICT (track_id) DO UPDATE SET
+       mood_vibe = excluded.mood_vibe, model = excluded.model, updated_at = excluded.updated_at`
+  ).run(trackId, genres.moodVibe, genres.model, genres.updatedAt);
+  sql("DELETE FROM track_genre_tags WHERE track_id = ?").run(trackId);
+  const insert = sql("INSERT INTO track_genre_tags (track_id, position, genre) VALUES (?, ?, ?)");
+  genres.subgenres.forEach((genre, position) => insert.run(trackId, position, genre));
+}
 
 // LLMs mix in non-breaking hyphens/spaces and inconsistent case, which
 // would split one genre into several when counting.
@@ -51,96 +72,169 @@ function genreKey(genre: string): string {
   return key.replace(/[-\s]/g, "");
 }
 
-// Each genre key's display spelling: the one used on the most songs, then
-// the one with fewer hyphens, then the spelled-out one ("drum & bass" over
-// "dnb"). Rebuilt after any save.
-let canonicalSpellings: Promise<Map<string, string>> | null = null;
+// Broad genres every narrower one ending in them also belongs to ("doom
+// metal" -> "metal", "liquid dnb" -> "drum and bass"), even if no song is
+// tagged with just the broad one yet.
+const BASE_GENRES = [
+  "metal",
+  "rock",
+  "punk",
+  "pop",
+  "hip hop",
+  "house",
+  "techno",
+  "trance",
+  "drum and bass",
+  "dubstep",
+  "breakbeat",
+  "trap",
+  "disco",
+  "funk",
+  "soul",
+  "jazz",
+  "blues",
+  "folk",
+  "country",
+  "reggae",
+  "ska",
+  "ambient",
+  "electronic",
+];
 
-function getCanonicalSpellings(): Promise<Map<string, string>> {
-  canonicalSpellings ??= (async () => {
-    await ensureBackfilled();
+// Genre words that name a family member without ending in the family's
+// name ("southern sludge" is metal).
+const IMPLIED_PARENTS: Record<string, string> = {
+  sludge: "metal",
+  metalcore: "metal",
+  deathcore: "metal",
+  grindcore: "metal",
+  djent: "metal",
+  grunge: "rock",
+  shoegaze: "rock",
+};
+
+// A genre also counts as a parent when this many songs are tagged with
+// exactly it ("alternative rock" for "90s alternative rock").
+const MIN_SONGS_AS_PARENT = 2;
+// Names that mean different things in different scenes, so a genre ending
+// in them doesn't say which: "beatdown hardcore" is punk, "uk hardcore" is
+// rave; "garage rock" and "uk garage" share nothing.
+const NEVER_PARENTS = new Set(["hardcore", "garage", "bass"].map(genreKey));
+
+interface GenreIndex {
+  // Each genre key's display spelling: the one used on the most songs,
+  // then the one with fewer hyphens, then the spelled-out one ("drum &
+  // bass" over "dnb").
+  spellings: Map<string, string>;
+  // Keys of genres that narrower ones ending in them roll up into.
+  parents: Set<string>;
+}
+
+// Rebuilt after any save.
+let genreIndex: Promise<GenreIndex> | null = null;
+
+function getGenreIndex(): Promise<GenreIndex> {
+  genreIndex ??= (async () => {
+    ensureBackfilled();
     const counts = new Map<string, Map<string, number>>();
-    for (const [, entry] of await genreCache.entries()) {
-      for (const genre of new Set(entry.subgenres)) {
-        const key = genreKey(genre);
-        let spellings = counts.get(key);
-        if (!spellings) counts.set(key, (spellings = new Map()));
-        spellings.set(genre, (spellings.get(genre) ?? 0) + 1);
-      }
+    // Songs per spelling, counting a song tagged twice with one spelling once.
+    const rows = sql(
+      "SELECT genre, count(DISTINCT track_id) AS songs FROM track_genre_tags GROUP BY genre"
+    ).all() as { genre: string; songs: number }[];
+    for (const { genre, songs } of rows) {
+      const key = genreKey(genre);
+      let spellings = counts.get(key);
+      if (!spellings) counts.set(key, (spellings = new Map()));
+      spellings.set(genre, songs);
     }
     const hyphens = (genre: string) => genre.split("-").length;
-    const canonical = new Map<string, string>();
-    for (const [key, spellings] of counts) {
-      const [best] = [...spellings].sort(
+    const spellings = new Map<string, string>();
+    const parents = new Set(BASE_GENRES.map(genreKey));
+    for (const [key, byspelling] of counts) {
+      const [best] = [...byspelling].sort(
         ([a, n], [b, m]) => m - n || hyphens(a) - hyphens(b) || b.length - a.length || a.localeCompare(b)
       );
-      canonical.set(key, best[0]);
+      spellings.set(key, best[0]);
+      const songs = [...byspelling.values()].reduce((sum, n) => sum + n, 0);
+      if (songs >= MIN_SONGS_AS_PARENT && !NEVER_PARENTS.has(key)) parents.add(key);
     }
-    return canonical;
+    for (const genre of BASE_GENRES) if (!spellings.has(genreKey(genre))) spellings.set(genreKey(genre), genre);
+    return { spellings, parents };
   })();
-  return canonicalSpellings;
+  return genreIndex;
 }
 
-// Normalizes a song's subgenres and merges spelling variants into one
-// display spelling, so they count and filter as a single genre.
+// The broader genres a genre belongs to: known genres its name ends with
+// ("90s alternative rock" -> "alternative rock", "rock"), plus families
+// its words imply ("southern sludge" -> "metal").
+function parentKeys(genre: string, parents: Set<string>): string[] {
+  const words = genre.split(/[\s-]+/).filter(Boolean);
+  const found: string[] = [];
+  for (let i = 1; i < words.length; i++) {
+    const key = genreKey(words.slice(i).join(" "));
+    if (parents.has(key)) found.push(key);
+  }
+  for (const word of words) {
+    const implied = IMPLIED_PARENTS[word];
+    if (implied) found.push(genreKey(implied));
+  }
+  return found;
+}
+
+// Normalizes a song's subgenres, merges spelling variants into one display
+// spelling (so they count and filter as a single genre), and adds the
+// broader genres they belong to after the song's own.
 export async function canonicalizeGenres(subgenres: string[]): Promise<string[]> {
-  const spellings = await getCanonicalSpellings();
-  return [
-    ...new Set(
-      subgenres
-        .map(normalizeGenre)
-        .filter(Boolean)
-        .map((genre) => spellings.get(genreKey(genre)) ?? genre)
-    ),
-  ];
+  const { spellings, parents } = await getGenreIndex();
+  const own = subgenres.map(normalizeGenre).filter(Boolean);
+  const keys = [...own.map(genreKey), ...own.flatMap((genre) => parentKeys(genre, parents))];
+  return [...new Set(keys.map((key, i) => spellings.get(key) ?? own[i]))];
 }
 
-let backfill: Promise<void> | null = null;
-
-// The first time the store is used, seed it from summaries generated before
-// it existed. Writes the file directly (before the cache loads it) rather
-// than one cache.set per entry, each of which rewrites the whole file.
-function ensureBackfilled(): Promise<void> {
-  backfill ??= (async () => {
-    const storePath = path.join(CACHE_DIR, `${NAMESPACE}.json`);
-    try {
-      await fs.access(storePath);
-      return;
-    } catch {}
-    let summaries: Record<string, { value: TrackSummary }>;
-    try {
-      summaries = JSON.parse(await fs.readFile(path.join(CACHE_DIR, "track-summary.json"), "utf-8"));
-    } catch {
+// The first time the store is used, fill it from the JSON file genres used
+// to be kept in, or failing that from summaries generated before it existed.
+function ensureBackfilled() {
+  once("import:track-genres", () => {
+    const legacy = readJson<Record<string, { value: TrackGenres }>>("track-genres.json");
+    if (legacy) {
+      for (const [trackId, { value }] of Object.entries(legacy)) {
+        if (Array.isArray(value?.subgenres)) writeGenres(trackId, value);
+      }
       return;
     }
-    const seeded: Record<string, { value: TrackGenres }> = {};
+    const summaries = readJson<Record<string, { value: TrackSummary }>>("track-summary.json") ?? {};
     for (const [key, entry] of Object.entries(summaries)) {
       // Summary keys are `${trackId}:${provider}:${model}:${promptVersion}`.
       const [trackId, provider, ...rest] = key.split(":");
       const summary = entry?.value;
       if (!trackId || !Array.isArray(summary?.subgenres)) continue;
-      seeded[trackId] = {
-        value: {
-          subgenres: summary.subgenres.map(normalizeGenre).filter(Boolean),
-          moodVibe: summary.moodVibe ?? "",
-          model: `${provider}:${rest.slice(0, -1).join(":")}`,
-          updatedAt: Date.now(),
-        },
-      };
+      writeGenres(trackId, {
+        subgenres: summary.subgenres.map(normalizeGenre).filter(Boolean),
+        moodVibe: summary.moodVibe ?? "",
+        model: `${provider}:${rest.slice(0, -1).join(":")}`,
+        updatedAt: Date.now(),
+      });
     }
-    await fs.mkdir(CACHE_DIR, { recursive: true });
-    await fs.writeFile(storePath, JSON.stringify(seeded, null, 2), "utf-8");
-  })();
-  return backfill;
+  });
+}
+
+function readJson<V>(file: string): V | undefined {
+  const filePath = path.join(CACHE_DIR, file);
+  if (!existsSync(filePath)) return undefined;
+  try {
+    return JSON.parse(readFileSync(filePath, "utf-8")) as V;
+  } catch {
+    return undefined;
+  }
 }
 
 // Entries with no subgenres (saved before empty answers were refused)
 // count as missing, so they show up to be generated again.
 export async function getTrackGenres(trackIds: string[]): Promise<Record<string, TrackGenres>> {
-  await ensureBackfilled();
+  ensureBackfilled();
   const result: Record<string, TrackGenres> = {};
   for (const id of trackIds) {
-    const entry = await genreCache.get(id);
+    const entry = readGenres(id);
     if (entry && entry.subgenres.length > 0) {
       result[id] = { ...entry, subgenres: await canonicalizeGenres(entry.subgenres) };
     }
@@ -149,11 +243,11 @@ export async function getTrackGenres(trackIds: string[]): Promise<Record<string,
 }
 
 export async function saveTrackGenres(trackId: string, summary: TrackSummary, model: string): Promise<void> {
-  await ensureBackfilled();
+  ensureBackfilled();
   const subgenres = summary.subgenres.map(normalizeGenre).filter(Boolean);
-  const existing = await genreCache.get(trackId);
-  // Skip the write (a full file rewrite) when nothing changed — this runs on
-  // every summary request, cached ones included.
+  const existing = readGenres(trackId);
+  // Skip the write (and the genre index rebuild) when nothing changed —
+  // this runs on every summary request, cached ones included.
   if (
     existing &&
     existing.model === model &&
@@ -162,6 +256,6 @@ export async function saveTrackGenres(trackId: string, summary: TrackSummary, mo
   ) {
     return;
   }
-  await genreCache.set(trackId, { subgenres, moodVibe: summary.moodVibe, model, updatedAt: Date.now() });
-  canonicalSpellings = null;
+  transaction(() => writeGenres(trackId, { subgenres, moodVibe: summary.moodVibe, model, updatedAt: Date.now() }));
+  genreIndex = null;
 }

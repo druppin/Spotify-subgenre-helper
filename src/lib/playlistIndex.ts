@@ -1,5 +1,5 @@
-import { getCache } from "@/lib/cache";
-import type { LibraryCoverage, LibraryFetchMode } from "@/lib/library";
+import { LIKED_SONGS_ID, type LibraryCoverage, type LibraryFetchMode } from "@/lib/library";
+import { getPlaceInfo, getPlaceTracks, getTrack, savePlace, saveTrack, updatePlaceNames, type PlaceInfo } from "@/lib/libraryStore";
 import {
   SpotifyApiError,
   isCompleteTrack,
@@ -22,29 +22,10 @@ import {
 const ENTRY_VERSION = 3;
 const MIN_USABLE_VERSION = 2;
 
-interface IndexEntry {
-  snapshotId: string | null;
-  tracks?: LibraryTrack[];
-  version?: number;
-  fetchedAt: number;
-}
-
-interface LikedEntry {
-  marker: string;
-  tracks: LibraryTrack[];
-  version?: number;
-}
-
 // playlistId -> track URIs in that playlist
 export type PlaylistIndex = Record<string, string[]>;
 // playlistId -> that playlist's tracks
 export type LibraryIndex = Record<string, LibraryTrack[]>;
-
-const indexCache = getCache<IndexEntry>("playlist-index");
-const likedCache = getCache<LikedEntry>("liked-songs");
-// Single songs looked up on their own (e.g. for genre info), for songs no
-// cached playlist has complete details for.
-const trackDetailsCache = getCache<LibraryTrack>("track-details");
 
 // Kept low: bursts of parallel requests are what draw Spotify's long blocks.
 const CONCURRENCY = 2;
@@ -78,8 +59,6 @@ interface SharedState {
   verifiedAt: Map<string, number>;
   // Serializes syncs that fetch, so two never download the same playlist.
   syncChain: Promise<unknown>;
-  // uri -> best known details, built lazily from every cache above.
-  catalog: Map<string, LibraryTrack> | null;
   progress: ScanProgress;
 }
 
@@ -91,7 +70,6 @@ holder.__libraryState ??= {
   listingInFlight: null,
   verifiedAt: new Map(),
   syncChain: Promise.resolve(),
-  catalog: null,
   progress: { playlists: null, liked: null, rateLimitedUntil: null },
 };
 const state = holder.__libraryState;
@@ -151,19 +129,18 @@ export function invalidateListing() {
 
 type EntryState = "fresh" | "incomplete" | "changed" | "notScanned";
 
-function entryState(entry: IndexEntry | undefined, playlist: SpotifyPlaylist): EntryState {
-  if (!entry?.tracks || (entry.version ?? 0) < MIN_USABLE_VERSION) return "notScanned";
+function entryState(entry: PlaceInfo | undefined, playlist: SpotifyPlaylist): EntryState {
+  if (!entry || entry.version < MIN_USABLE_VERSION) return "notScanned";
   const current = playlist.snapshot_id
     ? entry.snapshotId === playlist.snapshot_id
     : Date.now() - entry.fetchedAt < NO_SNAPSHOT_MAX_AGE_MS;
   if (!current) return "changed";
-  return (entry.version ?? 0) < ENTRY_VERSION ? "incomplete" : "fresh";
+  return entry.version < ENTRY_VERSION ? "incomplete" : "fresh";
 }
 
-async function saveEntry(playlistId: string, entry: IndexEntry) {
-  await indexCache.set(playlistId, entry);
+function saveEntry(playlistId: string, info: PlaceInfo & { name?: string }, tracks: LibraryTrack[]) {
+  savePlace(playlistId, info, tracks);
   state.verifiedAt.set(playlistId, Date.now());
-  state.catalog = null;
 }
 
 /**
@@ -194,11 +171,11 @@ async function readLibrary(
   const playlists = allPlaylists.filter((p) => p.canModify);
   const index: LibraryIndex = {};
   const states = new Map<string, EntryState>();
+  updatePlaceNames(playlists);
   for (const playlist of playlists) {
-    const entry = await indexCache.get(playlist.id);
-    const current = entryState(entry, playlist);
+    const current = entryState(getPlaceInfo(playlist.id), playlist);
     states.set(playlist.id, current);
-    if (current !== "notScanned") index[playlist.id] = entry!.tracks!;
+    if (current !== "notScanned") index[playlist.id] = getPlaceTracks(playlist.id);
     if (current === "fresh" || current === "incomplete") state.verifiedAt.set(playlist.id, Date.now());
   }
 
@@ -245,7 +222,7 @@ async function fetchPlaylists(
   const playlistProgress = { fetched: 0, toFetch: playlists.length, unchanged };
   progress.playlists = playlistProgress;
 
-  const fetched: { id: string; entry: IndexEntry }[] = [];
+  const fetched: { playlist: SpotifyPlaylist; tracks: LibraryTrack[]; fetchedAt: number }[] = [];
   let next = 0;
   let rateLimited = false;
   const worker = async () => {
@@ -253,10 +230,7 @@ async function fetchPlaylists(
       const playlist = playlists[next++];
       try {
         const tracks = await spotify.getPlaylistLibraryTracks(playlist.id);
-        fetched.push({
-          id: playlist.id,
-          entry: { snapshotId: playlist.snapshot_id ?? null, tracks, version: ENTRY_VERSION, fetchedAt: Date.now() },
-        });
+        fetched.push({ playlist, tracks, fetchedAt: Date.now() });
       } catch (err) {
         // A long rate limit would skip every remaining playlist, leaving an
         // index that silently misses tracks — fail the whole sync instead.
@@ -275,11 +249,10 @@ async function fetchPlaylists(
   // throwing them away means spending requests on them again next time.
   const results = await Promise.allSettled(Array.from({ length: CONCURRENCY }, worker));
 
-  // Written one at a time: FileCache rewrites its whole file on every set,
-  // and overlapping writes to the same file could corrupt it.
-  for (const { id, entry } of fetched) {
-    await saveEntry(id, entry);
-    onFetched(id, entry.tracks!);
+  for (const { playlist, tracks, fetchedAt } of fetched) {
+    const { id, name, snapshot_id } = playlist;
+    saveEntry(id, { name, snapshotId: snapshot_id ?? null, version: ENTRY_VERSION, fetchedAt }, tracks);
+    onFetched(id, tracks);
   }
   const failure = results.find((r): r is PromiseRejectedResult => r.status === "rejected");
   if (failure) throw failure.reason;
@@ -309,13 +282,13 @@ export function getPlaylistTracksCached(spotify: SpotifyClient, playlistId: stri
         ? state.listing.playlists.find((p) => p.id === playlistId)
         : undefined;
     const snapshotId = listed?.snapshot_id ?? (await spotify.getPlaylistSnapshot(playlistId));
-    const entry = await indexCache.get(playlistId);
-    if (entry?.tracks && entry.version === ENTRY_VERSION && snapshotId && entry.snapshotId === snapshotId) {
+    const entry = getPlaceInfo(playlistId);
+    if (entry && entry.version === ENTRY_VERSION && snapshotId && entry.snapshotId === snapshotId) {
       state.verifiedAt.set(playlistId, Date.now());
-      return entry.tracks;
+      return getPlaceTracks(playlistId);
     }
     const tracks = await spotify.getPlaylistLibraryTracks(playlistId);
-    await saveEntry(playlistId, { snapshotId, tracks, version: ENTRY_VERSION, fetchedAt: Date.now() });
+    saveEntry(playlistId, { name: listed?.name, snapshotId, version: ENTRY_VERSION, fetchedAt: Date.now() }, tracks);
     return tracks;
   });
 }
@@ -334,12 +307,12 @@ export function recordOwnEdit(
   // The cached list's snapshot for this playlist is now out of date.
   invalidateListing();
   return serialized(async () => {
-    const entry = await indexCache.get(playlistId);
+    const entry = getPlaceInfo(playlistId);
     const verified = state.verifiedAt.get(playlistId);
-    if (!entry?.tracks || !newSnapshotId || !verified || Date.now() - verified > EDIT_PATCH_MAX_AGE_MS) return;
+    if (!entry || !newSnapshotId || !verified || Date.now() - verified > EDIT_PATCH_MAX_AGE_MS) return;
 
-    let tracks = entry.tracks;
-    let version = entry.version ?? MIN_USABLE_VERSION;
+    let tracks = getPlaceTracks(playlistId);
+    let version = entry.version;
     if (change.removed?.length) {
       const removed = new Set(change.removed);
       tracks = tracks.filter((t) => !removed.has(t.uri));
@@ -348,14 +321,14 @@ export function recordOwnEdit(
       const now = new Date().toISOString();
       const added: LibraryTrack[] = [];
       for (const uri of change.added) {
-        const details = await findTrackDetails(uri);
+        const details = findTrackDetails(uri);
         if (!details) return;
         if (!isCompleteTrack(details)) version = Math.min(version, MIN_USABLE_VERSION);
         added.push({ ...details, addedAt: now });
       }
       tracks = [...tracks, ...added];
     }
-    await saveEntry(playlistId, { snapshotId: newSnapshotId, tracks, version, fetchedAt: Date.now() });
+    saveEntry(playlistId, { snapshotId: newSnapshotId, version, fetchedAt: Date.now() }, tracks);
   });
 }
 
@@ -363,8 +336,12 @@ export function recordOwnEdit(
 export async function recordNewPlaylist(playlist: SpotifyPlaylist) {
   invalidateListing();
   if (!playlist.snapshot_id) return;
-  await serialized(() =>
-    saveEntry(playlist.id, { snapshotId: playlist.snapshot_id!, tracks: [], version: ENTRY_VERSION, fetchedAt: Date.now() })
+  await serialized(async () =>
+    saveEntry(
+      playlist.id,
+      { name: playlist.name, snapshotId: playlist.snapshot_id!, version: ENTRY_VERSION, fetchedAt: Date.now() },
+      []
+    )
   );
 }
 
@@ -380,11 +357,11 @@ export async function getLikedSongs(
   spotify: SpotifyClient,
   mode: LibraryFetchMode
 ): Promise<{ tracks: LibraryTrack[] | null; status: LibraryCoverage["likedSongs"] }> {
-  const entry = await likedCache.get("liked");
-  const usable = entry && (entry.version ?? 0) >= MIN_USABLE_VERSION ? entry : undefined;
+  const entry = getPlaceInfo(LIKED_SONGS_ID);
+  const usable = entry && entry.version >= MIN_USABLE_VERSION ? entry : undefined;
   if (mode === "none") {
-    const status = !usable ? "notScanned" : (usable.version ?? 0) < ENTRY_VERSION ? "incomplete" : "unchecked";
-    return { tracks: usable?.tracks ?? null, status };
+    const status = !usable ? "notScanned" : usable.version < ENTRY_VERSION ? "incomplete" : "unchecked";
+    return { tracks: usable ? getPlaceTracks(LIKED_SONGS_ID) : null, status };
   }
 
   return serialized(async () => {
@@ -393,16 +370,16 @@ export async function getLikedSongs(
     reportRateLimits(spotify);
     const marker = await spotify.getLikedTracksMarker();
     const complete = (usable?.version ?? 0) >= ENTRY_VERSION;
-    if (usable && usable.marker === marker && (complete || mode === "update")) {
-      progress.liked = { fetched: usable.tracks.length, total: usable.tracks.length, unchanged: true };
-      return { tracks: usable.tracks, status: complete ? "fresh" : "incomplete" } as const;
+    if (usable && usable.snapshotId === marker && (complete || mode === "update")) {
+      const tracks = getPlaceTracks(LIKED_SONGS_ID);
+      progress.liked = { fetched: tracks.length, total: tracks.length, unchanged: true };
+      return { tracks, status: complete ? "fresh" : "incomplete" } as const;
     }
     progress.liked = { fetched: 0, total: null, unchanged: false };
     const tracks = await spotify.getLikedTracks((fetched, total) => {
       progress.liked = { fetched, total, unchanged: false };
     });
-    await likedCache.set("liked", { marker, tracks, version: ENTRY_VERSION });
-    state.catalog = null;
+    savePlace(LIKED_SONGS_ID, { snapshotId: marker, version: ENTRY_VERSION, fetchedAt: Date.now() }, tracks);
     return { tracks, status: "fresh" } as const;
   });
 }
@@ -410,22 +387,9 @@ export async function getLikedSongs(
 // ---------------------------------------------------------------------------
 // Single songs
 
-async function buildCatalog(): Promise<Map<string, LibraryTrack>> {
-  const catalog = new Map<string, LibraryTrack>();
-  const consider = (track: LibraryTrack) => {
-    const existing = catalog.get(track.uri);
-    if (!existing || (!isCompleteTrack(existing) && isCompleteTrack(track))) catalog.set(track.uri, track);
-  };
-  for (const [, entry] of await indexCache.entries()) entry.tracks?.forEach(consider);
-  (await likedCache.get("liked"))?.tracks.forEach(consider);
-  for (const [, track] of await trackDetailsCache.entries()) consider(track);
-  return catalog;
-}
-
 /** Everything known about a song from any cached source, or null. */
-export async function findTrackDetails(uri: string): Promise<LibraryTrack | null> {
-  state.catalog ??= await buildCatalog();
-  return state.catalog.get(uri) ?? null;
+export function findTrackDetails(uri: string): LibraryTrack | null {
+  return getTrack(uri);
 }
 
 /**
@@ -435,10 +399,9 @@ export async function findTrackDetails(uri: string): Promise<LibraryTrack | null
  */
 export async function getTrackDetailsCached(spotify: SpotifyClient, trackId: string): Promise<LibraryTrack> {
   const uri = `spotify:track:${trackId}`;
-  const known = await findTrackDetails(uri);
+  const known = findTrackDetails(uri);
   if (known && isCompleteTrack(known)) return known;
   const details = await spotify.getTrackDetails(trackId);
-  await trackDetailsCache.set(uri, details);
-  state.catalog?.set(uri, details);
+  saveTrack(details);
   return details;
 }

@@ -1,6 +1,7 @@
 import { promises as fs } from "fs";
 import path from "path";
 import { getCache } from "@/lib/cache";
+import { getPlaylistAdds } from "@/lib/libraryStore";
 
 /*
  * A record of every song this app files into (or takes out of) a playlist,
@@ -110,21 +111,11 @@ async function ensureBaseline(): Promise<Baseline> {
   const until = existing?.until ?? new Date().toISOString();
   const songs = new Set<string>();
   const groups = new Map<string, string[]>();
-  try {
-    const index = JSON.parse(await fs.readFile(path.join(CACHE_DIR, "playlist-index.json"), "utf-8")) as Record<
-      string,
-      { value: { tracks?: { uri: string; addedAt: string }[] } }
-    >;
-    for (const [playlistId, { value }] of Object.entries(index)) {
-      for (const track of value.tracks ?? []) {
-        if (track.addedAt < APP_STARTED || track.addedAt >= until) continue;
-        songs.add(track.uri);
-        const key = `${playlistId}|${track.addedAt}`;
-        groups.set(key, [...(groups.get(key) ?? []), track.uri]);
-      }
-    }
-  } catch {
-    // No cached library yet — the estimate is just zero.
+  // With no cached library yet, the estimate is just zero.
+  for (const { playlistId, uri, addedAt } of getPlaylistAdds(APP_STARTED, until)) {
+    songs.add(uri);
+    const key = `${playlistId}|${addedAt}`;
+    groups.set(key, [...(groups.get(key) ?? []), uri]);
   }
   const bySourceSongs = { sorter: new Set<string>(), "lost-tracks": new Set<string>() };
   for (const uris of groups.values()) {
