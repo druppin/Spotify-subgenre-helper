@@ -8,7 +8,7 @@ The API only reads what the app has already cached. It never downloads from Spot
 
 ## Keys
 
-Every request needs an API key:
+Every request needs an API key. Create one in the app under **Settings → Library API keys**, where you can also see when each key was last used and revoke it. The same works from a terminal:
 
 ```
 npm run api-token create "mixxx tagger"   # prints the key once

@@ -2,35 +2,76 @@
 
 import { useEffect, useState } from "react";
 import { AppShell } from "./AppShell";
+import { SettingsForm } from "./SettingsDialog";
+
+type Status = { configured: boolean; authenticated: boolean };
 
 export function AuthGate() {
-  const [authenticated, setAuthenticated] = useState<boolean | null>(null);
+  const [status, setStatus] = useState<Status | null>(null);
+  const [showSettings, setShowSettings] = useState(false);
 
-  useEffect(() => {
+  const check = () =>
     fetch("/api/auth/status")
       .then((res) => res.json())
-      .then((body) => setAuthenticated(body.authenticated))
-      .catch(() => setAuthenticated(false));
+      .then((body: Status) => setStatus(body))
+      .catch(() => setStatus({ configured: true, authenticated: false }));
+  useEffect(() => {
+    check();
   }, []);
 
-  if (authenticated === null) {
+  if (status === null) {
     return <div className="flex h-screen items-center justify-center text-neutral-500">Loading…</div>;
   }
 
-  if (!authenticated) {
+  if (status.authenticated) return <AppShell />;
+
+  // First run: there's no Spotify app to log in with until one is entered.
+  if (!status.configured || showSettings) {
     return (
-      <div className="flex h-screen flex-col items-center justify-center gap-4 bg-neutral-950 text-white">
-        <h1 className="text-2xl font-bold">Spotify Subgenre Assistant</h1>
-        <p className="text-neutral-400">Connect your Spotify account to start sorting tracks.</p>
-        <a
-          href="/api/auth/login"
-          className="rounded-full bg-green-600 px-6 py-2 font-semibold text-white hover:bg-green-500"
-        >
-          Connect Spotify
-        </a>
+      <div className="min-h-screen bg-neutral-950 px-4 py-10 text-white">
+        <div className="mx-auto max-w-xl space-y-5">
+          <div className="space-y-1">
+            <h1 className="text-2xl font-bold">Spotify Subgenre Assistant</h1>
+            <p className="text-neutral-400">
+              {status.configured
+                ? "Settings"
+                : "Welcome! Connect the app to Spotify and an AI provider to get started. You can change these later in Settings."}
+            </p>
+          </div>
+          <SettingsForm
+            onSaved={(settings) => {
+              if (!settings.spotifyConfigured) return;
+              setShowSettings(false);
+              check();
+            }}
+          />
+          {status.configured && (
+            <button
+              type="button"
+              onClick={() => setShowSettings(false)}
+              className="text-sm text-neutral-400 hover:text-white"
+            >
+              ← Back
+            </button>
+          )}
+        </div>
       </div>
     );
   }
 
-  return <AppShell />;
+  return (
+    <div className="flex h-screen flex-col items-center justify-center gap-4 bg-neutral-950 text-white">
+      <h1 className="text-2xl font-bold">Spotify Subgenre Assistant</h1>
+      <p className="text-neutral-400">Connect your Spotify account to start sorting tracks.</p>
+      <a
+        href="/api/auth/login"
+        className="rounded-full bg-green-600 px-6 py-2 font-semibold text-white hover:bg-green-500"
+      >
+        Connect Spotify
+      </a>
+      <button type="button" onClick={() => setShowSettings(true)} className="text-sm text-neutral-500 hover:text-white">
+        Settings
+      </button>
+    </div>
+  );
 }

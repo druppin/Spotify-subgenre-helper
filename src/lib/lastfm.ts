@@ -1,4 +1,5 @@
 import { fetchWithTimeout } from "@/lib/fetchWithTimeout";
+import { getSetting } from "@/lib/settings";
 
 const API_BASE = "https://ws.audioscrobbler.com/2.0/";
 
@@ -12,7 +13,7 @@ export interface LastfmArtistInfo {
 }
 
 function apiKey(): string | undefined {
-  return process.env.LASTFM_API_KEY;
+  return getSetting("LASTFM_API_KEY");
 }
 
 // Last.fm's "not found" error: the artist or track just isn't there, as

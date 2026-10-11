@@ -4,7 +4,8 @@ import { sql } from "@/lib/db";
 
 /*
  * Keys for the /api/v1 API, sent as `Authorization: Bearer <key>`. Keys are
- * made and revoked with scripts/api-token.mjs; only their hashes are stored.
+ * made and revoked in the app's Settings (tokens.ts) or with
+ * scripts/api-token.mjs; only their hashes are stored.
  */
 
 export function hashToken(token: string): string {
@@ -16,7 +17,7 @@ export function checkApiToken(request: Request): NextResponse | null {
   const header = request.headers.get("authorization") ?? "";
   const token = header.match(/^Bearer\s+(\S+)$/i)?.[1];
   if (!token) {
-    return apiError(401, "Send an API key as 'Authorization: Bearer <key>'. Create one with: npm run api-token create <name>");
+    return apiError(401, "Send an API key as 'Authorization: Bearer <key>'. Create one in the app's Settings, or with: npm run api-token create <name>");
   }
   const row = sql("SELECT id FROM api_tokens WHERE token_hash = ?").get(hashToken(token)) as { id: number } | undefined;
   if (!row) return apiError(401, "Unknown or revoked API key.");

@@ -1,5 +1,6 @@
 import { getSession } from "@/lib/session";
 import { fetchWithTimeout } from "@/lib/fetchWithTimeout";
+import { getRedirectUri, getSetting, type SettingName } from "@/lib/settings";
 
 const AUTH_URL = "https://accounts.spotify.com/authorize";
 const TOKEN_URL = "https://accounts.spotify.com/api/token";
@@ -24,19 +25,15 @@ export function hasScope(grantedScope: string | undefined, scope: string): boole
   return (grantedScope ?? "").split(" ").includes(scope);
 }
 
-function requireEnv(name: string): string {
-  const value = process.env[name];
-  if (!value) throw new Error(`Missing required env var: ${name}`);
+function requireSetting(name: SettingName): string {
+  const value = getSetting(name);
+  if (!value) throw new Error(`Missing setting: ${name}. Add it in the app's Settings.`);
   return value;
-}
-
-export function getRedirectUri(): string {
-  return requireEnv("SPOTIFY_REDIRECT_URI");
 }
 
 export function buildAuthorizeUrl(state: string): string {
   const params = new URLSearchParams({
-    client_id: requireEnv("SPOTIFY_CLIENT_ID"),
+    client_id: requireSetting("SPOTIFY_CLIENT_ID"),
     response_type: "code",
     redirect_uri: getRedirectUri(),
     scope: SPOTIFY_SCOPES,
@@ -54,8 +51,8 @@ interface SpotifyTokenResponse {
 }
 
 function basicAuthHeader(): string {
-  const clientId = requireEnv("SPOTIFY_CLIENT_ID");
-  const clientSecret = requireEnv("SPOTIFY_CLIENT_SECRET");
+  const clientId = requireSetting("SPOTIFY_CLIENT_ID");
+  const clientSecret = requireSetting("SPOTIFY_CLIENT_SECRET");
   return "Basic " + Buffer.from(`${clientId}:${clientSecret}`).toString("base64");
 }
 

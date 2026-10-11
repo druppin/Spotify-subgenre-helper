@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { PlayerProvider } from "./PlayerProvider";
 import { Dashboard } from "./Dashboard";
 import { LostTracksView } from "./LostTracksView";
+import { SettingsDialog } from "./SettingsDialog";
 import type { OrganizeStats } from "@/lib/organizeLog";
 
 const TABS = [
@@ -73,6 +74,7 @@ export function AppShell() {
   // so up front instead of letting every action fail one at a time.
   const [blockedUntil, setBlockedUntil] = useState<number | null>(null);
   const [organized, setOrganized] = useState<OrganizeStats | null>(null);
+  const settingsRef = useRef<HTMLDialogElement>(null);
   useEffect(() => {
     // Both answered locally by the server; neither touches Spotify.
     const check = () => {
@@ -117,12 +119,20 @@ export function AppShell() {
           {tab.label}
         </button>
       ))}
+      <button
+        type="button"
+        onClick={() => settingsRef.current?.showModal()}
+        className="rounded-md px-3 py-1.5 text-sm font-medium text-neutral-400 hover:bg-neutral-800 hover:text-neutral-200"
+      >
+        Settings
+      </button>
       {organized && <OrganizedCount stats={organized} />}
     </nav>
   );
 
   return (
     <PlayerProvider>
+      <SettingsDialog dialogRef={settingsRef} />
       {blockedUntil && (
         <div className="fixed inset-x-0 bottom-0 z-50 bg-red-950/95 px-4 py-2 text-center text-sm text-red-200">
           Spotify has blocked this app&apos;s requests until{" "}

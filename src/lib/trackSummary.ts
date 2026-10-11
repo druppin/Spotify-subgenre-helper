@@ -3,20 +3,13 @@ import { getValidAccessToken } from "@/lib/spotify/auth";
 import { SpotifyClient, SpotifyApiError } from "@/lib/spotify/client";
 import { buildTrackContext, hasGenreEvidence, type SummaryStep } from "@/lib/context";
 import { summarizeTrack, SUMMARY_PROMPT_VERSION } from "@/lib/llm/summarize";
-import type { LlmConfig, LlmProvider, TrackContext, TrackSummary } from "@/lib/llm/types";
+import type { TrackContext, TrackSummary } from "@/lib/llm/types";
 import { getCache } from "@/lib/cache";
 import { spotifyErrorResponse } from "@/lib/spotify/routeError";
 import { canonicalizeGenres, saveTrackGenres } from "@/lib/trackGenres";
+import { getLlmConfig } from "@/lib/settings";
 
 const summaryCache = getCache<TrackSummary>("track-summary");
-
-function llmConfigFromEnv(): LlmConfig | null {
-  const provider = process.env.LLM_PROVIDER as LlmProvider | undefined;
-  const apiKey = process.env.LLM_API_KEY;
-  const model = process.env.LLM_MODEL;
-  if (!provider || !apiKey || !model) return null;
-  return { provider, apiKey, model };
-}
 
 /**
  * One song's genre summary, as the summary route returns it. onStep hears
@@ -48,11 +41,11 @@ export async function summarizeTrackById(
     return spotifyErrorResponse(err, "track summary (context)");
   }
 
-  const llmConfig = llmConfigFromEnv();
+  const llmConfig = getLlmConfig();
   if (!llmConfig) {
     return NextResponse.json({
       context,
-      summaryError: "LLM_PROVIDER, LLM_API_KEY, and LLM_MODEL must be set (see .env.example)",
+      summaryError: "No AI provider set up yet. Choose one and add its key in Settings.",
     });
   }
 

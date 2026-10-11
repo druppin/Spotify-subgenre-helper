@@ -72,45 +72,40 @@ without ever inventing context that isn't actually in the data.
    npm install
    ```
 
-2. **Register a Spotify app** at the [Spotify Developer Dashboard](https://developer.spotify.com/dashboard).
-   - Add a Redirect URI of exactly `http://127.0.0.1:3000/api/auth/callback`
-     (Spotify requires the loopback IP literal, not `localhost`, for non-HTTPS
-     redirect URIs).
-   - Copy the Client ID and Client Secret.
-   - Playback requires a **Spotify Premium** account — the Web Playback SDK
-     doesn't work otherwise.
-
-3. **Copy `.env.example` to `.env.local`** and fill in:
-   - `SPOTIFY_CLIENT_ID` / `SPOTIFY_CLIENT_SECRET` from step 2.
-   - `SESSION_SECRET` — any random 32+ character string (`openssl rand -base64 32`).
-   - `LASTFM_API_KEY` — optional, free key from [last.fm/api](https://www.last.fm/api/account/create).
-     Track context still builds without it, just without Last.fm tags/bio.
-   - Nothing to configure for [MusicBrainz](https://musicbrainz.org) — its
-     community-voted genres (per recording, release, and credited artist) are
-     fetched with no API key. It allows ~1 request/sec, so a track's first
-     load takes a few extra seconds; results are cached after that.
-   - Nothing to configure for audio features (danceability/energy/valence/
-     tempo/etc.) — they come from [ReccoBeats](https://reccobeats.com), a free
-     replacement for Spotify's own Audio Features endpoint (closed to new
-     apps since Nov 2024), no API key required. Tracks it doesn't have
-     coverage for just come back with no audio features.
-   - `LLM_PROVIDER` / `LLM_API_KEY` / `LLM_MODEL` — required for AI summaries.
-     Bring your own key; `anthropic` is pay-as-you-go from
-     [console.anthropic.com](https://console.anthropic.com) (a claude.ai Pro/Max
-     subscription does NOT cover API usage — separate billing). Free tiers to
-     prototype with instead are listed in `.env.example` (Google AI Studio's
-     Gemini Flash, Groq, or an OpenRouter `:free` model).
-
-4. **Run the dev server**
+2. **Run the dev server**
 
    ```bash
    npm run dev
    ```
 
-   Open [http://127.0.0.1:3000](http://127.0.0.1:3000) (use `127.0.0.1`, not
-   `localhost`, to match the Spotify redirect URI) and click "Connect Spotify".
+3. **Open [http://127.0.0.1:3000](http://127.0.0.1:3000)** (use `127.0.0.1`,
+   not `localhost`, to match the Spotify redirect URI). The first time, the app
+   asks for:
+   - **A Spotify app's Client ID and secret.** The setup screen walks you
+     through registering one at the
+     [Spotify Developer Dashboard](https://developer.spotify.com/dashboard) and
+     shows the Redirect URI to add. Playback needs **Spotify Premium** (the Web
+     Playback SDK doesn't work otherwise).
+   - **An AI provider and API key**, for genre guesses. Bring your own key;
+     `anthropic` is pay-as-you-go from
+     [console.anthropic.com](https://console.anthropic.com) (a claude.ai Pro/Max
+     subscription does NOT cover API usage — separate billing). Google AI
+     Studio's Gemini Flash, Groq, and OpenRouter `:free` models are free
+     options.
+   - **A Last.fm API key** (optional, free from
+     [last.fm/api](https://www.last.fm/api/account/create)). Track context
+     still builds without it, just without Last.fm tags/bio.
 
-Everything the app saves (the library database, caches, logs) goes in
+   Then click "Connect Spotify". Everything can be changed later under
+   Settings. Nothing to configure for [MusicBrainz](https://musicbrainz.org)
+   (community-voted genres; ~1 request/sec, so a track's first load takes a few
+   extra seconds) or [ReccoBeats](https://reccobeats.com) (audio features, a
+   free replacement for Spotify's closed Audio Features endpoint).
+
+   Prefer a config file? Copy `.env.example` to `.env.local` and fill it in
+   instead; values saved in Settings take priority over it.
+
+Everything the app saves (settings, the library database, caches, logs) goes in
 `.cache/` in the project folder. Set `SGH_DATA_DIR` to keep it somewhere else.
 
 ## Project structure
