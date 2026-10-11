@@ -64,6 +64,36 @@ without ever inventing context that isn't actually in the data.
   [Last.fm API](https://www.last.fm/api) — all called server-side except
   playback itself
 
+## Install
+
+Download the installer for your computer from the
+[Releases page](https://github.com/druppin/Spotify-subgenre-helper/releases):
+`.exe` for Windows, `.dmg` for macOS (arm64 for Apple Silicon, x64 for Intel),
+`.AppImage` for Linux. Open it, and the app opens in your browser at
+`http://127.0.0.1:3000` and walks you through setup. A small window shows it's
+running; close it to stop the app.
+
+The installers aren't signed yet, so the first launch warns about it:
+
+- **Windows:** on "Windows protected your PC", click **More info → Run anyway**.
+- **macOS:** if it says the app can't be opened or is damaged, run
+  `xattr -cr "/Applications/Spotify Subgenre Assistant.app"` in Terminal, then
+  open it again.
+- **Linux:** make the AppImage executable (`chmod +x`), then run it.
+
+Your settings and library are kept in the app's data folder (the window links
+to it), so they survive updates.
+
+To run from source instead, follow Setup below.
+
+### Building the installers
+
+`npm run desktop` builds and runs the desktop app from a checkout, and
+`npm run desktop:dist` builds this OS's installer into `dist/`. To release,
+bump `version` in `package.json`, then push a matching tag (`v0.2.0`):
+GitHub Actions builds all three installers and attaches them to a draft
+release to review and publish.
+
 ## Setup
 
 1. **Install dependencies**

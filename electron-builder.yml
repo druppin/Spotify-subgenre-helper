@@ -1,0 +1,40 @@
+# Desktop installers: npm run desktop:dist builds one for this OS into dist/.
+# Releases are built for every OS by .github/workflows/desktop.yml.
+appId: io.github.druppin.spotify-subgenre-helper
+productName: Spotify Subgenre Assistant
+directories:
+  output: dist
+# The Electron side is just electron/. The app itself (with the
+# node_modules it needs) is the standalone build, shipped as a resource.
+files:
+  - electron/**
+  - "!node_modules"
+# Copied from .next rather than .next/standalone: electron-builder drops a
+# node_modules at the top of what it copies, and the server needs its own.
+extraResources:
+  - from: .next
+    to: server
+    filter: ["standalone/**/*"]
+win:
+  target: nsis
+nsis:
+  # Installs for the current user, no admin prompt.
+  oneClick: true
+  perMachine: false
+mac:
+  target:
+    - target: dmg
+      arch: [arm64, x64]
+  category: public.app-category.music
+  # Unsigned for now. Ad-hoc signing (without hardened runtime) is the least
+  # Apple Silicon Macs need to open it at all.
+  identity: "-"
+  hardenedRuntime: false
+linux:
+  target: AppImage
+  category: Audio
+publish:
+  provider: github
+  owner: druppin
+  repo: Spotify-subgenre-helper
+  releaseType: draft

@@ -18,7 +18,9 @@ function sessionOptions(): SessionOptions {
     // SESSION_SECRET from .env.local, or one the app made and saved.
     password: getSessionSecret(),
     cookieOptions: {
-      secure: process.env.NODE_ENV === "production",
+      // Always plain http on 127.0.0.1, which Safari won't send secure
+      // cookies to, so the login would never stick there.
+      secure: false,
       sameSite: "lax",
     },
   };

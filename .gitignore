@@ -19,6 +19,8 @@
 
 # production
 /build
+# desktop installers (electron-builder)
+/dist/
 
 # misc
 .DS_Store
