@@ -12,7 +12,8 @@
     "lint": "eslint",
     "desktop:prepare": "next build && node scripts/prepare-desktop.mjs",
     "desktop": "npm run desktop:prepare && electron .",
-    "desktop:dist": "npm run desktop:prepare && electron-builder --publish never"
+    "desktop:dist": "npm run desktop:prepare && electron-builder --publish never",
+    "merge-dev-data": "node scripts/merge-dev-data.mjs"
   },
   "dependencies": {
     "iron-session": "^9.0.1",

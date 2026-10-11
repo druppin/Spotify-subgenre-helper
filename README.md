@@ -94,6 +94,13 @@ bump `version` in `package.json`, then push a matching tag (`v0.2.0`):
 GitHub Actions builds all three installers and attaches them to a draft
 release to review and publish.
 
+The desktop app and `npm run dev` keep separate data folders, so dev runs can
+be used for testing without touching the desktop library. To copy the dev
+library into the desktop app (songs, playlists and genres it doesn't have yet;
+nothing it has is overwritten), close both and run
+`npm run merge-dev-data` (add `-- --installed` for an installed copy). The
+desktop folder is backed up first.
+
 ## Setup
 
 1. **Install dependencies**
