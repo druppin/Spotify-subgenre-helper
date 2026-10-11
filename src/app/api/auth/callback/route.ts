@@ -1,6 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { exchangeCodeForToken } from "@/lib/spotify/auth";
 import { getSession } from "@/lib/session";
+import { getRedirectUri } from "@/lib/settings";
+
+// Back to the app at the address Spotify returned to. Not request.url: the
+// production server reports its host as localhost, and the login cookie
+// lives on 127.0.0.1, so landing on localhost would look logged out.
+function backToApp(path: string): NextResponse {
+  return NextResponse.redirect(new URL(path, getRedirectUri()));
+}
 
 export async function GET(request: NextRequest) {
   const url = new URL(request.url);
@@ -13,10 +21,10 @@ export async function GET(request: NextRequest) {
   session.oauthState = undefined;
 
   if (error) {
-    return NextResponse.redirect(new URL(`/?auth_error=${encodeURIComponent(error)}`, request.url));
+    return backToApp(`/?auth_error=${encodeURIComponent(error)}`);
   }
   if (!code || !state || state !== expectedState) {
-    return NextResponse.redirect(new URL("/?auth_error=state_mismatch", request.url));
+    return backToApp("/?auth_error=state_mismatch");
   }
 
   const token = await exchangeCodeForToken(code);
@@ -26,5 +34,5 @@ export async function GET(request: NextRequest) {
   session.scope = token.scope;
   await session.save();
 
-  return NextResponse.redirect(new URL("/", request.url));
+  return backToApp("/");
 }
