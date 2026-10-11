@@ -1,5 +1,6 @@
 import { promises as fs } from "fs";
 import path from "path";
+import { DATA_DIR } from "@/lib/dataDir";
 
 /**
  * Swappable cache abstraction. File-backed by default (see FileCache) so
@@ -49,7 +50,6 @@ export class InMemoryCache<V = unknown> implements Cache<V> {
   }
 }
 
-const CACHE_DIR = path.join(process.cwd(), ".cache");
 
 /**
  * One JSON file per namespace under .cache/. Simple, human-inspectable,
@@ -64,7 +64,7 @@ export class FileCache<V = unknown> implements Cache<V> {
   private writeChain: Promise<void> = Promise.resolve();
 
   constructor(namespace: string) {
-    this.filePath = path.join(CACHE_DIR, `${namespace}.json`);
+    this.filePath = path.join(DATA_DIR, `${namespace}.json`);
   }
 
   private async load(): Promise<Map<string, Entry<V>>> {
@@ -80,7 +80,7 @@ export class FileCache<V = unknown> implements Cache<V> {
 
   private persist(map: Map<string, Entry<V>>): Promise<void> {
     const write = this.writeChain.then(async () => {
-      await fs.mkdir(CACHE_DIR, { recursive: true });
+      await fs.mkdir(DATA_DIR, { recursive: true });
       await fs.writeFile(this.filePath, JSON.stringify(Object.fromEntries(map), null, 2), "utf-8");
     });
     this.writeChain = write.catch(() => {});

@@ -2,6 +2,7 @@ import { existsSync, readFileSync } from "fs";
 import path from "path";
 import { once, sql, transaction } from "@/lib/db";
 import type { TrackSummary } from "@/lib/llm/types";
+import { DATA_DIR } from "@/lib/dataDir";
 
 /**
  * The genres the AI settled on for each track, keyed by Spotify track id.
@@ -17,7 +18,6 @@ export interface TrackGenres {
   updatedAt: number;
 }
 
-const CACHE_DIR = path.join(process.cwd(), ".cache");
 
 function readGenres(trackId: string): TrackGenres | undefined {
   const row = sql("SELECT mood_vibe, model, updated_at FROM track_genres WHERE track_id = ?").get(trackId) as
@@ -228,7 +228,7 @@ function ensureBackfilled() {
 }
 
 function readJson<V>(file: string): V | undefined {
-  const filePath = path.join(CACHE_DIR, file);
+  const filePath = path.join(DATA_DIR, file);
   if (!existsSync(filePath)) return undefined;
   try {
     return JSON.parse(readFileSync(filePath, "utf-8")) as V;

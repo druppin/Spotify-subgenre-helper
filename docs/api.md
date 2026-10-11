@@ -122,4 +122,4 @@ Errors come back as `{ "error": "message" }` with status `400` (bad request), `4
 
 ## Querying the database directly
 
-The same data is in `.cache/library.db`, a SQLite file you can open read-only. See the views described in `src/lib/db.ts`.
+The same data is in `library.db` in the app's data folder (`.cache/`, or wherever `SGH_DATA_DIR` points), a SQLite file you can open read-only. See the views described in `src/lib/db.ts`.

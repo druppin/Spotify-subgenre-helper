@@ -110,6 +110,9 @@ without ever inventing context that isn't actually in the data.
    Open [http://127.0.0.1:3000](http://127.0.0.1:3000) (use `127.0.0.1`, not
    `localhost`, to match the Spotify redirect URI) and click "Connect Spotify".
 
+Everything the app saves (the library database, caches, logs) goes in
+`.cache/` in the project folder. Set `SGH_DATA_DIR` to keep it somewhere else.
+
 ## Project structure
 
 ```

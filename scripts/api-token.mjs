@@ -9,7 +9,8 @@ import { existsSync } from "fs";
 import path from "path";
 import { DatabaseSync } from "node:sqlite";
 
-const DB_PATH = path.join(process.cwd(), ".cache", "library.db");
+// Same folder as src/lib/dataDir.ts.
+const DB_PATH = path.join(process.env.SGH_DATA_DIR || path.join(process.cwd(), ".cache"), "library.db");
 const [command, ...args] = process.argv.slice(2);
 
 function fail(message) {

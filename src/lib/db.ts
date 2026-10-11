@@ -1,9 +1,11 @@
 import { mkdirSync } from "fs";
 import path from "path";
 import { DatabaseSync, type StatementSync } from "node:sqlite";
+import { DATA_DIR } from "@/lib/dataDir";
 
 /*
- * The library database: .cache/library.db, a SQLite file that can also be
+ * The library database: library.db in the data folder (.cache/ unless
+ * SGH_DATA_DIR says otherwise — see dataDir.ts), a SQLite file that can also be
  * opened directly (`sqlite3 .cache/library.db`) to look things up, e.g.
  *
  *   -- every song in a playlist, in order
@@ -17,7 +19,7 @@ import { DatabaseSync, type StatementSync } from "node:sqlite";
  * into display spellings or given parent genres — see trackGenres.ts).
  */
 
-const DB_PATH = path.join(process.cwd(), ".cache", "library.db");
+const DB_PATH = path.join(DATA_DIR, "library.db");
 
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS tracks (

@@ -2,6 +2,7 @@ import { promises as fs } from "fs";
 import path from "path";
 import { getCache } from "@/lib/cache";
 import { getPlaylistAdds } from "@/lib/libraryStore";
+import { DATA_DIR } from "@/lib/dataDir";
 
 /*
  * A record of every song this app files into (or takes out of) a playlist,
@@ -9,8 +10,7 @@ import { getPlaylistAdds } from "@/lib/libraryStore";
  * as append-only JSON lines: one write per change, never a full rewrite.
  */
 
-const CACHE_DIR = path.join(process.cwd(), ".cache");
-const LOG_PATH = path.join(CACHE_DIR, "organize-log.jsonl");
+const LOG_PATH = path.join(DATA_DIR, "organize-log.jsonl");
 
 // Which part of the app made a change.
 export type OrganizeSource = "sorter" | "lost-tracks";
@@ -75,7 +75,7 @@ export async function recordOrganizeEvent(event: Omit<OrganizeEvent, "at">): Pro
   if (event.uris.length === 0) return;
   try {
     await ensureBaseline();
-    await fs.mkdir(CACHE_DIR, { recursive: true });
+    await fs.mkdir(DATA_DIR, { recursive: true });
     await fs.appendFile(LOG_PATH, JSON.stringify({ at: new Date().toISOString(), ...event }) + "\n", "utf-8");
   } catch (err) {
     // Losing a log line shouldn't fail the add/remove that already happened.

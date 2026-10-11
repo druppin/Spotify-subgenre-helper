@@ -9,5 +9,8 @@ console.log(
 
 // Bound to loopback only: the app's API serves your library data, and
 // nothing else on the network should reach it.
-const proc = spawn("next", ["dev", "-H", "127.0.0.1"], { stdio: "inherit" });
+// Runs Next's CLI with this same Node rather than a bare `next`, which
+// Windows can't spawn (its shim there is next.cmd).
+const nextBin = require.resolve("next/dist/bin/next");
+const proc = spawn(process.execPath, [nextBin, "dev", "-H", "127.0.0.1"], { stdio: "inherit" });
 proc.on("exit", (code) => process.exit(code));

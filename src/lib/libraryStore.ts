@@ -4,6 +4,7 @@ import { once, sql, transaction } from "@/lib/db";
 import { LIKED_SONGS_ID } from "@/lib/library";
 import { baseTitle } from "@/lib/songIdentity";
 import { isCompleteTrack, type LibraryTrack } from "@/lib/spotify/client";
+import { DATA_DIR } from "@/lib/dataDir";
 
 /*
  * Cached playlists, Liked Songs and song details, stored in the library
@@ -198,10 +199,9 @@ export function saveTrack(track: LibraryTrack) {
 // ---------------------------------------------------------------------------
 // The JSON cache this replaced
 
-const CACHE_DIR = path.join(process.cwd(), ".cache");
 
 function readLegacy<V>(namespace: string): [string, V][] {
-  const file = path.join(CACHE_DIR, `${namespace}.json`);
+  const file = path.join(DATA_DIR, `${namespace}.json`);
   if (!existsSync(file)) return [];
   try {
     const entries = JSON.parse(readFileSync(file, "utf-8")) as Record<string, { value: V }>;
