@@ -23,8 +23,9 @@
   --band-ink: #f1e9dd;
   --band-muted: #e8cdd0;
   --danger: #f0b2a4;
-  --ok: #a7c47c;
-  --warn: #e2b547;
+  /* Status colours stay clear of the six genre-family hues below. */
+  --ok: #86d4a0;
+  --warn: #f5a442;
 
   /* Genre families: the tab is printed card stock (dark text on it in both
      themes); the mark is the dot and confidence-bar colour. */
@@ -59,8 +60,8 @@
     --muted: #66594b;
     --faint: #6f6254;
     --danger: #9e3424;
-    --ok: #4f6e2a;
-    --warn: #8a650c;
+    --ok: #2b7a47;
+    --warn: #a85400;
     --fam-house-mark: #23857d;
     --fam-bass-mark: #6a5ad0;
     --fam-rock-mark: #c4553f;
@@ -83,8 +84,8 @@
   --muted: #66594b;
   --faint: #6f6254;
   --danger: #9e3424;
-  --ok: #4f6e2a;
-  --warn: #8a650c;
+  --ok: #2b7a47;
+  --warn: #a85400;
   --fam-house-mark: #23857d;
   --fam-bass-mark: #6a5ad0;
   --fam-rock-mark: #c4553f;

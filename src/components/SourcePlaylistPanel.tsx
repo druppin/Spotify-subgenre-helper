@@ -90,7 +90,7 @@ export function SourcePlaylistPanel({
                     {item.track.artists.map((a) => a.name).join(", ")}
                   </div>
                   {item.track.uri === pendingRemovalUri && (
-                    <div className="truncate text-[10px] text-warn">
+                    <div className="truncate text-[11px] text-warn">
                       Leaving source playlist when you move on…
                     </div>
                   )}
@@ -98,7 +98,7 @@ export function SourcePlaylistPanel({
                 {confidence !== null && <ConfidenceMeter score={confidence} width={48} stacked />}
                 {inOtherPlaylists > 0 && (
                   <span
-                    className="flex-shrink-0 rounded border border-line-strong px-1 py-px text-[10px] font-medium text-muted"
+                    className="flex-shrink-0 rounded border border-line-strong px-1 py-px text-[11px] font-medium text-muted"
                     title={`Already in ${inOtherPlaylists} of your other playlist${inOtherPlaylists === 1 ? "" : "s"}`}
                   >
                     <span className="inline-flex items-center gap-0.5"><CheckIcon size={10} />{inOtherPlaylists}</span>

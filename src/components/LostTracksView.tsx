@@ -185,7 +185,7 @@ function SelectByBar({
 function LikedSongsThumb({ size = 32 }: { size?: number }) {
   return (
     <div
-      className="flex flex-shrink-0 items-center justify-center rounded bg-gradient-to-br from-indigo-700 to-emerald-500 text-ink"
+      className="flex flex-shrink-0 items-center justify-center rounded bg-band text-band-ink"
       style={{ width: size, height: size, fontSize: size * 0.45 }}
       aria-hidden
     >
@@ -1569,7 +1569,7 @@ export function LostTracksView({ tabs }: { tabs: ReactNode }) {
                           </span>
                           {row.versions > 1 && (
                             <span
-                              className="flex-shrink-0 rounded bg-raised px-1 text-[10px] text-muted"
+                              className="flex-shrink-0 rounded bg-raised px-1 text-[11px] text-muted"
                               title="Released more than once (e.g. single and album); counted as one song"
                             >
                               {row.versions} versions
@@ -1627,7 +1627,7 @@ export function LostTracksView({ tabs }: { tabs: ReactNode }) {
                               ? "Show this song normally again"
                               : "Move to the bottom of this playlist's list, greyed out and unselectable"
                           }
-                          className={`flex-shrink-0 rounded border px-1.5 py-0.5 text-[10px] ${
+                          className={`flex-shrink-0 rounded border px-1.5 py-0.5 text-[11px] ${
                             hidden
                               ? "border-line-strong text-ink hover:border-muted"
                               : "border-line text-muted opacity-0 hover:border-line-strong hover:text-ink focus:opacity-100 group-hover:opacity-100"

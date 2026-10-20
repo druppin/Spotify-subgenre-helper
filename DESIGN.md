@@ -18,8 +18,8 @@ colors:
   oxblood-raised: "#74303b"
   band-muted: "#e8cdd0"
   danger: "#f0b2a4"
-  ok: "#a7c47c"
-  warn: "#e2b547"
+  ok: "#86d4a0"
+  warn: "#f5a442"
   paper-ground: "#f3ede3"
   paper-side: "#eee6da"
   paper-panel: "#fbf8f2"
@@ -31,8 +31,8 @@ colors:
   wood-muted: "#66594b"
   wood-faint: "#6f6254"
   danger-light: "#9e3424"
-  ok-light: "#4f6e2a"
-  warn-light: "#8a650c"
+  ok-light: "#2b7a47"
+  warn-light: "#a85400"
   fam-house: "#5db8b0"
   fam-bass: "#9a8bea"
   fam-rock: "#e58a76"
@@ -240,7 +240,7 @@ A stained-wood room lit warm, with an oxblood fascia and a rack of printed card-
 - **Line / Line Strong**: hairline dividers between columns and outlines on secondary buttons and inputs.
 - **Sleeve Ink / Wood Ink** (sleeve-ink / wood-ink): primary text, and the inverted fill of committing actions (Add, Play, a dialog's submit). This is the system's action colour; there is no separate bright accent.
 - **Ink Soft, Muted, Faint**: secondary text, metadata and placeholders, in that order of emphasis.
-- **Status** (danger, ok, warn and their `-light` versions): errors and the remove action; warn also marks a starred playlist and the "leaving source playlist" note.
+- **Status** (danger, ok, warn and their `-light` versions): errors and the remove action; warn also marks a starred playlist and the "leaving source playlist" note. Status hues are kept clear of the six genre-family hues (warn is orange, ok a cool green), so a status never reads as a genre.
 
 ### Named Rules
 **The Card Stock Rule.** Genre colour lives only on divider tabs, tag dots, a divider's top edge and confidence bars (and the brief filing flash). Never on buttons, backgrounds, headings or chrome.

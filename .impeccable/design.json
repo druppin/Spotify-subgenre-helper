@@ -248,32 +248,12 @@
       "ok": {
         "role": "status",
         "displayName": "OK",
-        "canonical": "#a7c47c",
-        "tonalRamp": [
-          "#021000",
-          "#182c00",
-          "#344b00",
-          "#526b25",
-          "#738d47",
-          "#95b16a",
-          "#b8d68d",
-          "#ddfcb1"
-        ]
+        "canonical": "#86d4a0"
       },
       "warn": {
         "role": "status",
         "displayName": "Warn",
-        "canonical": "#e2b547",
-        "tonalRamp": [
-          "#1f0000",
-          "#411900",
-          "#613800",
-          "#835900",
-          "#a67b00",
-          "#ca9e2a",
-          "#f0c356",
-          "#ffe98d"
-        ]
+        "canonical": "#f5a442"
       },
       "paper-ground": {
         "role": "neutral",
@@ -454,33 +434,13 @@
       "ok-light": {
         "role": "status",
         "displayName": "OK (light)",
-        "canonical": "#4f6e2a",
-        "tonalRamp": [
-          "#001100",
-          "#132d00",
-          "#2f4c00",
-          "#4d6c28",
-          "#6e8f4a",
-          "#90b26c",
-          "#b3d790",
-          "#d8fdb4"
-        ],
+        "canonical": "#2b7a47",
         "theme": "light"
       },
       "warn-light": {
         "role": "status",
         "displayName": "Warn (light)",
-        "canonical": "#8a650c",
-        "tonalRamp": [
-          "#1f0100",
-          "#3d1c00",
-          "#5d3a00",
-          "#7f5a00",
-          "#a17c2d",
-          "#c69f52",
-          "#ebc376",
-          "#ffe89b"
-        ],
+        "canonical": "#a85400",
         "theme": "light"
       },
       "fam-house": {
