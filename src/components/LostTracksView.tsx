@@ -17,8 +17,10 @@ import { PlaylistPicker } from "./PlaylistPicker";
 import { PlaylistThumb } from "./PlaylistThumb";
 import { NewPlaylistDialog } from "./QuickActions";
 import { GenerateGenresDialog, PlaylistGenresDialog } from "./GenreDialogs";
+import { CloseIcon, HeartIcon, PauseIcon, PencilIcon, PlayIcon, RefreshIcon } from "./Icons";
 import { GenreChips, GenreTagEditor, saveGenreTags, type SavedGenres } from "./GenreTagEditor";
 import type { StoredTags } from "@/lib/llm/types";
+import { familyMark, type GenreFamily } from "@/lib/genreFamily";
 
 // One song as it appears in one place (Liked Songs or an editable playlist).
 // Versions of the same song (see groupSongs) share a songId, so a single in
@@ -93,15 +95,15 @@ function ProgressLine({ label, done, total }: { label: string; done: number; tot
   const percent = total ? Math.min(100, Math.round((done / total) * 100)) : null;
   return (
     <div className="w-80">
-      <div className="mb-1 flex justify-between text-xs text-neutral-400">
+      <div className="mb-1 flex justify-between text-xs text-muted">
         <span>{label}</span>
         <span>{total === null ? done : `${done} / ${total}`}</span>
       </div>
-      <div className="h-1.5 overflow-hidden rounded-full bg-neutral-800">
+      <div className="h-1.5 overflow-hidden rounded-full bg-raised">
         {percent === null ? (
-          <div className="h-full w-1/3 animate-pulse rounded-full bg-green-600/60" />
+          <div className="h-full w-1/3 animate-pulse rounded-full bg-ink/60" />
         ) : (
-          <div className="h-full rounded-full bg-green-600 transition-[width]" style={{ width: `${percent}%` }} />
+          <div className="h-full rounded-full bg-ink transition-[width]" style={{ width: `${percent}%` }} />
         )}
       </div>
     </div>
@@ -136,7 +138,7 @@ function SelectByBar({
         value={matching ? "in" : "not-in"}
         onChange={(e) => setMatching(e.target.value === "in")}
         aria-label="In or not in"
-        className="rounded border border-neutral-700 bg-neutral-900 px-2 py-1 text-xs text-neutral-200"
+        className="rounded border border-line-strong bg-panel px-2 py-1 text-xs text-ink"
       >
         <option value="in">in</option>
         <option value="not-in">not in</option>
@@ -145,7 +147,7 @@ function SelectByBar({
         value={available}
         onChange={(e) => setCategory(e.target.value)}
         aria-label="Playlist or subgenre"
-        className="max-w-xs rounded border border-neutral-700 bg-neutral-900 px-2 py-1 text-xs text-neutral-200"
+        className="max-w-xs rounded border border-line-strong bg-panel px-2 py-1 text-xs text-ink"
       >
         <option value="">Choose a playlist or subgenre…</option>
         {playlists.length > 0 && (
@@ -172,7 +174,7 @@ function SelectByBar({
         onClick={() => onSelect(matching, available)}
         disabled={!available}
         title="Replace the current selection with the shown songs that match"
-        className="rounded-md border border-neutral-700 px-2.5 py-1 text-neutral-200 hover:border-green-600 hover:bg-green-600/10 disabled:opacity-50 disabled:hover:border-neutral-700 disabled:hover:bg-transparent"
+        className="rounded-md border border-line-strong px-2.5 py-1 text-ink hover:border-ink-2 hover:bg-raised disabled:opacity-50 disabled:hover:border-line-strong disabled:hover:bg-transparent"
       >
         Select
       </button>
@@ -183,11 +185,11 @@ function SelectByBar({
 function LikedSongsThumb({ size = 32 }: { size?: number }) {
   return (
     <div
-      className="flex flex-shrink-0 items-center justify-center rounded bg-gradient-to-br from-indigo-700 to-emerald-500 text-white"
+      className="flex flex-shrink-0 items-center justify-center rounded bg-gradient-to-br from-indigo-700 to-emerald-500 text-ink"
       style={{ width: size, height: size, fontSize: size * 0.45 }}
       aria-hidden
     >
-      ♥
+      <HeartIcon size={Math.round(size * 0.5)} />
     </div>
   );
 }
@@ -232,20 +234,20 @@ function CoverageBar({
   if (!needsUpdate && !needsDetails && !scanError) return null;
   const likedNote = coverage.likedSongs === "notScanned" || coverage.likedSongs === "incomplete" ? " + Liked Songs" : "";
   return (
-    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-neutral-800 bg-neutral-900/50 px-4 py-2 text-xs text-neutral-400">
+    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-line bg-side px-4 py-2 text-xs text-muted">
       {p.changed + p.notScanned > 0 && (
-        <span className="text-amber-400/80">
+        <span className="text-warn">
           Songs in unsaved or changed playlists can show as lost when they aren&apos;t.
         </span>
       )}
-      {scanError && <span className="text-red-400">Last scan stopped: {scanError}</span>}
+      {scanError && <span className="text-danger">Last scan stopped: {scanError}</span>}
       <span className="ml-auto flex gap-2">
         {needsUpdate && (
           <button
             type="button"
             onClick={() => onFetch("update")}
             title="Download playlists that changed or were never scanned (and check Liked Songs for changes)"
-            className="rounded-md border border-neutral-700 px-2.5 py-1 text-neutral-200 hover:border-green-600 hover:bg-green-600/10"
+            className="rounded-md border border-line-strong px-2.5 py-1 text-ink hover:border-ink-2 hover:bg-raised"
           >
             Update (~{p.requestsToUpdate + (likedNeedsUpdate ? 1 : 0)} requests{likedNote})
           </button>
@@ -255,7 +257,7 @@ function CoverageBar({
             type="button"
             onClick={() => onFetch("complete")}
             title="Also re-download saved playlists that are missing album details, so genre lookups never need Spotify"
-            className="rounded-md border border-neutral-700 px-2.5 py-1 text-neutral-200 hover:border-green-600 hover:bg-green-600/10"
+            className="rounded-md border border-line-strong px-2.5 py-1 text-ink hover:border-ink-2 hover:bg-raised"
           >
             Update and fill in details (~{p.requestsToComplete + 1} requests{likedNote})
           </button>
@@ -306,7 +308,7 @@ function GenreCell({
           <div className="min-w-0 flex-1">
             <div className="flex max-h-[1.25rem] flex-wrap gap-1 overflow-hidden">
               <GenreChips genres={genres} size="sm" />
-              {genres.subgenres.length === 0 && <span className="text-[11px] text-neutral-500">No subgenres listed.</span>}
+              {genres.subgenres.length === 0 && <span className="text-[11px] text-muted">No subgenres listed.</span>}
             </div>
           </div>
           <div
@@ -320,9 +322,9 @@ function GenreCell({
               disabled={loading}
               title="Change, remove, or add tags"
               aria-label="Edit tags"
-              className="text-xs text-neutral-500 hover:text-green-400 disabled:opacity-50"
+              className="flex h-6 w-6 items-center justify-center rounded text-muted hover:bg-raised hover:text-ink disabled:opacity-50"
             >
-              ✎
+              <PencilIcon size={14} />
             </button>
             <button
               type="button"
@@ -335,9 +337,9 @@ function GenreCell({
               disabled={loading}
               title="Not right? Generate fresh genre info for this song."
               aria-label="Regenerate genre info"
-              className="text-xs text-neutral-500 hover:text-green-400 disabled:opacity-50"
+              className="flex h-6 w-6 items-center justify-center rounded text-muted hover:bg-raised hover:text-ink disabled:opacity-50"
             >
-              {loading ? "…" : "↻"}
+              <RefreshIcon size={14} className={loading ? "animate-spin motion-reduce:animate-none" : undefined} />
             </button>
           </div>
         </div>
@@ -346,13 +348,13 @@ function GenreCell({
           type="button"
           onClick={() => onGenerate(false)}
           disabled={loading}
-          className="rounded-md border border-neutral-800 px-2 py-0.5 text-[11px] text-neutral-400 hover:border-green-600 hover:bg-green-600/10 hover:text-neutral-200 disabled:opacity-50"
+          className="rounded-md border border-line px-2 py-0.5 text-[11px] text-muted hover:border-ink-2 hover:bg-raised hover:text-ink disabled:opacity-50"
         >
           {loading ? "Generating…" : "Generate genre info"}
         </button>
       )}
       {error && (
-        <div className="mt-0.5 truncate text-[11px] text-red-400" title={error}>
+        <div className="mt-0.5 truncate text-[11px] text-danger" title={error}>
           {error}
         </div>
       )}
@@ -387,7 +389,7 @@ function PlaceChip({
         onMouseLeave={() => setArmed(false)}
         onBlur={() => setArmed(false)}
         title={`Remove this song from ${name}`}
-        className="max-w-[180px] truncate rounded-full border border-red-600 bg-red-900/40 px-2 py-0.5 text-[11px] text-red-200"
+        className="max-w-[180px] truncate rounded-full border border-danger bg-danger/20 px-2 py-0.5 text-[11px] text-danger"
       >
         Remove from {name}?
       </button>
@@ -397,8 +399,8 @@ function PlaceChip({
     <span
       className={`flex min-w-0 max-w-[180px] flex-shrink items-center rounded-full border text-[11px] ${
         ignored
-          ? "border-neutral-800 text-neutral-600"
-          : "border-neutral-700 text-neutral-300 hover:border-green-600"
+          ? "border-line text-faint"
+          : "border-line-strong text-ink-2 hover:border-ink-2"
       }`}
     >
       <button
@@ -408,7 +410,7 @@ function PlaceChip({
           onClick();
         }}
         title={ignored ? `${name} (not counted as a home)` : `Show ${name}`}
-        className={`truncate py-0.5 ${onRemove ? "pl-2 pr-1" : "px-2"} ${ignored ? "line-through" : "hover:text-green-400"}`}
+        className={`truncate py-0.5 ${onRemove ? "pl-2 pr-1" : "px-2"} ${ignored ? "line-through" : "hover:text-ink"}`}
       >
         {name}
       </button>
@@ -421,9 +423,9 @@ function PlaceChip({
           }}
           aria-label={`Remove from ${name}`}
           title={`Remove from ${name}`}
-          className="rounded-full pr-1.5 text-neutral-500 hover:text-red-400"
+          className="rounded-full pr-1.5 text-muted hover:text-danger"
         >
-          ×
+          <CloseIcon size={12} />
         </button>
       )}
     </span>
@@ -474,6 +476,15 @@ export function LostTracksView({ tabs }: { tabs: ReactNode }) {
     null
   );
   const newPlaylistDialogRef = useRef<HTMLDialogElement>(null);
+  // Each saved playlist's top genres and genre family, for its dot.
+  const [placeGenres, setPlaceGenres] = useState<Record<string, { top: string[]; family: GenreFamily }>>({});
+  const loadPlaceGenres = useCallback(() => {
+    fetch("/api/playlist-genre-summary")
+      .then((res) => res.json())
+      .then((body) => body.summaries && setPlaceGenres(body.summaries))
+      .catch((err) => console.error("Failed to load playlist genres:", err));
+  }, []);
+  useEffect(loadPlaceGenres, [loadPlaceGenres]);
   // Stored genre info by Spotify track ID, loaded once the library is in.
   const [genres, setGenres] = useState<Record<string, SongGenres>>({});
   // Genre overlays mount only while open, so each opening starts fresh.
@@ -649,6 +660,7 @@ export function LostTracksView({ tabs }: { tabs: ReactNode }) {
 
   // Picks up genres generated in bulk so the genre column shows them.
   const reloadGenres = () => {
+    loadPlaceGenres();
     const trackIds = Object.keys(trackDetails)
       .filter((uri) => uri.startsWith("spotify:track:"))
       .map(trackIdOf);
@@ -1125,10 +1137,10 @@ export function LostTracksView({ tabs }: { tabs: ReactNode }) {
   const totalSongs = songHomes.size;
 
   return (
-    <div className="flex h-screen flex-col bg-neutral-950 text-white">
-      <header className="flex items-center gap-3 border-b border-neutral-800 px-4 py-3">
+    <div className="flex h-screen flex-col bg-ground text-ink">
+      <header className="band flex items-center gap-3 px-4 py-2.5">
         {tabs}
-        <div className="ml-4 flex rounded-md border border-neutral-700 p-0.5 text-sm" role="group" aria-label="View">
+        <div className="ml-2 flex rounded-md bg-ground/40 p-0.5" role="group" aria-label="View">
           {(
             [
               ["homes", "My playlists"],
@@ -1140,14 +1152,14 @@ export function LostTracksView({ tabs }: { tabs: ReactNode }) {
               type="button"
               onClick={() => changeMode(id)}
               aria-pressed={mode === id}
-              className={`rounded px-2.5 py-1 ${mode === id ? "bg-neutral-700 text-white" : "text-neutral-400 hover:text-neutral-200"}`}
+              className={`rounded px-3 py-1 text-[13px] ${mode === id ? "bg-raised font-semibold text-ink ring-1 ring-line-strong" : "font-medium text-muted hover:text-ink"}`}
             >
               {label}
             </button>
           ))}
         </div>
         <span
-          className="min-w-0 flex-1 truncate text-xs text-neutral-500"
+          className="min-w-0 flex-1 truncate text-[13px] text-muted"
           title={status === "ready" && coverage ? coverageSummary(coverage) : undefined}
         >
           {status === "ready" && coverage && coverageSummary(coverage)}
@@ -1156,7 +1168,7 @@ export function LostTracksView({ tabs }: { tabs: ReactNode }) {
           type="button"
           onClick={() => openGenreDialog("summary")}
           title="See which subgenres make up a playlist"
-          className="flex-shrink-0 rounded-md border border-neutral-700 px-3 py-1.5 text-sm text-neutral-300 hover:border-green-600 hover:bg-green-600/10"
+          className="flex-shrink-0 rounded-md border border-line-strong px-3 py-1.5 text-[13px] font-medium text-ink hover:bg-raised"
         >
           Playlist genres
         </button>
@@ -1164,58 +1176,58 @@ export function LostTracksView({ tabs }: { tabs: ReactNode }) {
           type="button"
           onClick={() => openGenreDialog("generate")}
           title="Generate genre info for a playlist's songs that don't have it yet, or score older tags"
-          className="flex-shrink-0 rounded-md border border-neutral-700 px-3 py-1.5 text-sm text-neutral-300 hover:border-green-600 hover:bg-green-600/10"
+          className="flex-shrink-0 rounded-md border border-line-strong px-3 py-1.5 text-[13px] font-medium text-ink hover:bg-raised"
         >
           Generate genres
         </button>
-        {genreDialog?.kind === "summary" && (
-          <PlaylistGenresDialog
-            playlists={genreDialogPlaylists}
-            initialPlaylistId={genreDialog.playlistId}
-            onClose={() => setGenreDialog(null)}
-            onGenerateMissing={(playlistId) => setGenreDialog({ kind: "generate", playlistId })}
-          />
-        )}
-        {genreDialog?.kind === "generate" && (
-          <GenerateGenresDialog
-            playlists={genreDialogPlaylists}
-            initialPlaylistId={genreDialog.playlistId}
-            onClose={() => setGenreDialog(null)}
-            currentTrackId={null}
-            sourcePlaylistId={null}
-            onGenerated={reloadGenres}
-          />
-        )}
         <button
           type="button"
           onClick={() => startLoad("update")}
           disabled={status === "loading"}
           title="Download playlists that changed or were never scanned"
-          className="flex-shrink-0 rounded-md border border-neutral-700 px-3 py-1.5 text-sm text-neutral-300 hover:border-neutral-500 disabled:opacity-50"
+          className="flex-shrink-0 rounded-md border border-line-strong px-3 py-1.5 text-[13px] font-medium text-ink hover:bg-raised disabled:opacity-50"
         >
           {status === "loading" && load.fetchMode !== "none" ? "Scanning…" : "Update library"}
         </button>
       </header>
+      {genreDialog?.kind === "summary" && (
+        <PlaylistGenresDialog
+          playlists={genreDialogPlaylists}
+          initialPlaylistId={genreDialog.playlistId}
+          onClose={() => setGenreDialog(null)}
+          onGenerateMissing={(playlistId) => setGenreDialog({ kind: "generate", playlistId })}
+        />
+      )}
+      {genreDialog?.kind === "generate" && (
+        <GenerateGenresDialog
+          playlists={genreDialogPlaylists}
+          initialPlaylistId={genreDialog.playlistId}
+          onClose={() => setGenreDialog(null)}
+          currentTrackId={null}
+          sourcePlaylistId={null}
+          onGenerated={reloadGenres}
+        />
+      )}
 
       {status === "ready" && coverage && (
         <CoverageBar coverage={coverage} scanError={scanError} onFetch={startLoad} />
       )}
 
       {likedSongsStatus === "missing_scope" && status === "ready" && (
-        <div className="flex items-center gap-3 border-b border-amber-900/50 bg-amber-950/40 px-4 py-2 text-sm text-amber-300">
+        <div className="flex items-center gap-3 border-b border-warn/30 bg-warn/10 px-4 py-2 text-sm text-warn">
           <span>Liked Songs isn&apos;t included yet. Spotify needs one more permission to read it.</span>
-          <a href="/api/auth/login" className="rounded-full bg-green-600 px-3 py-1 font-semibold text-white hover:bg-green-500">
+          <a href="/api/auth/login" className="rounded-full bg-ink px-3 py-1 font-semibold text-ground hover:bg-ink-2">
             Reconnect Spotify
           </a>
         </div>
       )}
 
       {status === "loading" && load.fetchMode === "none" && (
-        <div className="flex flex-1 items-center justify-center text-neutral-400">Loading your saved library…</div>
+        <div className="flex flex-1 items-center justify-center text-muted">Loading your saved library…</div>
       )}
 
       {status === "loading" && load.fetchMode !== "none" && (
-        <div className="flex flex-1 flex-col items-center justify-center gap-2 text-neutral-400">
+        <div className="flex flex-1 flex-col items-center justify-center gap-2 text-muted">
           <p>Scanning your library…</p>
           <div className="my-2 flex flex-col gap-3">
             {progress?.playlists ? (
@@ -1232,7 +1244,7 @@ export function LostTracksView({ tabs }: { tabs: ReactNode }) {
               <ProgressLine label="Listing your playlists…" done={0} total={null} />
             )}
             {progress && progress.rateLimitWaitMs > 0 && (
-              <p className="text-xs text-amber-400">
+              <p className="text-xs text-warn">
                 Spotify asked us to slow down. Resuming in {Math.ceil(progress.rateLimitWaitMs / 1000)}s
               </p>
             )}
@@ -1244,7 +1256,7 @@ export function LostTracksView({ tabs }: { tabs: ReactNode }) {
               />
             )}
           </div>
-          <p className="max-w-md text-center text-xs text-neutral-500">
+          <p className="max-w-md text-center text-xs text-muted">
             Only playlists that changed or haven&apos;t been saved yet are downloaded. What&apos;s downloaded is
             kept even if the scan stops part way.
           </p>
@@ -1253,23 +1265,23 @@ export function LostTracksView({ tabs }: { tabs: ReactNode }) {
 
       {status === "error" && (
         <div className="flex flex-1 items-center justify-center">
-          <p className="rounded-md bg-red-900/30 px-3 py-2 text-sm text-red-400">Couldn&apos;t load your library: {error}</p>
+          <p className="rounded-md bg-danger/15 px-3 py-2 text-sm text-danger">Couldn&apos;t load your library: {error}</p>
         </div>
       )}
 
 
       {status === "ready" && (
         <div className="grid min-h-0 flex-1 grid-cols-[300px_1fr] overflow-hidden">
-          <aside className="flex min-h-0 flex-col overflow-hidden border-r border-neutral-800">
+          <aside className="flex min-h-0 flex-col overflow-hidden border-r border-line">
             <div className="px-3 pt-3">
-              <h2 className="text-sm font-semibold uppercase tracking-wide text-neutral-400">
+              <h2 className="font-narrow text-base font-bold">
                 {mode === "lost" ? "Lives only in" : "Playlist"}
               </h2>
-              <p className="mt-1 text-xs text-neutral-500">
+              <p className="mt-1 text-xs text-muted">
                 {mode === "lost"
                   ? "Songs with exactly one home."
                   : "Pick one to see where else each of its songs lives."}{" "}
-                Hover a catch-all playlist and choose <span className="text-neutral-300">Don&apos;t count</span> so it
+                Hover a catch-all playlist and choose <span className="text-ink-2">Don&apos;t count</span> so it
                 isn&apos;t treated as a song&apos;s home.
               </p>
               <input
@@ -1278,7 +1290,7 @@ export function LostTracksView({ tabs }: { tabs: ReactNode }) {
                 onChange={(e) => setPlaceQuery(e.target.value)}
                 placeholder="Search playlists…"
                 aria-label="Search playlists"
-                className="mt-2 w-full rounded border border-neutral-700 bg-neutral-900 px-2 py-1 text-sm outline-none placeholder:text-neutral-500 focus:border-green-600"
+                className="mt-2 w-full rounded border border-line-strong bg-panel px-2 py-1 text-sm outline-none placeholder:text-faint focus:border-ink-2"
               />
             </div>
             <ul className="mt-2 flex-1 overflow-y-auto pb-2">
@@ -1288,11 +1300,11 @@ export function LostTracksView({ tabs }: { tabs: ReactNode }) {
                     type="button"
                     onClick={() => setSelectedPlaceId(null)}
                     className={`flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm ${
-                      selectedPlaceId === null ? "bg-green-600/20 text-green-400" : "text-neutral-200 hover:bg-neutral-800"
+                      selectedPlaceId === null ? "bg-raised text-ink" : "text-ink hover:bg-raised"
                     }`}
                   >
                     <span className="min-w-0 flex-1 truncate font-medium">Everywhere</span>
-                    <span className="text-xs text-neutral-500">{lostSongs.length}</span>
+                    <span className="text-xs text-muted">{lostSongs.length}</span>
                   </button>
                 </li>
               )}
@@ -1305,21 +1317,25 @@ export function LostTracksView({ tabs }: { tabs: ReactNode }) {
                 return (
                   <li key={place.id}>
                     {firstIgnored && (
-                      <div className="mt-2 border-t border-neutral-800 px-3 pb-1 pt-2 text-[11px] uppercase tracking-wide text-neutral-500">
+                      <div className="mt-2 border-t border-line px-3 pb-1 pt-2 text-xs font-semibold text-muted">
                         Not counted as a home
                       </div>
                     )}
-                    <div className="group flex items-center">
+                    <div
+                      className={`group mx-1.5 flex items-center rounded-md ${
+                        place.id === selectedPlaceId ? "bg-raised" : "hover:bg-panel"
+                      }`}
+                    >
                       <button
                         type="button"
                         onClick={() => selectable && setSelectedPlaceId(place.id)}
                         disabled={!selectable}
-                        className={`flex min-w-0 flex-1 items-center gap-2 px-3 py-1.5 text-left text-sm ${
+                        className={`flex min-w-0 flex-1 items-center gap-2.5 py-1.5 pl-2 pr-2 text-left text-[13.5px] ${
                           place.id === selectedPlaceId
-                            ? "bg-green-600/20 text-green-400"
+                            ? "font-semibold text-ink"
                             : place.ignored
-                              ? "text-neutral-500 hover:bg-neutral-900"
-                              : "text-neutral-200 hover:bg-neutral-800"
+                              ? "text-muted [&_img]:grayscale"
+                              : "text-ink"
                         }`}
                       >
                         {place.id === LIKED_SONGS_ID ? (
@@ -1327,10 +1343,17 @@ export function LostTracksView({ tabs }: { tabs: ReactNode }) {
                         ) : playlist ? (
                           <PlaylistThumb playlist={playlist} size={28} />
                         ) : (
-                          <div className="h-7 w-7 flex-shrink-0 rounded bg-neutral-800" />
+                          <div className="h-7 w-7 flex-shrink-0 rounded bg-raised" />
                         )}
+                        <span
+                          className="h-2 w-2 flex-shrink-0 rounded-full"
+                          style={{
+                            background: place.ignored ? "var(--faint)" : familyMark(placeGenres[place.id]?.family ?? "none"),
+                          }}
+                          title={placeGenres[place.id]?.top.join(", ") || "No genres yet"}
+                        />
                         <span className="min-w-0 flex-1 truncate">{place.name}</span>
-                        <span className="text-xs text-neutral-500">
+                        <span className="text-xs text-muted">
                           {mode === "lost" && place.ignored ? "" : place.count}
                         </span>
                       </button>
@@ -1342,10 +1365,10 @@ export function LostTracksView({ tabs }: { tabs: ReactNode }) {
                             ? "Count this as a home again"
                             : "Don't count this as a home: songs here can still be lost"
                         }
-                        className={`mr-2 flex-shrink-0 rounded border px-1.5 py-0.5 text-[10px] ${
+                        className={`mr-1.5 flex-shrink-0 rounded border px-1.5 py-0.5 text-[11px] ${
                           place.ignored
-                            ? "border-amber-700/60 text-amber-400 hover:bg-amber-900/30"
-                            : "border-neutral-800 text-neutral-500 opacity-0 hover:border-neutral-600 hover:text-neutral-200 focus:opacity-100 group-hover:opacity-100"
+                            ? "border-warn/50 text-warn hover:bg-warn/10"
+                            : "border-line text-muted opacity-0 hover:border-line-strong hover:text-ink focus:opacity-100 group-hover:opacity-100"
                         }`}
                       >
                         {place.ignored ? "Count" : "Don't count"}
@@ -1358,25 +1381,25 @@ export function LostTracksView({ tabs }: { tabs: ReactNode }) {
           </aside>
 
           <section className="flex min-h-0 flex-col overflow-hidden">
-            <div className="flex flex-wrap items-center gap-3 border-b border-neutral-800 px-4 py-2">
-              <label className="flex items-center gap-2 text-sm text-neutral-300">
+            <div className="flex flex-wrap items-center gap-3 border-b border-line px-4 py-2">
+              <label className="flex items-center gap-2 text-sm text-ink-2">
                 <input
                   type="checkbox"
                   checked={allRowsSelected}
                   onChange={toggleAllRows}
                   disabled={rows.length === 0}
-                  className="accent-green-600"
+                  className="accent-band"
                 />
                 {mode === "lost" ? (
                   <>
                     {rows.length} lost song{rows.length === 1 ? "" : "s"}
-                    {selectedPlaceId && <span className="text-neutral-500">only in {placeName(selectedPlaceId)}</span>}
+                    {selectedPlaceId && <span className="text-muted">only in {placeName(selectedPlaceId)}</span>}
                   </>
                 ) : selectedPlaceId ? (
                   <>
                     {rows.length} song{rows.length === 1 ? "" : "s"} in {placeName(selectedPlaceId)}
                     {hiddenTotal > 0 && (
-                      <span className="text-neutral-500">
+                      <span className="text-muted">
                         · {hiddenTotal} hidden (at the bottom, can&apos;t be selected)
                       </span>
                     )}
@@ -1385,14 +1408,14 @@ export function LostTracksView({ tabs }: { tabs: ReactNode }) {
                   "No playlist chosen"
                 )}
               </label>
-              <span className="text-xs text-neutral-600">of {totalSongs} songs in your library</span>
+              <span className="text-xs text-faint">of {totalSongs} songs in your library</span>
               {(sort === "least-confident" || sort === "most-confident") &&
                 (() => {
                   const scored = rows.filter((row) => (genresFor(row)?.songConfidence ?? null) !== null).length;
                   return (
                     scored < rows.length && (
                       <span
-                        className="text-xs text-amber-400/80"
+                        className="text-xs text-warn"
                         title="Songs without scores go last. Score them with Generate genres, or by opening them in the Subgenre sorter."
                       >
                         {scored} of {rows.length} scored
@@ -1406,13 +1429,13 @@ export function LostTracksView({ tabs }: { tabs: ReactNode }) {
                 onChange={(e) => setQuery(e.target.value)}
                 placeholder="Filter by title or artist…"
                 aria-label="Filter songs"
-                className="ml-auto w-56 rounded border border-neutral-700 bg-neutral-900 px-2 py-1 text-sm outline-none placeholder:text-neutral-500 focus:border-green-600"
+                className="ml-auto w-56 rounded border border-line-strong bg-panel px-2 py-1 text-sm outline-none placeholder:text-faint focus:border-ink-2"
               />
               <select
                 value={sort}
                 onChange={(e) => setSort(e.target.value as SortKey)}
                 aria-label="Sort songs"
-                className="rounded border border-neutral-700 bg-neutral-900 px-2 py-1 text-sm"
+                className="rounded border border-line-strong bg-panel px-2 py-1 text-sm"
               >
                 <option value="oldest">Oldest added first</option>
                 <option value="newest">Newest added first</option>
@@ -1429,15 +1452,15 @@ export function LostTracksView({ tabs }: { tabs: ReactNode }) {
                 title={showGenres ? "Hide the genre column" : "Show each song's subgenres and mood in a column"}
                 className={`rounded border px-2 py-1 text-sm ${
                   showGenres
-                    ? "border-green-700 bg-green-600/10 text-green-400"
-                    : "border-neutral-700 text-neutral-400 hover:text-neutral-200"
+                    ? "border-ink-2 bg-raised text-ink"
+                    : "border-line-strong text-muted hover:text-ink"
                 }`}
               >
                 Genres
               </button>
             </div>
             {(rows.length > 0 || (mode === "homes" && selectedPlaceId)) && (
-              <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-b border-neutral-800 px-4 py-2 text-xs text-neutral-400">
+              <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-b border-line px-4 py-2 text-xs text-muted">
                 {rows.length > 0 && (
                   <SelectByBar
                     playlists={selectByOptions.playlists}
@@ -1447,11 +1470,11 @@ export function LostTracksView({ tabs }: { tabs: ReactNode }) {
                 )}
                 {mode === "homes" && selectedPlaceId && (
                   <>
-                    {rows.length > 0 && <span className="h-5 w-px bg-neutral-800" aria-hidden />}
+                    {rows.length > 0 && <span className="h-5 w-px bg-raised" aria-hidden />}
                     <div className="flex flex-wrap items-center gap-2">
                       <span>Hide songs also in:</span>
                       {(hideRules[selectedPlaceId] ?? []).map((id) => (
-                        <span key={id} className="flex items-center rounded-full border border-neutral-700 text-neutral-200">
+                        <span key={id} className="flex items-center rounded-full border border-line-strong text-ink">
                           <span className="max-w-[180px] truncate py-0.5 pl-2 pr-1">{placeName(id)}</span>
                           <button
                             type="button"
@@ -1462,9 +1485,9 @@ export function LostTracksView({ tabs }: { tabs: ReactNode }) {
                               )
                             }
                             aria-label={`Stop hiding songs also in ${placeName(id)}`}
-                            className="rounded-full pr-1.5 text-neutral-500 hover:text-red-400"
+                            className="rounded-full pr-1.5 text-muted hover:text-danger"
                           >
-                            ×
+                            <CloseIcon size={12} />
                           </button>
                         </span>
                       ))}
@@ -1475,14 +1498,14 @@ export function LostTracksView({ tabs }: { tabs: ReactNode }) {
                         ].filter((p) => p.id !== selectedPlaceId && !(hideRules[selectedPlaceId] ?? []).includes(p.id))}
                         selectedId={null}
                         onSelect={(id) => saveHideRules(selectedPlaceId, [...(hideRules[selectedPlaceId] ?? []), id])}
-                        placeholder="+ Add playlist"
+                        placeholder="Add playlist"
                       />
                     </div>
                     <button
                       type="button"
                       onClick={selectSongsLivingElsewhere}
                       title="Check every shown song that's also in another counted playlist, ready to remove from this one"
-                      className="ml-auto rounded-md border border-neutral-700 px-2.5 py-1 text-xs text-neutral-200 hover:border-green-600 hover:bg-green-600/10"
+                      className="ml-auto rounded-md border border-line-strong px-2.5 py-1 text-xs text-ink hover:border-ink-2 hover:bg-raised"
                     >
                       Select songs that live elsewhere
                     </button>
@@ -1499,7 +1522,7 @@ export function LostTracksView({ tabs }: { tabs: ReactNode }) {
                 return (
                   <li key={row.songId}>
                     {hidden && index === rows.length && (
-                      <div className="mt-2 border-t border-neutral-800 px-4 pb-1 pt-2 text-[11px] uppercase tracking-wide text-neutral-500">
+                      <div className="mt-2 border-t border-line px-4 pb-1 pt-2 text-xs font-semibold text-muted">
                         Hidden ({hiddenRows.length})
                       </div>
                     )}
@@ -1508,12 +1531,12 @@ export function LostTracksView({ tabs }: { tabs: ReactNode }) {
                       title={ready ? "Click to play" : "Player is still connecting…"}
                       className={`group flex cursor-pointer items-center gap-3 px-4 py-1 text-sm ${
                         isCurrent
-                          ? "bg-green-600/20 text-green-400"
+                          ? "bg-raised text-ink"
                           : hidden
-                            ? "text-neutral-300 opacity-40 hover:opacity-70"
+                            ? "text-ink-2 opacity-40 hover:opacity-70"
                             : selected.has(row.uri)
-                              ? "bg-neutral-800 text-neutral-100 hover:bg-neutral-700/80"
-                              : "text-neutral-300 hover:bg-neutral-900"
+                              ? "bg-raised text-ink hover:bg-line"
+                              : "text-ink-2 hover:bg-panel"
                       }`}
                     >
                       <input
@@ -1526,40 +1549,44 @@ export function LostTracksView({ tabs }: { tabs: ReactNode }) {
                         }}
                         onChange={() => {}}
                         aria-label={hidden ? `${row.details.name} is hidden` : `Select ${row.details.name}`}
-                        className="accent-green-600 disabled:cursor-not-allowed"
+                        className="accent-band disabled:cursor-not-allowed"
                       />
                       {row.details.image ? (
                         // eslint-disable-next-line @next/next/no-img-element
                         <img src={row.details.image} alt="" loading="lazy" className="h-8 w-8 flex-shrink-0 rounded object-cover" />
                       ) : (
-                        <div className="h-8 w-8 flex-shrink-0 rounded bg-neutral-800" />
+                        <div className="h-8 w-8 flex-shrink-0 rounded bg-raised" />
                       )}
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-1.5">
                           <span className="truncate font-medium">
-                            {isCurrent && <span className="mr-1">{isPaused ? "❚❚" : "▶"}</span>}
+                            {isCurrent && (
+                              <span className="mr-1.5 inline-flex align-[-2px]">
+                                {isPaused ? <PauseIcon size={13} /> : <PlayIcon size={13} />}
+                              </span>
+                            )}
                             {row.details.name}
                           </span>
                           {row.versions > 1 && (
                             <span
-                              className="flex-shrink-0 rounded bg-neutral-800 px-1 text-[10px] text-neutral-400"
+                              className="flex-shrink-0 rounded bg-raised px-1 text-[10px] text-muted"
                               title="Released more than once (e.g. single and album); counted as one song"
                             >
                               {row.versions} versions
                             </span>
                           )}
                         </div>
-                        <div className="truncate text-xs text-neutral-500">{row.details.artists.join(", ")}</div>
+                        <div className="truncate text-xs text-muted">{row.details.artists.join(", ")}</div>
                       </div>
                       {mode === "lost" && !selectedPlaceId && (
-                        <span className="hidden max-w-[200px] truncate text-xs text-neutral-500 md:block">
+                        <span className="hidden max-w-[200px] truncate text-xs text-muted md:block">
                           {placeName(row.placeId)}
                         </span>
                       )}
                       {mode === "homes" && (
                         <div className="hidden max-w-[45%] flex-nowrap items-center justify-end gap-1 overflow-hidden md:flex">
                           {row.countedOtherHomes === 0 && (
-                            <span className="flex-shrink-0 rounded-full bg-amber-900/40 px-2 py-0.5 text-[11px] text-amber-300">
+                            <span className="flex-shrink-0 rounded-full bg-warn/20 px-2 py-0.5 text-[11px] text-warn">
                               Only here
                             </span>
                           )}
@@ -1574,7 +1601,7 @@ export function LostTracksView({ tabs }: { tabs: ReactNode }) {
                           ))}
                           {row.otherPlaceIds.length > MAX_PLACE_CHIPS && (
                             <span
-                              className="flex-shrink-0 rounded-full border border-neutral-800 px-2 py-0.5 text-[11px] text-neutral-400"
+                              className="flex-shrink-0 rounded-full border border-line px-2 py-0.5 text-[11px] text-muted"
                               title={`Also in ${row.otherPlaceIds.slice(MAX_PLACE_CHIPS).map(placeName).join(", ")}`}
                             >
                               +{row.otherPlaceIds.length - MAX_PLACE_CHIPS}
@@ -1583,7 +1610,7 @@ export function LostTracksView({ tabs }: { tabs: ReactNode }) {
                         </div>
                       )}
                       {hidden && reason && reason.alsoIn.length > 0 && (
-                        <span className="max-w-[200px] flex-shrink-0 truncate text-[11px] text-neutral-400">
+                        <span className="max-w-[200px] flex-shrink-0 truncate text-[11px] text-muted">
                           also in {reason.alsoIn.map(placeName).join(", ")}
                         </span>
                       )}
@@ -1602,8 +1629,8 @@ export function LostTracksView({ tabs }: { tabs: ReactNode }) {
                           }
                           className={`flex-shrink-0 rounded border px-1.5 py-0.5 text-[10px] ${
                             hidden
-                              ? "border-neutral-600 text-neutral-200 hover:border-neutral-400"
-                              : "border-neutral-800 text-neutral-500 opacity-0 hover:border-neutral-600 hover:text-neutral-200 focus:opacity-100 group-hover:opacity-100"
+                              ? "border-line-strong text-ink hover:border-muted"
+                              : "border-line text-muted opacity-0 hover:border-line-strong hover:text-ink focus:opacity-100 group-hover:opacity-100"
                           }`}
                         >
                           {hidden ? "Unhide" : "Hide"}
@@ -1617,13 +1644,13 @@ export function LostTracksView({ tabs }: { tabs: ReactNode }) {
                           onSaveTags={(tags) => saveTags(row, tags)}
                         />
                       )}
-                      <span className="w-24 flex-shrink-0 text-right text-xs text-neutral-500">{formatAddedAt(row.addedAt)}</span>
+                      <span className="w-24 flex-shrink-0 text-right text-xs text-muted">{formatAddedAt(row.addedAt)}</span>
                     </div>
                   </li>
                 );
               })}
               {rows.length === 0 && (
-                <li className="px-4 py-6 text-center text-sm text-neutral-500">
+                <li className="px-4 py-6 text-center text-sm text-muted">
                   {mode === "homes"
                     ? selectedPlaceId
                       ? hiddenRows.length > 0
@@ -1639,35 +1666,35 @@ export function LostTracksView({ tabs }: { tabs: ReactNode }) {
               )}
             </ul>
 
-            <footer className="flex flex-wrap items-center gap-3 border-t border-neutral-800 px-4 py-3">
+            <footer className="flex flex-wrap items-center gap-3 border-t border-line px-4 py-3">
               <div className="flex min-w-0 flex-1 items-center gap-2">
                 <button
                   type="button"
                   onClick={() => togglePlay()}
                   disabled={!ready || !currentUri}
-                  className="rounded-full bg-white px-3 py-1 text-sm font-semibold text-black hover:bg-neutral-200 disabled:opacity-40"
+                  className="rounded-full bg-ink px-3 py-1 text-sm font-semibold text-ground hover:bg-ink-2 disabled:opacity-40"
                 >
                   {isPaused ? "Play" : "Pause"}
                 </button>
-                <span className="min-w-0 truncate text-xs text-neutral-400">
+                <span className="min-w-0 truncate text-xs text-muted">
                   {!ready
                     ? "Player connecting…"
                     : currentDetails
                       ? `${currentDetails.name} · ${currentDetails.artists.join(", ")}`
                       : "Click a song to preview it"}
                 </span>
-                {playbackError && <span className="truncate text-xs text-red-400">{playbackError}</span>}
+                {playbackError && <span className="truncate text-xs text-danger">{playbackError}</span>}
               </div>
               {notice && (
-                <span className={`text-xs ${notice.kind === "ok" ? "text-green-400" : "text-red-400"}`}>
+                <span className={`text-xs ${notice.kind === "ok" ? "text-ok" : "text-danger"}`}>
                   {notice.text}
                   {notice.onUndo && (
-                    <button type="button" onClick={notice.onUndo} className="ml-2 font-semibold underline hover:text-white">
+                    <button type="button" onClick={notice.onUndo} className="ml-2 font-semibold underline hover:text-ink">
                       Undo
                     </button>
                   )}
                   {notice.reconnect && (
-                    <a href="/api/auth/login" className="ml-2 font-semibold underline hover:text-white">
+                    <a href="/api/auth/login" className="ml-2 font-semibold underline hover:text-ink">
                       Reconnect Spotify
                     </a>
                   )}
@@ -1680,7 +1707,7 @@ export function LostTracksView({ tabs }: { tabs: ReactNode }) {
                   lastToggledIndexRef.current = null;
                 }}
                 disabled={selected.size === 0}
-                className="rounded-full border border-neutral-700 px-3 py-1.5 text-sm text-neutral-300 hover:border-neutral-500 disabled:opacity-40"
+                className="rounded-full border border-line-strong px-3 py-1.5 text-sm text-ink-2 hover:border-muted disabled:opacity-40"
               >
                 Clear selection
                 {selected.size > 0 && ` (${selectedRows.length}${
@@ -1693,7 +1720,7 @@ export function LostTracksView({ tabs }: { tabs: ReactNode }) {
                   onClick={() => hideRows(selectedRows, selectedPlaceId)}
                   disabled={selectedRows.length === 0}
                   title="Move the checked songs to the bottom of this playlist's list, greyed out"
-                  className="rounded-full border border-neutral-700 px-3 py-1.5 text-sm text-neutral-300 hover:border-neutral-500 disabled:opacity-40"
+                  className="rounded-full border border-line-strong px-3 py-1.5 text-sm text-ink-2 hover:border-muted disabled:opacity-40"
                 >
                   Hide {selectedRows.length}
                 </button>
@@ -1714,8 +1741,8 @@ export function LostTracksView({ tabs }: { tabs: ReactNode }) {
                   disabled={removing || selectedRows.length === 0}
                   className={`max-w-[360px] truncate rounded-full border px-3 py-1.5 text-sm disabled:opacity-40 ${
                     removeArmed
-                      ? "border-red-600 bg-red-900/50 text-red-100"
-                      : "border-neutral-700 text-neutral-300 hover:border-red-500 hover:text-red-300"
+                      ? "border-danger bg-danger/20 text-danger"
+                      : "border-line-strong text-ink-2 hover:border-danger hover:text-danger"
                   }`}
                 >
                   {removing
@@ -1728,9 +1755,9 @@ export function LostTracksView({ tabs }: { tabs: ReactNode }) {
               <button
                 type="button"
                 onClick={() => newPlaylistDialogRef.current?.showModal()}
-                className="rounded-md border border-neutral-700 px-2.5 py-1.5 text-sm text-neutral-200 hover:border-green-600 hover:bg-green-600/10"
+                className="rounded-md border border-line-strong px-2.5 py-1.5 text-sm text-ink hover:border-ink-2 hover:bg-raised"
               >
-                + New playlist
+                New playlist
               </button>
               <PlaylistPicker
                 playlists={destinationPlaylists}
@@ -1750,7 +1777,7 @@ export function LostTracksView({ tabs }: { tabs: ReactNode }) {
                       } (in some version) and will be skipped`
                     : undefined
                 }
-                className="rounded-full bg-green-600 px-4 py-1.5 text-sm font-semibold text-white hover:bg-green-500 disabled:opacity-40"
+                className="rounded-full bg-ink px-4 py-1.5 text-sm font-semibold text-ground hover:bg-ink-2 disabled:opacity-40"
               >
                 {adding
                   ? "Adding…"

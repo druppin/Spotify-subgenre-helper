@@ -5,8 +5,9 @@ import type { SpotifyTrack } from "@/lib/spotify/client";
 import type { ShownSummary, TrackContext } from "@/lib/llm/types";
 import { usePlayer } from "./PlayerProvider";
 import { TrackDataPanel } from "./TrackDataPanel";
-import { confidenceColor, GenreChips, GenreTagEditor, saveGenreTags } from "./GenreTagEditor";
+import { ConfidenceMeter, GenreChips, GenreTagEditor, saveGenreTags } from "./GenreTagEditor";
 import { TrackChat } from "./TrackChat";
+import { NextIcon, PauseIcon, PlayIcon, PreviousIcon, VolumeIcon } from "./Icons";
 import { fetchWithTimeout } from "@/lib/fetchWithTimeout";
 
 interface Props {
@@ -85,14 +86,14 @@ function TrackData({
   }, [trackId, force, onConfidenceChange]);
 
   if (state.status === "loading") {
-    return <p className="text-sm text-neutral-500">Loading track data…</p>;
+    return <p className="text-sm text-muted">Loading track data…</p>;
   }
 
   if (state.status === "error") {
     return (
       <div className="space-y-2">
-        <p className="text-sm text-red-400">{state.message}</p>
-        <button onClick={() => onRefresh(false)} className="text-xs text-green-400 hover:underline">
+        <p className="text-sm text-danger">{state.message}</p>
+        <button onClick={() => onRefresh(false)} className="text-xs text-ink underline underline-offset-2">
           Retry
         </button>
       </div>
@@ -112,19 +113,19 @@ function TrackData({
     <div className="space-y-3">
       <TrackDataPanel context={state.context} />
 
-      <div className="border-t border-neutral-800 pt-3">
+      <div className="border-t border-line pt-3">
         {state.summary && (
           <div className="space-y-2">
             <div className="flex items-start justify-between gap-2">
-              <p className="text-sm font-medium text-neutral-200">{state.summary.moodVibe}</p>
+              <p className="text-[15px] font-semibold text-ink">{state.summary.moodVibe}</p>
               <div className="flex flex-shrink-0 gap-3">
                 {!editing && (
                   <button
                     onClick={() => setEditing(true)}
                     title="Change, remove, or add tags"
-                    className="text-xs text-neutral-500 hover:text-green-400"
+                    className="text-[13px] text-muted hover:text-ink"
                   >
-                    ✎ Edit tags
+                    Edit tags
                   </button>
                 )}
                 <button
@@ -138,42 +139,40 @@ function TrackData({
                     onRefresh(true);
                   }}
                   title="Not right? Generate a fresh AI summary for this track."
-                  className="text-xs text-neutral-500 hover:text-green-400"
+                  className="text-[13px] text-muted hover:text-ink"
                 >
-                  ↻ Regenerate
+                  Regenerate
                 </button>
               </div>
             </div>
             {editing ? (
               <GenreTagEditor genres={state.summary} onSave={saveTags} onCancel={() => setEditing(false)} />
             ) : (
-              <div className="flex flex-wrap items-center gap-1">
+              <div className="space-y-2">
                 <GenreChips genres={state.summary} />
-                {state.summary.songConfidence !== null && (
-                  <span
-                    className={`text-[11px] ${confidenceColor(state.summary.songConfidence)}`}
-                    title="The average of the AI's confidence in its tags"
-                  >
-                    {state.summary.songConfidence}% overall
-                  </span>
-                )}
-                {state.summary.edited && (
-                  <span className="text-[11px] text-neutral-500" title="You changed these tags by hand">
-                    edited
-                  </span>
+                {(state.summary.songConfidence !== null || state.summary.edited) && (
+                  <div className="flex items-center gap-3 text-[12.5px] text-muted">
+                    {state.summary.songConfidence !== null && (
+                      <span className="inline-flex items-center gap-2" title="The average of the AI's confidence in its tags">
+                        Overall
+                        <ConfidenceMeter score={state.summary.songConfidence} width={64} />
+                      </span>
+                    )}
+                    {state.summary.edited && <span title="You changed these tags by hand">Edited by you</span>}
+                  </div>
                 )}
               </div>
             )}
-            <p className="text-xs text-neutral-500">
-              {state.summary.edited && <span className="text-neutral-600">The AI&apos;s original reasoning: </span>}
+            <p className="max-w-[62ch] text-[13px] leading-relaxed text-muted">
+              {state.summary.edited && <span className="text-faint">The AI&apos;s original reasoning: </span>}
               {state.summary.rationale}
             </p>
           </div>
         )}
         {state.summaryError && (
           <div className="space-y-1">
-            <p className="text-xs text-red-400">AI summary: {state.summaryError}</p>
-            <button onClick={() => onRefresh(true)} className="text-xs text-green-400 hover:underline">
+            <p className="text-xs text-danger">AI summary: {state.summaryError}</p>
+            <button onClick={() => onRefresh(true)} className="text-xs text-ink underline underline-offset-2">
               Retry summary
             </button>
           </div>
@@ -223,30 +222,32 @@ export function NowPlayingPanel({
 
   if (!track) {
     return (
-      <div className="flex h-full items-center justify-center text-neutral-500">
+      <div className="flex h-full items-center justify-center text-muted">
         Pick a source playlist to start sorting.
       </div>
     );
   }
 
   return (
-    <div className="flex h-full flex-col items-center justify-center gap-6 overflow-y-auto px-8 py-6 text-center">
-      {track.album.images[0] && (
+    <div className="flex h-full flex-col items-center gap-4 overflow-y-auto px-8 py-6 text-center">
+      {track.album.images[0] ? (
         // eslint-disable-next-line @next/next/no-img-element
         <img
           src={track.album.images[0].url}
           alt={track.album.name}
-          className="h-56 w-56 rounded-lg shadow-lg"
+          className="h-44 w-44 flex-shrink-0 rounded-md object-cover shadow-[0_14px_30px_rgba(0,0,0,0.35)]"
         />
+      ) : (
+        <div className="h-44 w-44 flex-shrink-0 rounded-md bg-raised" />
       )}
       <div>
-        <h1 className="text-2xl font-bold">{track.name}</h1>
-        <p className="text-neutral-400">{track.artists.map((a) => a.name).join(", ")}</p>
+        <h1 className="font-narrow text-4xl font-bold leading-tight">{track.name}</h1>
+        <p className="mt-0.5 text-[15px] text-muted">{track.artists.map((a) => a.name).join(", ")}</p>
       </div>
 
-      <div className="w-full max-w-md space-y-3">
+      <div className="w-full max-w-xl space-y-1.5">
         <div className="flex items-center gap-2">
-          <span className="w-10 text-right text-xs text-neutral-500">{formatMs(shownPosition)}</span>
+          <span className="w-10 text-right text-xs text-muted">{formatMs(shownPosition)}</span>
           <input
             type="range"
             min={0}
@@ -257,56 +258,60 @@ export function NowPlayingPanel({
             onKeyUp={commitScrub}
             onBlur={commitScrub}
             disabled={!ready || !duration}
-            className="flex-1 accent-green-600"
+            aria-label="Position in song"
+            className="min-w-0 flex-1 accent-[var(--ink)]"
           />
-          <span className="w-10 text-xs text-neutral-500">{formatMs(duration)}</span>
+          <span className="w-10 text-xs text-muted">{formatMs(duration)}</span>
         </div>
-
-        <div className="flex items-center justify-center gap-4">
-          <button
-            onClick={onPrevious}
-            disabled={!canGoPrevious}
-            className="text-2xl text-neutral-300 hover:text-white disabled:opacity-30"
-            aria-label="Previous track"
-          >
-            ⏮
-          </button>
-          <button
-            onClick={() => togglePlay()}
-            disabled={!ready}
-            className="rounded-full bg-green-600 px-6 py-2 font-semibold text-white disabled:opacity-50"
-          >
-            {isPaused ? "Play" : "Pause"}
-          </button>
-          <button
-            onClick={onNext}
-            disabled={!canGoNext}
-            className="text-2xl text-neutral-300 hover:text-white disabled:opacity-30"
-            aria-label="Next track"
-          >
-            ⏭
-          </button>
-        </div>
-
-        <div className="flex items-center justify-center gap-2">
-          <span className="text-sm text-neutral-500">🔉</span>
-          <input
-            type="range"
-            min={0}
-            max={1}
-            step={0.01}
-            value={volume}
-            onChange={(e) => setVolume(Number(e.target.value))}
-            className="w-24 accent-green-600"
-          />
+        <div className="grid grid-cols-[1fr_auto_1fr] items-center">
+          <span />
+          <div className="flex items-center gap-2">
+            <button
+              onClick={onPrevious}
+              disabled={!canGoPrevious}
+              className="flex h-9 w-9 items-center justify-center rounded-full text-ink hover:bg-raised disabled:opacity-30"
+              aria-label="Previous track"
+            >
+              <PreviousIcon size={18} />
+            </button>
+            <button
+              onClick={() => togglePlay()}
+              disabled={!ready}
+              aria-label={isPaused ? "Play" : "Pause"}
+              className="flex h-11 w-11 items-center justify-center rounded-full bg-ink text-ground hover:bg-ink-2 disabled:opacity-50"
+            >
+              {isPaused ? <PlayIcon size={18} /> : <PauseIcon size={18} />}
+            </button>
+            <button
+              onClick={onNext}
+              disabled={!canGoNext}
+              className="flex h-9 w-9 items-center justify-center rounded-full text-ink hover:bg-raised disabled:opacity-30"
+              aria-label="Next track"
+            >
+              <NextIcon size={18} />
+            </button>
+          </div>
+          <div className="flex items-center justify-end gap-1.5 text-muted">
+            <VolumeIcon size={16} />
+            <input
+              type="range"
+              min={0}
+              max={1}
+              step={0.01}
+              value={volume}
+              onChange={(e) => setVolume(Number(e.target.value))}
+              aria-label="Volume"
+              className="w-20 min-w-0 accent-[var(--ink)]"
+            />
+          </div>
         </div>
       </div>
 
       {playbackError && (
-        <p className="max-w-md text-xs text-red-400">Playback error: {playbackError}</p>
+        <p className="max-w-md text-xs text-danger">Playback error: {playbackError}</p>
       )}
 
-      <div className="w-full max-w-md rounded-lg bg-neutral-900 p-4 text-left">
+      <div className="w-full max-w-xl rounded-[10px] bg-panel px-5 py-4 text-left">
         <TrackData
           key={retryNonce}
           trackId={track.id}

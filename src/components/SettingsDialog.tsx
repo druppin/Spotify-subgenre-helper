@@ -4,6 +4,8 @@ import { useEffect, useState, type FormEvent, type ReactNode, type RefObject } f
 import type { SettingsResponse } from "@/app/api/settings/route";
 import type { ApiKeyInfo } from "@/lib/api/tokens";
 import type { SettingName } from "@/lib/settings";
+import { setDisplayPrefs, useDisplayPrefs, type ConfidenceDisplay, type ThemePref } from "@/lib/displayPrefs";
+import { CloseIcon } from "./Icons";
 
 const PROVIDERS: { id: string; label: string; keyUrl: string; modelHint: string }[] = [
   {
@@ -34,7 +36,7 @@ const PROVIDERS: { id: string; label: string; keyUrl: string; modelHint: string 
 ];
 
 const inputClass =
-  "w-full rounded-md border border-neutral-700 bg-neutral-950 px-2 py-1.5 text-sm outline-none focus:border-green-600";
+  "w-full rounded-md border border-line-strong bg-ground px-2 py-1.5 text-sm outline-none focus:border-ink-2";
 
 async function sendJson<T>(url: string, method: string, body?: unknown): Promise<T> {
   const res = await fetch(url, {
@@ -50,17 +52,17 @@ async function sendJson<T>(url: string, method: string, body?: unknown): Promise
 function Field({ label, note, children }: { label: string; note?: ReactNode; children: ReactNode }) {
   return (
     <label className="block space-y-1">
-      <span className="text-sm text-neutral-300">{label}</span>
+      <span className="text-sm text-ink-2">{label}</span>
       {children}
-      {note && <span className="block text-xs text-neutral-500">{note}</span>}
+      {note && <span className="block text-xs text-muted">{note}</span>}
     </label>
   );
 }
 
 function Section({ title, children }: { title: string; children: ReactNode }) {
   return (
-    <fieldset className="space-y-3 rounded-md border border-neutral-800 p-3">
-      <legend className="px-1 text-xs font-semibold uppercase tracking-wide text-neutral-500">{title}</legend>
+    <fieldset className="space-y-3 rounded-md border border-line p-3">
+      <legend className="px-1 text-[15px] font-bold text-ink">{title}</legend>
       {children}
     </fieldset>
   );
@@ -84,7 +86,7 @@ export function SettingsForm({ onSaved }: { onSaved?: (settings: SettingsRespons
   }, []);
 
   if (!loaded) {
-    return <p className="text-sm text-neutral-500">{status?.message ?? "Loading settings…"}</p>;
+    return <p className="text-sm text-muted">{status?.message ?? "Loading settings…"}</p>;
   }
 
   const saved = loaded.settings;
@@ -105,7 +107,7 @@ export function SettingsForm({ onSaved }: { onSaved?: (settings: SettingsRespons
             {" "}
             <button
               type="button"
-              className="text-red-400 hover:underline"
+              className="text-danger hover:underline"
               onClick={() => save({ [name]: "" })}
             >
               Remove
@@ -142,14 +144,14 @@ export function SettingsForm({ onSaved }: { onSaved?: (settings: SettingsRespons
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
       <Section title="Spotify (required)">
-        <ol className="list-decimal space-y-1 pl-5 text-sm text-neutral-400">
+        <ol className="list-decimal space-y-1 pl-5 text-sm text-muted">
           <li>
             Open the{" "}
             <a
               href="https://developer.spotify.com/dashboard"
               target="_blank"
               rel="noreferrer"
-              className="text-green-400 hover:underline"
+              className="text-ink underline underline-offset-2 hover:text-ink-2"
             >
               Spotify Developer Dashboard
             </a>{" "}
@@ -157,10 +159,10 @@ export function SettingsForm({ onSaved }: { onSaved?: (settings: SettingsRespons
           </li>
           <li>
             Add this Redirect URI:{" "}
-            <code className="rounded bg-neutral-800 px-1 text-neutral-200">{loaded.redirectUri}</code>{" "}
+            <code className="rounded bg-raised px-1 text-ink">{loaded.redirectUri}</code>{" "}
             <button
               type="button"
-              className="text-xs text-green-400 hover:underline"
+              className="text-xs text-ink underline underline-offset-2 hover:text-ink-2"
               onClick={() => {
                 navigator.clipboard.writeText(loaded.redirectUri).then(() => setCopied(true), () => {});
               }}
@@ -170,7 +172,7 @@ export function SettingsForm({ onSaved }: { onSaved?: (settings: SettingsRespons
           </li>
           <li>Copy the app&apos;s Client ID and Client secret into the boxes below.</li>
         </ol>
-        <p className="text-xs text-neutral-500">Playing songs in the app needs Spotify Premium.</p>
+        <p className="text-xs text-muted">Playing songs in the app needs Spotify Premium.</p>
         <Field label="Client ID" note={envNote("SPOTIFY_CLIENT_ID")}>
           <input className={inputClass} value={value("SPOTIFY_CLIENT_ID")} onChange={set("SPOTIFY_CLIENT_ID")} />
         </Field>
@@ -186,7 +188,7 @@ export function SettingsForm({ onSaved }: { onSaved?: (settings: SettingsRespons
       </Section>
 
       <Section title="AI genre guesses">
-        <p className="text-sm text-neutral-400">
+        <p className="text-sm text-muted">
           Pick a provider and paste an API key from it. Google and Groq have free tiers; an Anthropic key is billed
           separately from a claude.ai subscription.
         </p>
@@ -207,7 +209,7 @@ export function SettingsForm({ onSaved }: { onSaved?: (settings: SettingsRespons
             (provider && (
               <>
                 Get one at{" "}
-                <a href={provider.keyUrl} target="_blank" rel="noreferrer" className="text-green-400 hover:underline">
+                <a href={provider.keyUrl} target="_blank" rel="noreferrer" className="text-ink underline underline-offset-2 hover:text-ink-2">
                   {new URL(provider.keyUrl).host}
                 </a>
               </>
@@ -233,13 +235,13 @@ export function SettingsForm({ onSaved }: { onSaved?: (settings: SettingsRespons
       </Section>
 
       <Section title="Last.fm (optional)">
-        <p className="text-sm text-neutral-400">
+        <p className="text-sm text-muted">
           Adds Last.fm tags and artist bios to what the AI sees. Get a free key at{" "}
           <a
             href="https://www.last.fm/api/account/create"
             target="_blank"
             rel="noreferrer"
-            className="text-green-400 hover:underline"
+            className="text-ink underline underline-offset-2 hover:text-ink-2"
           >
             last.fm/api
           </a>
@@ -257,12 +259,12 @@ export function SettingsForm({ onSaved }: { onSaved?: (settings: SettingsRespons
       </Section>
 
       <div className="flex items-center justify-end gap-3">
-        {status?.kind === "saved" && <span className="text-sm text-green-400">Saved</span>}
-        {status?.kind === "error" && <span className="text-sm text-red-400">{status.message}</span>}
+        {status?.kind === "saved" && <span className="text-sm text-ok">Saved</span>}
+        {status?.kind === "error" && <span className="text-sm text-danger">{status.message}</span>}
         <button
           type="submit"
           disabled={status?.kind === "saving"}
-          className="rounded-md bg-green-600 px-4 py-1.5 text-sm font-semibold text-white hover:bg-green-500 disabled:opacity-50"
+          className="rounded-md bg-ink px-4 py-1.5 text-sm font-semibold text-ground hover:bg-ink-2 disabled:opacity-50"
         >
           {status?.kind === "saving" ? "Saving…" : "Save"}
         </button>
@@ -314,16 +316,16 @@ function ApiKeysSection() {
 
   return (
     <Section title="Library API keys">
-      <p className="text-sm text-neutral-400">
+      <p className="text-sm text-muted">
         For other programs on this computer, like DJ software or a file tagger, to read your songs and genres at{" "}
-        <code className="text-neutral-300">http://127.0.0.1:3000/api/v1</code>.
+        <code className="text-ink-2">http://127.0.0.1:3000/api/v1</code>.
       </p>
       {created && (
-        <div className="space-y-1 rounded-md border border-green-800 bg-green-950/40 p-2 text-sm">
+        <div className="space-y-1 rounded-md border border-line-strong bg-raised p-2 text-sm">
           <p>
             Key for &ldquo;{created.name}&rdquo;. Copy it now; it won&apos;t be shown again.
           </p>
-          <code className="block break-all rounded bg-neutral-950 px-2 py-1 text-green-300">{created.token}</code>
+          <code className="block break-all rounded bg-ground px-2 py-1 text-ink">{created.token}</code>
         </div>
       )}
       <form onSubmit={handleCreate} className="flex gap-2">
@@ -336,27 +338,103 @@ function ApiKeysSection() {
         <button
           type="submit"
           disabled={!name.trim()}
-          className="shrink-0 rounded-md bg-neutral-700 px-3 py-1 text-sm font-semibold text-white hover:bg-neutral-600 disabled:opacity-50"
+          className="shrink-0 rounded-md bg-ink px-3 py-1 text-sm font-semibold text-ground hover:bg-ink-2 disabled:opacity-50"
         >
           Create key
         </button>
       </form>
-      {error && <p className="text-sm text-red-400">{error}</p>}
+      {error && <p className="text-sm text-danger">{error}</p>}
       {keys && keys.length > 0 && (
         <ul className="space-y-1">
           {keys.map((key) => (
             <li key={key.id} className="flex items-center gap-2 text-sm">
               <span className="flex-1 truncate">{key.name}</span>
-              <span className="text-xs text-neutral-500">
+              <span className="text-xs text-muted">
                 made {when(key.createdAt)}, last used {when(key.lastUsedAt)}
               </span>
-              <button type="button" className="text-xs text-red-400 hover:underline" onClick={() => handleRevoke(key)}>
+              <button type="button" className="text-xs text-danger hover:underline" onClick={() => handleRevoke(key)}>
                 Revoke
               </button>
             </li>
           ))}
         </ul>
       )}
+    </Section>
+  );
+}
+
+const SEGMENT = "rounded-[5px] px-3 py-1 text-[13px] font-medium";
+
+/** A row of choices where one is picked, like a set of radio buttons. */
+function Segmented<T extends string>({
+  label,
+  options,
+  value,
+  onChange,
+}: {
+  label: string;
+  options: { value: T; label: ReactNode }[];
+  value: T;
+  onChange: (value: T) => void;
+}) {
+  return (
+    <div className="space-y-1.5">
+      <span className="block text-[13px] font-semibold">{label}</span>
+      <div role="radiogroup" aria-label={label} className="inline-flex gap-0.5 rounded-md border border-line bg-ground p-0.5">
+        {options.map((o) => (
+          <button
+            key={o.value}
+            type="button"
+            role="radio"
+            aria-checked={o.value === value}
+            onClick={() => onChange(o.value)}
+            className={`${SEGMENT} inline-flex items-center gap-2 ${
+              o.value === value ? "bg-raised font-semibold text-ink ring-1 ring-line-strong" : "text-ink-2 hover:bg-raised"
+            }`}
+          >
+            {o.label}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// A small sample of the confidence bar, as each choice would show it.
+function BarSample() {
+  return (
+    <span className="relative inline-block h-1 w-6 rounded-full bg-current/25" aria-hidden>
+      <span className="absolute inset-y-0 left-0 w-[70%] rounded-full bg-current" />
+    </span>
+  );
+}
+
+/** How the app looks on this computer. Applies as soon as it's picked. */
+function DisplaySection() {
+  const { theme, confidence } = useDisplayPrefs();
+  return (
+    <Section title="Display">
+      <Segmented<ConfidenceDisplay>
+        label="Show confidence as"
+        value={confidence}
+        onChange={(value) => setDisplayPrefs({ confidence: value })}
+        options={[
+          { value: "both", label: <>Both <BarSample /> 70%</> },
+          { value: "bars", label: <>Bars <BarSample /></> },
+          { value: "percent", label: <>Percentage 70%</> },
+        ]}
+      />
+      <p className="text-xs text-muted">Applies to tags, the source playlist and My library.</p>
+      <Segmented<ThemePref>
+        label="Theme"
+        value={theme}
+        onChange={(value) => setDisplayPrefs({ theme: value })}
+        options={[
+          { value: "system", label: "Match system" },
+          { value: "light", label: "Light" },
+          { value: "dark", label: "Dark" },
+        ]}
+      />
     </Section>
   );
 }
@@ -376,27 +454,33 @@ export function SettingsDialog({ dialogRef }: { dialogRef: RefObject<HTMLDialogE
   return (
     <dialog
       ref={dialogRef}
-      className="m-auto w-full max-w-xl rounded-lg border border-neutral-700 bg-neutral-900 p-0 text-white backdrop:bg-black/60"
+      aria-labelledby="settings-title"
+      className="m-auto w-full max-w-5xl overflow-hidden rounded-xl bg-panel p-0 text-ink shadow-[0_24px_60px_rgba(0,0,0,0.45)] backdrop:bg-black/60"
     >
-      <div className="max-h-[90vh] space-y-5 overflow-y-auto p-5">
-        <div className="flex items-center justify-between">
-          <h2 className="text-lg font-semibold">Settings</h2>
-          <button
-            type="button"
-            onClick={() => dialogRef.current?.close()}
-            className="text-neutral-500 hover:text-white"
-            aria-label="Close"
-          >
-            ✕
-          </button>
-        </div>
-        {open && (
-          <>
-            <SettingsForm />
-            <ApiKeysSection />
-          </>
-        )}
+      <div className="band flex items-center justify-between px-6 py-3.5">
+        <h2 id="settings-title" className="font-narrow text-xl font-bold">
+          Settings
+        </h2>
+        <button
+          type="button"
+          onClick={() => dialogRef.current?.close()}
+          className="flex h-8 w-8 items-center justify-center rounded-md hover:bg-raised"
+          aria-label="Close"
+        >
+          <CloseIcon size={16} />
+        </button>
       </div>
+      {open && (
+        <div className="grid max-h-[80vh] gap-5 overflow-y-auto p-6 md:grid-cols-2">
+          <div className="space-y-5">
+            <SettingsForm />
+          </div>
+          <div className="space-y-5">
+            <DisplaySection />
+            <ApiKeysSection />
+          </div>
+        </div>
+      )}
     </dialog>
   );
 }

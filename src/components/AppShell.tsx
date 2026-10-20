@@ -35,7 +35,7 @@ function OrganizedCount({ stats }: { stats: OrganizeStats }) {
   const approx = estimated ? "~" : "";
   return (
     <span
-      className="ml-2 text-xs text-neutral-500"
+      className="ml-2 text-xs text-muted"
       title={
         `Since tracking began: ${stats.songsOrganized} songs (${stats.bySource.sorter} sorter, ` +
         `${stats.bySource["lost-tracks"]} My library), ${stats.adds} adds. ` +
@@ -112,8 +112,8 @@ export function AppShell() {
           aria-current={tab.id === activeTab ? "page" : undefined}
           className={`rounded-md px-3 py-1.5 text-sm font-medium ${
             tab.id === activeTab
-              ? "bg-green-600/20 text-green-400"
-              : "text-neutral-400 hover:bg-neutral-800 hover:text-neutral-200"
+              ? "bg-raised text-ink"
+              : "text-muted hover:bg-raised hover:text-ink"
           }`}
         >
           {tab.label}
@@ -122,7 +122,7 @@ export function AppShell() {
       <button
         type="button"
         onClick={() => settingsRef.current?.showModal()}
-        className="rounded-md px-3 py-1.5 text-sm font-medium text-neutral-400 hover:bg-neutral-800 hover:text-neutral-200"
+        className="rounded-md px-3 py-1.5 text-sm font-medium text-muted hover:bg-raised hover:text-ink"
       >
         Settings
       </button>
@@ -134,7 +134,7 @@ export function AppShell() {
     <PlayerProvider>
       <SettingsDialog dialogRef={settingsRef} />
       {blockedUntil && (
-        <div className="fixed inset-x-0 bottom-0 z-50 bg-red-950/95 px-4 py-2 text-center text-sm text-red-200">
+        <div className="fixed inset-x-0 bottom-0 z-50 bg-band px-4 py-2 text-center text-sm text-danger">
           Spotify has blocked this app&apos;s requests until{" "}
           {new Date(blockedUntil).toLocaleString(undefined, { weekday: "short", hour: "numeric", minute: "2-digit" })}{" "}
           for making too many. Adding, removing, and scanning won&apos;t work until then.

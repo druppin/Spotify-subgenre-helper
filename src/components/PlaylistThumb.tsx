@@ -12,7 +12,7 @@ export function PlaylistThumb({
   const image = playlist.images?.[playlist.images.length - 1];
   if (!image) {
     return (
-      <div className="flex-shrink-0 rounded bg-neutral-800" style={{ width: size, height: size }} />
+      <div className="flex-shrink-0 rounded bg-raised" style={{ width: size, height: size }} />
     );
   }
   return (

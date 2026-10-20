@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { SpotifyPlaylist } from "@/lib/spotify/client";
 import { PlaylistThumb } from "./PlaylistThumb";
+import { ChevronDownIcon } from "./Icons";
 
 interface Props {
   playlists: SpotifyPlaylist[];
@@ -66,7 +67,7 @@ export function PlaylistPicker({
         type="button"
         onClick={() => (open ? close() : setOpen(true))}
         disabled={disabled}
-        className={`flex items-center gap-2 rounded-md border border-neutral-700 bg-neutral-900 px-2 py-1.5 text-sm hover:border-neutral-500 disabled:opacity-50 ${
+        className={`flex items-center gap-2 rounded-md border border-line-strong bg-panel px-2 py-1.5 text-sm hover:border-muted disabled:opacity-50 ${
           fullWidth ? "w-full" : ""
         }`}
       >
@@ -76,18 +77,18 @@ export function PlaylistPicker({
             <span className={`truncate text-left ${fullWidth ? "flex-1" : "max-w-[180px]"}`}>{selected.name}</span>
           </>
         ) : (
-          <span className={`text-left text-neutral-400 ${fullWidth ? "flex-1" : ""}`}>{placeholder}</span>
+          <span className={`text-left text-muted ${fullWidth ? "flex-1" : ""}`}>{placeholder}</span>
         )}
-        <span className="text-neutral-500">▾</span>
+        <span className="text-muted"><ChevronDownIcon size={14} /></span>
       </button>
 
       {open && (
         <div
-          className={`overflow-hidden rounded-md border border-neutral-700 bg-neutral-900 shadow-xl ${
+          className={`overflow-hidden rounded-md border border-line-strong bg-panel shadow-xl ${
             fullWidth ? "mt-1" : `absolute right-0 z-10 w-72 ${dropUp ? "bottom-full mb-1" : "mt-1"}`
           }`}
         >
-          <div className="border-b border-neutral-800 p-1.5">
+          <div className="border-b border-line p-1.5">
             <input
               autoFocus
               type="search"
@@ -106,7 +107,7 @@ export function PlaylistPicker({
               }}
               placeholder="Search playlists…"
               aria-label="Search playlists"
-              className="w-full rounded border border-neutral-700 bg-neutral-950 px-2 py-1 text-sm outline-none placeholder:text-neutral-500 focus:border-green-600"
+              className="w-full rounded border border-line-strong bg-ground px-2 py-1 text-sm outline-none placeholder:text-faint focus:border-ink-2"
             />
           </div>
           <ul className="max-h-80 overflow-y-auto">
@@ -115,18 +116,18 @@ export function PlaylistPicker({
                 <button
                   type="button"
                   onClick={() => choose(p.id)}
-                  className={`flex w-full items-center gap-2 px-2 py-1.5 text-left text-sm hover:bg-neutral-800 ${
-                    p.id === selectedId ? "bg-green-600/20 text-green-400" : "text-neutral-200"
+                  className={`flex w-full items-center gap-2 px-2 py-1.5 text-left text-sm hover:bg-raised ${
+                    p.id === selectedId ? "bg-raised text-ink" : "text-ink"
                   }`}
                 >
                   <PlaylistThumb playlist={p} />
                   <span className="min-w-0 flex-1 truncate">{p.name}</span>
-                  <span className="flex-shrink-0 text-xs text-neutral-500">{p.tracks?.total ?? "?"}</span>
+                  <span className="flex-shrink-0 text-xs text-muted">{p.tracks?.total ?? "?"}</span>
                 </button>
               </li>
             ))}
             {visible.length === 0 && (
-              <li className="px-2 py-1.5 text-sm text-neutral-500">
+              <li className="px-2 py-1.5 text-sm text-muted">
                 {playlists.length === 0 ? "No playlists found." : `No playlists match “${query.trim()}”.`}
               </li>
             )}

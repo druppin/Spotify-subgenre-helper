@@ -4,6 +4,17 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { SpotifyPlaylist } from "@/lib/spotify/client";
 import { fetchPlaylistGenres, type PlaylistGenreTrack } from "@/lib/playlistGenres";
 import { PlaylistThumb } from "./PlaylistThumb";
+import { CheckIcon, ChevronDownIcon, ChevronRightIcon, CloseIcon, StarIcon } from "./Icons";
+import { FAMILY_NAMES, familyMark, familyOf, familyTab, type GenreFamily } from "@/lib/genreFamily";
+
+// How far each starred divider's tab sits from the left, staggered like
+// dividers in a record bin.
+const DIVIDER_OFFSETS = [0, 48, 96, 24, 72];
+
+interface GenreSummary {
+  top: string[];
+  family: GenreFamily;
+}
 
 interface Props {
   playlists: SpotifyPlaylist[];
@@ -35,9 +46,24 @@ export function DestinationPlaylistsPanel({
   genresVersion,
 }: Props) {
   const [busyId, setBusyId] = useState<string | null>(null);
+  // The playlist a song was just filed into, for its drop animation.
+  const [droppedId, setDroppedId] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
-  const listRef = useRef<HTMLUListElement>(null);
+  const listRef = useRef<HTMLDivElement>(null);
+  // Each playlist's top genres and genre family, from the saved library.
+  const [summaries, setSummaries] = useState<Record<string, GenreSummary>>({});
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/playlist-genre-summary")
+      .then((res) => res.json())
+      .then((body) => !cancelled && body.summaries && setSummaries(body.summaries))
+      .catch((err) => console.error("Failed to load playlist genres:", err));
+    return () => {
+      cancelled = true;
+    };
+  }, [genresVersion]);
   const scrollTopBeforePinRef = useRef<number | null>(null);
 
   // Pinning moves the clicked row to the top; without this the browser's
@@ -86,50 +112,107 @@ export function DestinationPlaylistsPanel({
         await onRemoveFromPlaylist(playlistId);
       } else {
         await onAddToPlaylist(playlistId);
+        setDroppedId(playlistId);
+        setTimeout(() => setDroppedId((id) => (id === playlistId ? null : id)), 250);
       }
     } finally {
       setBusyId(null);
     }
   };
 
-  return (
-    <div className="flex h-full flex-col overflow-hidden">
-      <div className="flex items-center justify-between gap-2 px-3 pt-3">
-        <h2 className="text-sm font-semibold uppercase tracking-wide text-neutral-400">Add to playlist</h2>
-        {pinnedIds.length > 0 && (
-          <button
-            onClick={() => {
-              const n = pinnedIds.length;
-              if (window.confirm(`Unstar all ${n} starred playlist${n === 1 ? "" : "s"}?`)) onClearPins();
-            }}
-            className="text-xs text-neutral-500 hover:text-red-400"
-            title="Unstar every playlist (saved setups aren't affected)"
-          >
-            Clear stars ({pinnedIds.length})
-          </button>
+  const starred = visible.filter((p) => pinnedIds.includes(p.id));
+  const others = visible.filter((p) => !pinnedIds.includes(p.id));
+
+  const addButton = (p: SpotifyPlaylist, compact: boolean) => {
+    const isAdded = addedPlaylistIds.has(p.id);
+    return (
+      <button
+        onClick={() => handleClick(p.id, isAdded)}
+        disabled={disabled || busyId === p.id}
+        title={isAdded ? `In ${p.name}. Click to take this song out again.` : `Add this song to ${p.name}`}
+        className={`group/add flex flex-shrink-0 items-center justify-center gap-1 rounded-md font-semibold disabled:opacity-50 ${
+          compact ? "h-6 w-[4.25rem] text-xs" : "h-7 w-[4.5rem] text-[12.5px]"
+        } ${
+          isAdded
+            ? "border border-line-strong text-muted hover:border-danger hover:text-danger"
+            : compact
+              ? "border border-line-strong text-ink hover:border-ink hover:bg-ink hover:text-ground"
+              : "bg-ink text-ground hover:bg-ink-2"
+        }`}
+      >
+        {isAdded ? (
+          <>
+            <CheckIcon size={13} className="group-hover/add:hidden" />
+            <span className="group-hover/add:hidden">Added</span>
+            <span className="hidden group-hover/add:inline">Remove</span>
+          </>
+        ) : (
+          "Add"
         )}
-      </div>
-      {membershipStatus === "loading" && (
-        <p className="px-3 pt-1 text-xs text-neutral-500">
-          Checking which playlists already have this track…
-        </p>
-      )}
-      {membershipStatus === "error" && (
-        <p className="px-3 pt-1 text-xs text-red-400">
-          Couldn&apos;t check which playlists already have this track.
-        </p>
-      )}
+      </button>
+    );
+  };
 
-      <label className="flex items-center gap-2 px-3 py-2 text-xs text-neutral-400">
-        <input
-          type="checkbox"
-          checked={alsoRemoveFromSource}
-          onChange={(e) => onAlsoRemoveFromSourceChange(e.target.checked)}
-        />
-        Also remove from source playlist
-      </label>
+  const starButton = (p: SpotifyPlaylist) => {
+    const isPinned = pinnedIds.includes(p.id);
+    return (
+      <button
+        onClick={() => handleTogglePin(p.id)}
+        onMouseDown={(e) => e.preventDefault()}
+        className={`flex h-6 w-6 flex-shrink-0 items-center justify-center rounded ${
+          isPinned ? "text-warn" : "text-faint hover:text-ink"
+        }`}
+        aria-label={isPinned ? `Unstar ${p.name}` : `Star ${p.name}`}
+        title={isPinned ? "Unstar: move back to all playlists" : "Star: file it under a divider at the top"}
+      >
+        <StarIcon size={15} filled={isPinned} />
+      </button>
+    );
+  };
 
-      <div className="px-3 pb-2">
+  const expandButton = (p: SpotifyPlaylist) => {
+    const isExpanded = expandedIds.has(p.id);
+    return (
+      <button
+        onClick={() => toggleExpanded(p.id)}
+        onMouseDown={(e) => e.preventDefault()}
+        className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded text-muted hover:text-ink"
+        aria-expanded={isExpanded}
+        aria-label={isExpanded ? `Hide songs in ${p.name}` : `Show songs in ${p.name}`}
+        title={isExpanded ? "Hide songs and genres" : "Show songs and genres"}
+      >
+        {isExpanded ? <ChevronDownIcon size={15} /> : <ChevronRightIcon size={15} />}
+      </button>
+    );
+  };
+
+  return (
+    <div className="flex h-full flex-col overflow-hidden bg-side">
+      <div className="space-y-2 px-3.5 pb-2 pt-3.5">
+        <div className="flex items-baseline justify-between gap-2">
+          <h2 className="font-narrow text-base font-bold">File it under</h2>
+          {pinnedIds.length > 0 && (
+            <button
+              onClick={() => {
+                const n = pinnedIds.length;
+                if (window.confirm(`Unstar all ${n} starred playlist${n === 1 ? "" : "s"}?`)) onClearPins();
+              }}
+              className="text-xs text-muted hover:text-danger"
+              title="Unstar every playlist (saved setups aren't affected)"
+            >
+              Clear stars ({pinnedIds.length})
+            </button>
+          )}
+        </div>
+        <label className="flex items-center gap-2 text-[12.5px] text-muted">
+          <input
+            type="checkbox"
+            checked={alsoRemoveFromSource}
+            onChange={(e) => onAlsoRemoveFromSourceChange(e.target.checked)}
+            className="accent-band"
+          />
+          Also remove from the source playlist
+        </label>
         <div className="relative">
           <input
             type="search"
@@ -138,88 +221,119 @@ export function DestinationPlaylistsPanel({
             onKeyDown={(e) => {
               if (e.key === "Escape") setQuery("");
             }}
-            placeholder="Search playlists…"
-            aria-label="Search playlists"
-            className="w-full rounded-md border border-neutral-700 bg-neutral-900 px-2 py-1.5 pr-7 text-sm outline-none placeholder:text-neutral-500 focus:border-green-600 [&::-webkit-search-cancel-button]:hidden"
+            placeholder={`Find a playlist (${modifiablePlaylists.length})`}
+            aria-label="Find a playlist"
+            className="w-full rounded-md border border-line bg-ground px-2.5 py-1.5 pr-8 text-[13px] outline-none placeholder:text-faint focus:border-ink-2 [&::-webkit-search-cancel-button]:hidden"
           />
           {query && (
             <button
               onClick={() => setQuery("")}
-              className="absolute right-2 top-1/2 -translate-y-1/2 text-neutral-500 hover:text-white"
+              className="absolute right-2 top-1/2 -translate-y-1/2 text-muted hover:text-ink"
               aria-label="Clear search"
             >
-              ✕
+              <CloseIcon size={14} />
             </button>
           )}
         </div>
+        {membershipStatus === "loading" && (
+          <p className="text-xs text-muted">Checking which playlists already have this song…</p>
+        )}
+        {membershipStatus === "error" && (
+          <p className="text-xs text-danger">Couldn&apos;t check which playlists already have this song.</p>
+        )}
       </div>
 
-      <ul ref={listRef} className="flex-1 overflow-y-auto [overflow-anchor:none]">
-        {visible.map((p) => {
-          const isPinned = pinnedIds.includes(p.id);
-          const isAdded = addedPlaylistIds.has(p.id);
-          const isExpanded = expandedIds.has(p.id);
-          return (
-            <li key={p.id} className="px-3 py-1">
-              <div className="flex items-center gap-1">
-                <button
-                  onClick={() => handleTogglePin(p.id)}
-                  onMouseDown={(e) => e.preventDefault()}
-                  className={`flex-shrink-0 px-1 text-lg ${
-                    isPinned ? "text-yellow-400" : "text-neutral-600 hover:text-neutral-400"
-                  }`}
-                  aria-label={isPinned ? "Unpin from top" : "Pin to top"}
-                  title={isPinned ? "Unpin from top" : "Pin to top"}
-                >
-                  {isPinned ? "★" : "☆"}
-                </button>
-                <button
-                  onClick={() => handleClick(p.id, isAdded)}
-                  disabled={disabled || busyId === p.id}
-                  title={isAdded ? "Click to remove the current track from this playlist" : undefined}
-                  className={`flex min-w-0 flex-1 items-center gap-2 rounded-md border px-2 py-1.5 text-left text-sm disabled:opacity-50 ${
-                    isAdded
-                      ? "border-green-500 bg-green-600/15 text-green-300 hover:border-red-500 hover:bg-red-600/10 hover:text-red-300"
-                      : "border-neutral-700 text-neutral-200 hover:border-green-600 hover:bg-green-600/10"
-                  }`}
-                >
-                  <PlaylistThumb playlist={p} size={32} />
-                  <div className="flex min-w-0 flex-1 items-center justify-between">
-                    <span className="truncate">{p.name}</span>
-                    {isAdded ? (
-                      <span className="flex-shrink-0 text-xs font-medium">✓ Added</span>
-                    ) : (
-                      <span className="flex-shrink-0 text-xs text-neutral-500">
-                        {p.tracks?.total ?? "?"}
+      <div ref={listRef} className="flex-1 overflow-y-auto pb-3 [overflow-anchor:none]">
+        {starred.length > 0 && (
+          <>
+            <p className="px-3.5 pb-1.5 pt-1 text-xs font-semibold text-muted">Starred</p>
+            <ul className="space-y-1.5 px-3.5">
+              {starred.map((p, index) => {
+                const summary = summaries[p.id];
+                const family = summary?.family ?? "none";
+                const offset = DIVIDER_OFFSETS[index % DIVIDER_OFFSETS.length];
+                const isAdded = addedPlaylistIds.has(p.id);
+                return (
+                  <li key={p.id}>
+                    <span
+                      className="font-narrow inline-block max-w-[80%] truncate rounded-t-[5px] px-2.5 pb-px pt-0.5 align-bottom text-xs font-bold text-[#1a1613]"
+                      style={{ marginLeft: offset, background: familyTab(family) }}
+                      title={`${p.name}: mostly ${FAMILY_NAMES[family].toLowerCase()}`}
+                    >
+                      {p.name}
+                    </span>
+                    <div
+                      className={`flex items-center gap-2 border-t-2 py-1.5 pl-1.5 pr-1 ${isAdded ? "bg-raised" : "bg-panel"} ${
+                        offset === 0 ? "rounded-b-md rounded-tr-md" : "rounded-md"
+                      } ${droppedId === p.id ? "file-drop" : ""}`}
+                      style={{ borderTopColor: familyTab(family), ["--drop" as string]: familyTab(family) }}
+                    >
+                      <PlaylistThumb playlist={p} size={32} />
+                      <div className="min-w-0 flex-1">
+                        <div className="truncate text-[12.5px] text-ink-2">
+                          {summary?.top.length ? summary.top.join(", ") : "No genres yet"}
+                        </div>
+                        <div className="text-[11.5px] text-muted">{p.tracks?.total ?? "?"} songs</div>
+                      </div>
+                      {addButton(p, false)}
+                      {expandButton(p)}
+                      {starButton(p)}
+                    </div>
+                    {expandedIds.has(p.id) && <PlaylistGenreList key={`${p.id}:${genresVersion}`} playlistId={p.id} />}
+                  </li>
+                );
+              })}
+            </ul>
+          </>
+        )}
+
+        {others.length > 0 && (
+          <>
+            <p className="px-3.5 pb-1 pt-3 text-xs font-semibold text-muted">
+              {starred.length > 0 || query ? "All playlists" : "Your playlists"}
+            </p>
+            <ul className="px-2">
+              {others.map((p) => {
+                const family = summaries[p.id]?.family ?? "none";
+                return (
+                  <li key={p.id}>
+                    <div
+                      className={`flex h-9 items-center gap-2 rounded-md px-1.5 hover:bg-panel ${
+                        droppedId === p.id ? "file-drop" : ""
+                      }`}
+                      style={{ ["--drop" as string]: familyTab(family) }}
+                    >
+                      {starButton(p)}
+                      <PlaylistThumb playlist={p} size={26} />
+                      <span
+                        className="h-2 w-2 flex-shrink-0 rounded-full"
+                        style={{ background: familyMark(family) }}
+                        title={family === "none" ? "No genres yet" : `Mostly ${FAMILY_NAMES[family].toLowerCase()}`}
+                      />
+                      <span className="min-w-0 flex-1 truncate text-[13px]" title={summaries[p.id]?.top.join(", ")}>
+                        {p.name}
                       </span>
-                    )}
-                  </div>
-                </button>
-                <button
-                  onClick={() => toggleExpanded(p.id)}
-                  onMouseDown={(e) => e.preventDefault()}
-                  className="flex-shrink-0 px-1 text-neutral-500 hover:text-white"
-                  aria-expanded={isExpanded}
-                  aria-label={isExpanded ? "Hide songs and genres" : "Show songs and genres"}
-                  title={isExpanded ? "Hide songs and genres" : "Show songs and genres"}
-                >
-                  {isExpanded ? "▾" : "▸"}
-                </button>
-              </div>
-              {isExpanded && <PlaylistGenreList key={`${p.id}:${genresVersion}`} playlistId={p.id} />}
-            </li>
-          );
-        })}
+                      <span className="w-9 flex-shrink-0 text-right text-[11.5px] text-muted">{p.tracks?.total ?? "?"}</span>
+                      {addButton(p, true)}
+                      {expandButton(p)}
+                    </div>
+                    {expandedIds.has(p.id) && <PlaylistGenreList key={`${p.id}:${genresVersion}`} playlistId={p.id} />}
+                  </li>
+                );
+              })}
+            </ul>
+          </>
+        )}
+
         {sorted.length > 0 && visible.length === 0 && (
-          <li className="px-3 py-2 text-sm text-neutral-500">No playlists match “{query.trim()}”.</li>
+          <p className="px-3.5 py-2 text-sm text-muted">No playlists match “{query.trim()}”.</p>
         )}
         {sorted.length === 0 && (
-          <li className="px-3 py-2 text-sm text-neutral-500">
-            No playlists you can add to yet — you need to own or collaborate on a playlist for it
-            to show up here.
-          </li>
+          <p className="px-3.5 py-2 text-sm text-muted">
+            No playlists you can add to yet. You need to own or collaborate on a playlist for it to show up here.
+          </p>
         )}
-      </ul>
+      </div>
     </div>
   );
 }
@@ -245,25 +359,26 @@ function PlaylistGenreList({ playlistId }: { playlistId: string }) {
   }, [playlistId]);
 
   if (state.status === "loading") {
-    return <p className="py-1.5 pl-9 text-xs text-neutral-500">Loading songs…</p>;
+    return <p className="py-1.5 pl-9 text-xs text-muted">Loading songs…</p>;
   }
   if (state.status === "error") {
-    return <p className="py-1.5 pl-9 text-xs text-red-400">{state.message}</p>;
+    return <p className="py-1.5 pl-9 text-xs text-danger">{state.message}</p>;
   }
   if (state.tracks.length === 0) {
-    return <p className="py-1.5 pl-9 text-xs text-neutral-500">No songs in this playlist.</p>;
+    return <p className="py-1.5 pl-9 text-xs text-muted">No songs in this playlist.</p>;
   }
   return (
-    <ul className="mt-1 max-h-72 space-y-1 overflow-y-auto border-l border-neutral-800 py-1 pl-3 ml-4">
+    <ul className="mt-1 max-h-72 space-y-1 overflow-y-auto border-l border-line py-1 pl-3 ml-4">
       {state.tracks.map((t, i) => (
         <li key={`${t.id}-${i}`} className="text-xs">
-          <div className="truncate text-neutral-300" title={`${t.name} — ${t.artists.join(", ")}`}>
-            {t.name} <span className="text-neutral-500">— {t.artists.join(", ")}</span>
+          <div className="truncate text-ink-2" title={`${t.name} — ${t.artists.join(", ")}`}>
+            {t.name} <span className="text-muted">— {t.artists.join(", ")}</span>
           </div>
           {t.subgenres && t.subgenres.length > 0 && (
-            <div className="mt-0.5 flex flex-wrap gap-1">
+            <div className="mt-0.5 flex flex-wrap gap-x-2.5 gap-y-0.5">
               {t.subgenres.map((g) => (
-                <span key={g} className="rounded-full bg-green-600/15 px-1.5 py-px text-[10px] text-green-400">
+                <span key={g} className="inline-flex items-center gap-1 text-[11px] text-ink-2">
+                  <span className="h-1.5 w-1.5 rounded-full" style={{ background: familyMark(familyOf(g)) }} />
                   {g}
                 </span>
               ))}

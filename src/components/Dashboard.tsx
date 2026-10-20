@@ -471,8 +471,8 @@ export function Dashboard({ tabs }: { tabs: ReactNode }) {
   }, [playlistIndex, sourcePlaylistId, sourceTracks]);
 
   return (
-    <div className="flex h-screen flex-col bg-neutral-950 text-white">
-      <header className="flex items-center gap-3 border-b border-neutral-800 px-4 py-3">
+    <div className="flex h-screen flex-col bg-ground text-ink">
+      <header className="band flex items-center gap-3 px-4 py-2.5">
         {tabs}
         <div className="ml-auto">
           <PlaylistPicker
@@ -483,8 +483,8 @@ export function Dashboard({ tabs }: { tabs: ReactNode }) {
         </div>
       </header>
 
-      <div className="grid flex-1 grid-cols-[260px_1fr_280px] overflow-hidden">
-        <div className="min-h-0 overflow-hidden border-r border-neutral-800">
+      <div className="grid flex-1 grid-cols-[280px_1fr_340px] overflow-hidden">
+        <div className="min-h-0 overflow-hidden border-r border-line">
           <SourcePlaylistPanel
             tracks={sourceTracks}
             currentIndex={currentIndex}
@@ -523,7 +523,7 @@ export function Dashboard({ tabs }: { tabs: ReactNode }) {
           </div>
         </div>
 
-        <div className="min-h-0 overflow-hidden border-l border-neutral-800">
+        <div className="min-h-0 overflow-hidden border-l border-line">
           <DestinationPlaylistsPanel
             playlists={playlists}
             pinnedIds={pinnedIds}

@@ -6,6 +6,7 @@ import { fetchPlaylistGenres, summarizeGenres, type PlaylistGenreTrack } from "@
 import { LIKED_SONGS_PICKER_ENTRY } from "@/lib/library";
 import type { SummaryStep } from "@/lib/context";
 import { PlaylistPicker } from "./PlaylistPicker";
+import { CheckIcon, CloseIcon } from "./Icons";
 
 const DEFAULT_BATCH = 10;
 const MAX_BATCH = 1000;
@@ -70,12 +71,12 @@ function Overlay({
     <dialog
       ref={ref}
       onClose={onClose}
-      className="m-auto flex max-h-[85vh] w-full max-w-xl flex-col rounded-lg border border-neutral-700 bg-neutral-900 p-0 text-white backdrop:bg-black/60"
+      className="m-auto flex max-h-[85vh] w-full max-w-xl flex-col rounded-lg border border-line-strong bg-panel p-0 text-ink backdrop:bg-black/60"
     >
-      <div className="flex items-center justify-between border-b border-neutral-800 px-5 py-3">
+      <div className="flex items-center justify-between border-b border-line px-5 py-3">
         <h2 className="text-lg font-semibold">{title}</h2>
-        <button onClick={() => ref.current?.close()} className="text-neutral-500 hover:text-white" aria-label="Close">
-          ✕
+        <button onClick={() => ref.current?.close()} className="text-muted hover:text-ink" aria-label="Close">
+          <CloseIcon size={16} />
         </button>
       </div>
       <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-5 py-4">{children}</div>
@@ -111,9 +112,9 @@ export function PlaylistGenresDialog({
       />
 
       {!playlistId ? null : loaded.status === "loading" ? (
-        <p className="text-sm text-neutral-500">Loading…</p>
+        <p className="text-sm text-muted">Loading…</p>
       ) : loaded.status === "error" ? (
-        <p className="text-sm text-red-400">{loaded.message}</p>
+        <p className="text-sm text-danger">{loaded.message}</p>
       ) : (
         <GenreSummary tracks={loaded.tracks} onGenerateMissing={() => onGenerateMissing(playlistId)} />
       )}
@@ -129,32 +130,32 @@ function GenreSummary({ tracks, onGenerateMissing }: { tracks: PlaylistGenreTrac
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between gap-3 text-sm">
-        <span className="text-neutral-400">
+        <span className="text-muted">
           {withInfo} of {tracks.length} songs have genre info
         </span>
         {missing > 0 && (
-          <button onClick={onGenerateMissing} className="text-xs text-green-400 hover:underline">
-            Generate for the {missing} missing →
+          <button onClick={onGenerateMissing} className="text-xs text-ink underline underline-offset-2 hover:text-ink-2">
+            Generate the {missing} missing
           </button>
         )}
       </div>
 
       {counts.length === 0 ? (
-        <p className="text-sm text-neutral-500">No genre info for this playlist yet.</p>
+        <p className="text-sm text-muted">No genre info for this playlist yet.</p>
       ) : (
         <ul className="space-y-1.5">
           {counts.map(({ genre, tracks: n }) => (
             <li key={genre} className="grid grid-cols-[minmax(0,10rem)_1fr_auto] items-center gap-2 text-sm">
-              <span className="truncate text-neutral-200" title={genre}>
+              <span className="truncate text-ink" title={genre}>
                 {genre}
               </span>
-              <span className="h-2 rounded-full bg-neutral-800">
+              <span className="h-2 rounded-full bg-raised">
                 <span
-                  className="block h-2 rounded-full bg-green-600"
+                  className="block h-2 rounded-full bg-ink"
                   style={{ width: `${Math.max((n / max) * 100, 3)}%` }}
                 />
               </span>
-              <span className="w-16 text-right text-xs text-neutral-500">
+              <span className="w-16 text-right text-xs text-muted">
                 {n} · {Math.round((n / withInfo) * 100)}%
               </span>
             </li>
@@ -395,13 +396,13 @@ export function GenerateGenresDialog({
       />
 
       {!playlistId ? null : loaded.status === "loading" && !running ? (
-        <p className="text-sm text-neutral-500">Loading…</p>
+        <p className="text-sm text-muted">Loading…</p>
       ) : loaded.status === "error" ? (
-        <p className="text-sm text-red-400">{loaded.message}</p>
+        <p className="text-sm text-danger">{loaded.message}</p>
       ) : (
         <div className="space-y-4">
           {loaded.status === "ready" && (
-            <p className="text-sm text-neutral-400">
+            <p className="text-sm text-muted">
               {missing.length === 0
                 ? "Every song in this playlist already has genre info."
                 : `${missing.length} of ${loaded.tracks.length} songs have no genre info. Each one analyzed is one AI request.`}
@@ -420,7 +421,7 @@ export function GenerateGenresDialog({
                   max={MAX_BATCH}
                   value={batchSize}
                   onChange={(e) => setBatchSize(Number(e.target.value))}
-                  className="w-16 rounded-md border border-neutral-700 bg-neutral-950 px-2 py-1 text-sm outline-none focus:border-green-600"
+                  className="w-16 rounded-md border border-line-strong bg-ground px-2 py-1 text-sm outline-none focus:border-ink-2"
                 />
                 songs,
                 <input
@@ -430,12 +431,12 @@ export function GenerateGenresDialog({
                   value={concurrency}
                   onChange={(e) => setConcurrency(Number(e.target.value))}
                   title={`How many songs to analyze at the same time (1–${maxConcurrency}). Above about 3 rarely helps: every song waits its turn for MusicBrainz, which allows one request a second.`}
-                  className="w-14 rounded-md border border-neutral-700 bg-neutral-950 px-2 py-1 text-sm outline-none focus:border-green-600"
+                  className="w-14 rounded-md border border-line-strong bg-ground px-2 py-1 text-sm outline-none focus:border-ink-2"
                 />
                 at a time
               </label>
               {clampedConcurrency > 3 && (
-                <p className="basis-full text-xs text-neutral-500">
+                <p className="basis-full text-xs text-muted">
                   More than about 3 at a time won&apos;t go much faster: every song queues for MusicBrainz, which
                   allows one request a second (roughly 12–15 songs a minute).
                 </p>
@@ -453,13 +454,13 @@ export function GenerateGenresDialog({
                       }
                       run(queue);
                     }}
-                    className="rounded-md bg-green-600 px-3 py-1 text-sm font-semibold text-white"
+                    className="rounded-md bg-ink px-3 py-1 text-sm font-semibold text-ground"
                   >
                     Analyze {Math.min(clampedBatch, missing.length)}
                   </button>
                   <button
                     onClick={analyzeAll}
-                    className="rounded-md border border-neutral-700 px-3 py-1 text-sm text-neutral-200 hover:border-amber-500 hover:text-amber-300"
+                    className="rounded-md border border-line-strong px-3 py-1 text-sm text-ink hover:border-warn hover:text-warn"
                   >
                     Analyze all {missing.length}
                   </button>
@@ -478,7 +479,7 @@ export function GenerateGenresDialog({
                       }
                       run(queue);
                     }}
-                    className="rounded-md bg-green-600 px-3 py-1 text-sm font-semibold text-white"
+                    className="rounded-md bg-ink px-3 py-1 text-sm font-semibold text-ground"
                   >
                     Score {Math.min(clampedBatch, unscored.length)}
                   </button>
@@ -487,18 +488,18 @@ export function GenerateGenresDialog({
                       if (!window.confirm(`Score all ${unscored.length} songs? That's ${unscored.length} AI requests.`)) return;
                       run(unscored);
                     }}
-                    className="rounded-md border border-neutral-700 px-3 py-1 text-sm text-neutral-200 hover:border-amber-500 hover:text-amber-300"
+                    className="rounded-md border border-line-strong px-3 py-1 text-sm text-ink hover:border-warn hover:text-warn"
                   >
                     Score all {unscored.length}
                   </button>
                 </>
               )}
-              <label className="flex basis-full items-start gap-2 text-xs text-neutral-400">
+              <label className="flex basis-full items-start gap-2 text-xs text-muted">
                 <input
                   type="checkbox"
                   checked={keepGoing}
                   onChange={(e) => setKeepGoing(e.target.checked)}
-                  className="mt-0.5 accent-green-600"
+                  className="mt-0.5 accent-band"
                 />
                 <span>
                   Keep going after failures. Normally the run stops after {MAX_CONSECUTIVE_FAILURES} failures in a row
@@ -506,19 +507,19 @@ export function GenerateGenresDialog({
                   name subgenres for never stop it.
                 </span>
               </label>
-              <label className="flex basis-full items-start gap-2 text-xs text-neutral-400">
+              <label className="flex basis-full items-start gap-2 text-xs text-muted">
                 <input
                   type="checkbox"
                   checked={refreshSources}
                   onChange={(e) => setRefreshSources(e.target.checked)}
-                  className="mt-0.5 accent-green-600"
+                  className="mt-0.5 accent-band"
                 />
                 <span>
                   Pull the latest MusicBrainz data (and Last.fm and audio info) instead of what&apos;s saved. Slower:
-                  saved artist and album lookups are skipped. ↻ Regenerate on a single song always does this.
+                  saved artist and album lookups are skipped. Regenerate on a single song always does this.
                 </span>
               </label>
-              <label className="flex basis-full items-start gap-2 text-xs text-neutral-400">
+              <label className="flex basis-full items-start gap-2 text-xs text-muted">
                 <input
                   type="checkbox"
                   checked={raisedConcurrency}
@@ -526,7 +527,7 @@ export function GenerateGenresDialog({
                     setRaisedConcurrency(e.target.checked);
                     if (!e.target.checked) setConcurrency((c) => Math.min(c, MAX_CONCURRENCY));
                   }}
-                  className="mt-0.5 accent-green-600"
+                  className="mt-0.5 accent-band"
                 />
                 <span>
                   Allow up to {RAISED_MAX_CONCURRENCY} at a time (normally {MAX_CONCURRENCY}). Songs whose Spotify info
@@ -540,7 +541,7 @@ export function GenerateGenresDialog({
           {progress && (
             <div className="space-y-2">
               <div className="flex items-center justify-between text-sm">
-                <span className="truncate text-neutral-300">
+                <span className="truncate text-ink-2">
                   {running
                     ? `Analyzed ${progress.done} of ${progress.total}`
                     : `Done — ${results.filter((r) => r.ok).length} of ${results.length} succeeded.`}
@@ -548,35 +549,35 @@ export function GenerateGenresDialog({
                 {running && (
                   <button
                     onClick={stop}
-                    className="flex-shrink-0 text-xs text-neutral-400 hover:text-red-400"
+                    className="flex-shrink-0 text-xs text-muted hover:text-danger"
                   >
                     {active.length > 1 ? "Stop after these" : "Stop after this one"}
                   </button>
                 )}
               </div>
-              <div className="h-1.5 rounded-full bg-neutral-800">
+              <div className="h-1.5 rounded-full bg-raised">
                 <div
-                  className="h-1.5 rounded-full bg-green-600 transition-[width]"
+                  className="h-1.5 rounded-full bg-ink transition-[width]"
                   style={{ width: `${(progress.done / progress.total) * 100}%` }}
                 />
               </div>
-              {stoppedReason && <p className="text-xs text-amber-400">{stoppedReason}</p>}
+              {stoppedReason && <p className="text-xs text-warn">{stoppedReason}</p>}
             </div>
           )}
 
           {active.length > 0 && (
             <ul className="space-y-2">
               {active.map((song) => (
-                <li key={song.id} className="rounded-md border border-neutral-800 bg-neutral-950/60 px-3 py-2">
+                <li key={song.id} className="rounded-md border border-line bg-ground/60 px-3 py-2">
                   <div className="flex items-baseline justify-between gap-2 text-sm">
-                    <span className="truncate text-neutral-200">{song.name}</span>
-                    <span className="flex-shrink-0 text-xs tabular-nums text-neutral-500">
+                    <span className="truncate text-ink">{song.name}</span>
+                    <span className="flex-shrink-0 text-xs tabular-nums text-muted">
                       {Math.max(0, Math.floor((now - song.startedAt) / 1000))}s
                     </span>
                   </div>
-                  <div className="mt-1.5 h-1 rounded-full bg-neutral-800">
+                  <div className="mt-1.5 h-1 rounded-full bg-raised">
                     <div
-                      className="h-1 rounded-full bg-green-600 transition-[width]"
+                      className="h-1 rounded-full bg-ink transition-[width]"
                       style={{ width: `${(song.steps.length / STEPS.length) * 100}%` }}
                     />
                   </div>
@@ -588,9 +589,9 @@ export function GenerateGenresDialog({
                       return (
                         <span
                           key={step}
-                          className={finished ? "text-green-400" : working ? "animate-pulse text-neutral-300" : "text-neutral-600"}
+                          className={finished ? "text-ok" : working ? "animate-pulse text-ink-2" : "text-faint"}
                         >
-                          {finished ? "✓" : "·"} {label}
+                          {finished ? <CheckIcon size={11} className="inline align-[-1px]" /> : "·"} {label}
                         </span>
                       );
                     })}
@@ -604,10 +605,10 @@ export function GenerateGenresDialog({
             <ul className="space-y-1 text-xs">
               {results.map((r, i) => (
                 <li key={`${r.id}-${i}`} className="flex gap-2">
-                  <span className={r.ok ? "text-green-400" : "text-red-400"}>{r.ok ? "✓" : "✕"}</span>
+                  <span className={`mt-px ${r.ok ? "text-ok" : "text-danger"}`}>{r.ok ? <CheckIcon size={13} /> : <CloseIcon size={13} />}</span>
                   <span className="min-w-0 flex-1">
-                    <span className="text-neutral-200">{r.name}</span>{" "}
-                    <span className={r.ok ? "text-neutral-500" : "text-red-400/80"}>— {r.detail}</span>
+                    <span className="text-ink">{r.name}</span>{" "}
+                    <span className={r.ok ? "text-muted" : "text-danger"}>— {r.detail}</span>
                   </span>
                 </li>
               ))}

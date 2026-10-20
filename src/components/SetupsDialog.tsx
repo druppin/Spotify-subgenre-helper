@@ -3,6 +3,7 @@
 import { useState, type FormEvent, type RefObject } from "react";
 import type { SpotifyPlaylist } from "@/lib/spotify/client";
 import { loadSetups, saveSetups, type Setup } from "@/lib/setups";
+import { CloseIcon } from "./Icons";
 
 interface Props {
   dialogRef: RefObject<HTMLDialogElement | null>;
@@ -101,22 +102,22 @@ export function SetupsDialog({
   return (
     <dialog
       ref={dialogRef}
-      className="m-auto w-full max-w-lg rounded-lg border border-neutral-700 bg-neutral-900 p-0 text-white backdrop:bg-black/60"
+      className="m-auto w-full max-w-lg rounded-lg border border-line-strong bg-panel p-0 text-ink backdrop:bg-black/60"
     >
       <div className="space-y-5 p-5">
         <div className="flex items-center justify-between">
           <h2 className="text-lg font-semibold">Setups</h2>
           <button
             onClick={() => dialogRef.current?.close()}
-            className="text-neutral-500 hover:text-white"
+            className="text-muted hover:text-ink"
             aria-label="Close"
           >
-            ✕
+            <CloseIcon size={16} />
           </button>
         </div>
 
-        <form onSubmit={handleSave} className="space-y-2 rounded-md border border-neutral-800 p-3">
-          <p className="text-xs font-semibold uppercase tracking-wide text-neutral-500">
+        <form onSubmit={handleSave} className="space-y-2 rounded-md border border-line p-3">
+          <p className="text-xs font-semibold text-muted">
             Save current setup
           </p>
           <input
@@ -124,7 +125,7 @@ export function SetupsDialog({
             onChange={(e) => setTitle(e.target.value)}
             maxLength={80}
             placeholder="Title, e.g. House sorting"
-            className="w-full rounded-md border border-neutral-700 bg-neutral-950 px-2 py-1.5 text-sm outline-none focus:border-green-600"
+            className="w-full rounded-md border border-line-strong bg-ground px-2 py-1.5 text-sm outline-none focus:border-ink-2"
           />
           <label className="flex items-center gap-2 text-sm">
             <input
@@ -133,20 +134,20 @@ export function SetupsDialog({
               disabled={sourcePlaylistId === null}
               onChange={(e) => setIncludeSource(e.target.checked)}
             />
-            <span className={sourcePlaylistId === null ? "text-neutral-500" : ""}>
+            <span className={sourcePlaylistId === null ? "text-muted" : ""}>
               Include source playlist
-              {sourceName ? <span className="text-neutral-400"> ({sourceName})</span> : " (none selected)"}
+              {sourceName ? <span className="text-muted"> ({sourceName})</span> : " (none selected)"}
             </span>
           </label>
           <div className="flex items-center justify-between">
-            <span className="text-xs text-neutral-500">
+            <span className="text-xs text-muted">
               {pinnedIds.length} starred playlist{pinnedIds.length === 1 ? "" : "s"} · Also remove from
               source: {alsoRemoveFromSource ? "on" : "off"}
             </span>
             <button
               type="submit"
               disabled={!trimmedTitle}
-              className="rounded-md bg-green-600 px-3 py-1 text-sm font-semibold text-white disabled:opacity-50"
+              className="rounded-md bg-ink px-3 py-1 text-sm font-semibold text-ground disabled:opacity-50"
             >
               {existing ? "Overwrite" : "Save"}
             </button>
@@ -159,11 +160,11 @@ export function SetupsDialog({
             return (
               <li
                 key={setup.id}
-                className="flex items-center gap-3 rounded-md border border-neutral-800 px-3 py-2"
+                className="flex items-center gap-3 rounded-md border border-line px-3 py-2"
               >
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-medium">{setup.title}</p>
-                  <p className="truncate text-xs text-neutral-500">
+                  <p className="truncate text-xs text-muted">
                     {name ? `Source: ${name}` : "No source playlist"} · {setup.pinnedIds.length} starred ·{" "}
                     {setup.alsoRemoveFromSource ? "removes from source · " : ""}
                     {new Date(setup.savedAt).toLocaleDateString()}
@@ -171,26 +172,26 @@ export function SetupsDialog({
                 </div>
                 <button
                   onClick={() => handleLoad(setup)}
-                  className="rounded-md border border-neutral-700 px-2.5 py-1 text-sm hover:border-green-600 hover:bg-green-600/10"
+                  className="rounded-md border border-line-strong px-2.5 py-1 text-sm hover:border-ink-2 hover:bg-raised"
                 >
                   Load
                 </button>
                 <button
                   onClick={() => handleUpdate(setup)}
                   title="Replace this setup's starred playlists (and source, if it has one) with your current ones"
-                  className="text-sm text-neutral-400 hover:text-green-400"
+                  className="text-sm text-muted hover:text-ink"
                 >
                   Update
                 </button>
                 <button
                   onClick={() => handleRename(setup)}
-                  className="text-sm text-neutral-400 hover:text-white"
+                  className="text-sm text-muted hover:text-ink"
                 >
                   Rename
                 </button>
                 <button
                   onClick={() => handleDelete(setup)}
-                  className="text-sm text-neutral-500 hover:text-red-400"
+                  className="text-sm text-muted hover:text-danger"
                   aria-label={`Delete ${setup.title}`}
                 >
                   Delete
@@ -199,7 +200,7 @@ export function SetupsDialog({
             );
           })}
           {setups.length === 0 && (
-            <li className="text-sm text-neutral-500">
+            <li className="text-sm text-muted">
               No saved setups yet. Star some playlists, give it a title, and save.
             </li>
           )}

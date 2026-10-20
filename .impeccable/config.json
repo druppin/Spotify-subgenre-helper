@@ -1,0 +1,35 @@
+{
+  "detector": {
+    "ignoreRules": [],
+    "ignoreFiles": [],
+    "ignoreValues": [
+      {
+        "rule": "cramped-padding",
+        "value": "*",
+        "files": [
+          ".impeccable/mocks/decision/model-pick.html"
+        ],
+        "createdAt": "2026-10-20T04:53:59.140Z",
+        "reason": "Claude: the flagged element is the full-bleed 1440x900 app shell root; its header and panels are meant to sit flush with the viewport edge"
+      },
+      {
+        "rule": "cramped-padding",
+        "value": "*",
+        "files": [
+          ".impeccable/mocks/decision/challenger-ticket-wallet.html"
+        ],
+        "createdAt": "2026-10-20T04:53:59.156Z",
+        "reason": "Claude: the flagged element is the full-bleed 1440x900 app shell root; its header and panels are meant to sit flush with the viewport edge"
+      },
+      {
+        "rule": "cramped-padding",
+        "value": "*",
+        "files": [
+          ".impeccable/mocks/decision/assigned.html"
+        ],
+        "createdAt": "2026-10-20T04:54:07.793Z",
+        "reason": "Claude: full-bleed 1440x900 app shell root; panels are meant to sit flush with the viewport edge"
+      }
+    ]
+  }
+}

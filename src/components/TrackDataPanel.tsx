@@ -6,9 +6,9 @@ import type { GenreVote, MusicBrainzInfo } from "@/lib/musicbrainz";
 
 function Stat({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-md bg-neutral-800 px-2 py-1.5 text-center">
-      <div className="text-sm font-semibold text-neutral-100">{value}</div>
-      <div className="text-[10px] uppercase tracking-wide text-neutral-500">{label}</div>
+    <div className="rounded-md bg-raised px-2 py-1.5 text-center">
+      <div className="text-sm font-semibold text-ink">{value}</div>
+      <div className="text-[11px] text-muted">{label}</div>
     </div>
   );
 }
@@ -37,7 +37,7 @@ export function TrackDataPanel({ context }: { context: TrackContext }) {
           <Stat label="Live" value={pct(context.audioFeatures.liveness)} />
         </div>
       ) : (
-        <p className="text-xs text-neutral-500">No audio feature data available for this track.</p>
+        <p className="text-xs text-muted">No audio feature data available for this track.</p>
       )}
 
       <MusicBrainzVotes info={context.musicbrainz} />
@@ -45,7 +45,7 @@ export function TrackDataPanel({ context }: { context: TrackContext }) {
       {tags.length > 0 && (
         <div className="flex flex-wrap gap-1">
           {tags.map((tag) => (
-            <span key={tag} className="rounded-full bg-neutral-800 px-2 py-0.5 text-xs text-neutral-400">
+            <span key={tag} className="rounded-md bg-raised px-2 py-0.5 text-xs text-ink-2">
               {tag}
             </span>
           ))}
@@ -58,7 +58,7 @@ export function TrackDataPanel({ context }: { context: TrackContext }) {
         )}`}
         target="_blank"
         rel="noopener noreferrer"
-        className="inline-block text-xs text-neutral-500 hover:text-green-400"
+        className="inline-block text-xs text-muted hover:text-ink"
       >
         Look up on RateYourMusic ↗
       </a>
@@ -70,13 +70,13 @@ function VoteRow({ label, title, votes }: { label: string; title: string; votes:
   if (votes.length === 0) return null;
   return (
     <div className="flex flex-wrap items-center gap-1">
-      <span className="text-[10px] uppercase tracking-wide text-neutral-500" title={title}>
+      <span className="text-[11px] text-muted" title={title}>
         {label}
       </span>
       {votes.map((g) => (
-        <span key={g.name} className="rounded-full bg-sky-500/15 px-2 py-0.5 text-xs text-sky-300">
+        <span key={g.name} className="rounded-md bg-raised px-2 py-0.5 text-xs text-ink-2">
           {g.name}
-          <span className="ml-1 text-sky-300/60">{g.votes}</span>
+          <span className="ml-1 text-muted">{g.votes}</span>
         </span>
       ))}
     </div>

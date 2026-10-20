@@ -20,7 +20,7 @@ export function AuthGate() {
   }, []);
 
   if (status === null) {
-    return <div className="flex h-screen items-center justify-center text-neutral-500">Loading…</div>;
+    return <div className="flex h-screen items-center justify-center text-muted">Loading…</div>;
   }
 
   if (status.authenticated) return <AppShell />;
@@ -28,11 +28,11 @@ export function AuthGate() {
   // First run: there's no Spotify app to log in with until one is entered.
   if (!status.configured || showSettings) {
     return (
-      <div className="min-h-screen bg-neutral-950 px-4 py-10 text-white">
+      <div className="min-h-screen bg-ground px-4 py-10 text-ink">
         <div className="mx-auto max-w-xl space-y-5">
           <div className="space-y-1">
             <h1 className="text-2xl font-bold">Spotify Subgenre Assistant</h1>
-            <p className="text-neutral-400">
+            <p className="text-muted">
               {status.configured
                 ? "Settings"
                 : "Welcome! Connect the app to Spotify and an AI provider to get started. You can change these later in Settings."}
@@ -49,9 +49,9 @@ export function AuthGate() {
             <button
               type="button"
               onClick={() => setShowSettings(false)}
-              className="text-sm text-neutral-400 hover:text-white"
+              className="text-sm text-muted hover:text-ink"
             >
-              ← Back
+              Back
             </button>
           )}
         </div>
@@ -60,16 +60,16 @@ export function AuthGate() {
   }
 
   return (
-    <div className="flex h-screen flex-col items-center justify-center gap-4 bg-neutral-950 text-white">
+    <div className="flex h-screen flex-col items-center justify-center gap-4 bg-ground text-ink">
       <h1 className="text-2xl font-bold">Spotify Subgenre Assistant</h1>
-      <p className="text-neutral-400">Connect your Spotify account to start sorting tracks.</p>
+      <p className="text-muted">Connect your Spotify account to start sorting tracks.</p>
       <a
         href="/api/auth/login"
-        className="rounded-full bg-green-600 px-6 py-2 font-semibold text-white hover:bg-green-500"
+        className="rounded-full bg-ink px-6 py-2 font-semibold text-ground hover:bg-ink-2"
       >
         Connect Spotify
       </a>
-      <button type="button" onClick={() => setShowSettings(true)} className="text-sm text-neutral-500 hover:text-white">
+      <button type="button" onClick={() => setShowSettings(true)} className="text-sm text-muted hover:text-ink">
         Settings
       </button>
     </div>

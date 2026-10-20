@@ -20,7 +20,7 @@ interface Props {
 }
 
 const BUTTON =
-  "rounded-md border border-neutral-700 px-2.5 py-1 text-sm text-neutral-200 hover:border-green-600 hover:bg-green-600/10";
+  "rounded-md border border-line-strong px-3 py-1.5 text-[13px] font-medium text-ink hover:border-ink-2 hover:bg-raised";
 
 export function QuickActions({
   playlists,
@@ -43,35 +43,32 @@ export function QuickActions({
   const readablePlaylists = playlists.filter((p) => p.canModify || p.id === sourcePlaylistId);
 
   return (
-    <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-neutral-800 px-4 py-2">
-      <span className="text-xs font-semibold uppercase tracking-wide text-neutral-500">
-        Quick actions
-      </span>
+    <div className="flex flex-wrap items-center gap-2 border-b border-line px-5 py-2.5">
       <button
         onClick={() => dialogRef.current?.showModal()}
-        className="rounded-md border border-neutral-700 px-2.5 py-1 text-sm text-neutral-200 hover:border-green-600 hover:bg-green-600/10"
+        className="rounded-md border border-line-strong px-3 py-1.5 text-[13px] font-medium text-ink hover:border-ink-2 hover:bg-raised"
       >
-        + New playlist
+        New playlist
       </button>
       <button
         onClick={() => setupsDialogRef.current?.showModal()}
-        className="rounded-md border border-neutral-700 px-2.5 py-1 text-sm text-neutral-200 hover:border-green-600 hover:bg-green-600/10"
+        className="rounded-md border border-line-strong px-3 py-1.5 text-[13px] font-medium text-ink hover:border-ink-2 hover:bg-raised"
       >
         Setups
-      </button>
-      <button
-        onClick={() => onRemoveFromSource?.()}
-        disabled={!onRemoveFromSource}
-        title="Remove the current track from the source playlist now and move to the next one"
-        className="rounded-md border border-neutral-700 px-2.5 py-1 text-sm text-neutral-200 hover:border-red-500 hover:bg-red-600/10 hover:text-red-300 disabled:opacity-40 disabled:hover:border-neutral-700 disabled:hover:bg-transparent disabled:hover:text-neutral-200"
-      >
-        Remove from source
       </button>
       <button onClick={() => setGenreDialog({ kind: "summary", playlistId: sourcePlaylistId })} className={BUTTON}>
         Playlist genres
       </button>
       <button onClick={() => setGenreDialog({ kind: "generate", playlistId: sourcePlaylistId })} className={BUTTON}>
         Generate genres
+      </button>
+      <button
+        onClick={() => onRemoveFromSource?.()}
+        disabled={!onRemoveFromSource}
+        title="Remove the current track from the source playlist now and move to the next one"
+        className="ml-auto rounded-md border border-danger/50 px-3 py-1.5 text-[13px] font-medium text-danger hover:bg-danger/10 disabled:opacity-40 disabled:hover:bg-transparent"
+      >
+        Remove from source
       </button>
       {genreDialog?.kind === "summary" && (
         <PlaylistGenresDialog
@@ -162,13 +159,13 @@ export function NewPlaylistDialog({
     <dialog
       ref={dialogRef}
       onClose={reset}
-      className="m-auto w-full max-w-md rounded-lg border border-neutral-700 bg-neutral-900 p-0 text-white backdrop:bg-black/60"
+      className="m-auto w-full max-w-md rounded-lg border border-line-strong bg-panel p-0 text-ink backdrop:bg-black/60"
     >
       <form onSubmit={handleSubmit} className="space-y-4 p-5">
         <h2 className="text-lg font-semibold">New playlist</h2>
 
         <label className="block space-y-1">
-          <span className="text-xs text-neutral-400">Name</span>
+          <span className="text-xs text-muted">Name</span>
           <input
             autoFocus
             required
@@ -176,19 +173,19 @@ export function NewPlaylistDialog({
             value={name}
             onChange={(e) => setName(e.target.value)}
             placeholder="My playlist"
-            className="w-full rounded-md border border-neutral-700 bg-neutral-950 px-2 py-1.5 text-sm outline-none focus:border-green-600"
+            className="w-full rounded-md border border-line-strong bg-ground px-2 py-1.5 text-sm outline-none focus:border-ink-2"
           />
         </label>
 
         <label className="block space-y-1">
-          <span className="text-xs text-neutral-400">Description (optional)</span>
+          <span className="text-xs text-muted">Description (optional)</span>
           <textarea
             maxLength={300}
             rows={3}
             value={description}
             onChange={(e) => setDescription(e.target.value)}
             placeholder="Add an optional description"
-            className="w-full resize-none rounded-md border border-neutral-700 bg-neutral-950 px-2 py-1.5 text-sm outline-none focus:border-green-600"
+            className="w-full resize-none rounded-md border border-line-strong bg-ground px-2 py-1.5 text-sm outline-none focus:border-ink-2"
           />
         </label>
 
@@ -200,9 +197,9 @@ export function NewPlaylistDialog({
               disabled={collaborative}
               onChange={(e) => setIsPublic(e.target.checked)}
             />
-            <span className={collaborative ? "text-neutral-500" : ""}>Public</span>
+            <span className={collaborative ? "text-muted" : ""}>Public</span>
             {collaborative && (
-              <span className="text-xs text-neutral-500">(collaborative playlists are always private)</span>
+              <span className="text-xs text-muted">(collaborative playlists are always private)</span>
             )}
           </label>
           <label className="flex items-center gap-2">
@@ -217,26 +214,26 @@ export function NewPlaylistDialog({
             <label className="flex items-center gap-2">
               <input type="checkbox" checked={star} onChange={(e) => setStar(e.target.checked)} />
               <span>
-                Star it <span className="text-yellow-400">★</span>
+                Star it
               </span>
             </label>
           )}
         </div>
 
-        {error && <p className="text-xs text-red-400">{error}</p>}
+        {error && <p className="text-xs text-danger">{error}</p>}
 
         <div className="flex justify-end gap-2 pt-1">
           <button
             type="button"
             onClick={close}
-            className="rounded-md px-3 py-1.5 text-sm text-neutral-300 hover:text-white"
+            className="rounded-md px-3 py-1.5 text-sm text-ink-2 hover:text-ink"
           >
             Cancel
           </button>
           <button
             type="submit"
             disabled={submitting || !name.trim()}
-            className="rounded-md bg-green-600 px-4 py-1.5 text-sm font-semibold text-white disabled:opacity-50"
+            className="rounded-md bg-ink px-4 py-1.5 text-sm font-semibold text-ground disabled:opacity-50"
           >
             {submitting ? "Creating…" : "Create"}
           </button>

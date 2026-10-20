@@ -83,16 +83,16 @@ export function TrackChat({ trackId, firstTag }: { trackId: string; firstTag?: s
   if (messages === null) return null;
 
   return (
-    <div className="space-y-2 border-t border-neutral-800 pt-3">
+    <div className="space-y-2 border-t border-line pt-3">
       <div className="flex items-center justify-between">
-        <p className="text-xs font-medium text-neutral-400">Ask the AI about this song</p>
+        <p className="text-[13px] font-semibold text-ink">Ask the AI about this song</p>
         {messages.length > 0 && (
           <button
             type="button"
             onClick={() => void startOver()}
             disabled={!!pending}
             title="Delete this conversation and start a new one"
-            className="text-xs text-neutral-500 hover:text-red-400 disabled:opacity-50"
+            className="text-xs text-muted hover:text-danger disabled:opacity-50"
           >
             Start over
           </button>
@@ -107,7 +107,7 @@ export function TrackChat({ trackId, firstTag }: { trackId: string; firstTag?: s
           {pending && (
             <>
               <ChatBubble role="user" content={pending} />
-              <p className="text-xs text-neutral-500">Thinking…</p>
+              <p className="text-xs text-muted">Thinking…</p>
             </>
           )}
         </div>
@@ -120,7 +120,7 @@ export function TrackChat({ trackId, firstTag }: { trackId: string; firstTag?: s
               key={s}
               type="button"
               onClick={() => void ask(s)}
-              className="rounded-full border border-neutral-700 px-2 py-0.5 text-xs text-neutral-400 hover:border-green-600 hover:text-neutral-200"
+              className="rounded-md border border-line-strong px-2.5 py-1 text-[12.5px] text-ink-2 hover:border-ink-2 hover:text-ink"
             >
               {s}
             </button>
@@ -128,7 +128,7 @@ export function TrackChat({ trackId, firstTag }: { trackId: string; firstTag?: s
         </div>
       )}
 
-      {error && <p className="text-xs text-red-400">{error}</p>}
+      {error && <p className="text-xs text-danger">{error}</p>}
 
       <form
         onSubmit={(e) => {
@@ -150,12 +150,12 @@ export function TrackChat({ trackId, firstTag }: { trackId: string; firstTag?: s
           rows={1}
           placeholder="Ask a follow-up question…"
           aria-label="Ask the AI a question about this song"
-          className="max-h-32 min-h-[2rem] flex-1 resize-y rounded border border-neutral-700 bg-neutral-950 px-2 py-1 text-xs text-neutral-200 placeholder:text-neutral-600 focus:border-green-600 focus:outline-none"
+          className="max-h-32 min-h-[2rem] flex-1 resize-y rounded-md border border-line-strong bg-ground px-2.5 py-1.5 text-[13px] text-ink placeholder:text-faint focus:border-ink-2 focus:outline-none"
         />
         <button
           type="submit"
           disabled={!draft.trim() || !!pending}
-          className="rounded bg-green-600 px-3 py-1 text-xs font-medium text-white hover:bg-green-500 disabled:opacity-50"
+          className="rounded-md bg-ink px-3.5 py-1.5 text-[13px] font-semibold text-ground hover:bg-ink-2 disabled:opacity-50"
         >
           Ask
         </button>
@@ -167,8 +167,10 @@ export function TrackChat({ trackId, firstTag }: { trackId: string; firstTag?: s
 function ChatBubble({ role, content }: { role: Message["role"]; content: string }) {
   return (
     <div
-      className={`whitespace-pre-wrap rounded-lg px-2.5 py-1.5 text-xs ${
-        role === "user" ? "ml-8 bg-green-600/15 text-neutral-200" : "mr-8 bg-neutral-800 text-neutral-300"
+      className={`whitespace-pre-wrap px-3 py-2 text-[13px] leading-relaxed ${
+        role === "user"
+          ? "ml-10 rounded-[10px_10px_3px_10px] bg-raised text-ink"
+          : "mr-10 rounded-[10px_10px_10px_3px] bg-ground text-ink-2"
       }`}
     >
       {content}

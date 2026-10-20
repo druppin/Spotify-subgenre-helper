@@ -1,7 +1,8 @@
 "use client";
 
 import type { SpotifyPlaylistTrackItem } from "@/lib/spotify/client";
-import { confidenceColor } from "./GenreTagEditor";
+import { ConfidenceMeter } from "./GenreTagEditor";
+import { CheckIcon } from "./Icons";
 
 export type SourceSort = "playlist" | "least-confident" | "most-confident";
 
@@ -34,13 +35,13 @@ export function SourcePlaylistPanel({
   return (
     <div className="flex h-full flex-col overflow-hidden">
       <div className="mb-2 flex items-center justify-between gap-2 px-3 pt-3">
-        <h2 className="text-sm font-semibold uppercase tracking-wide text-neutral-400">Source playlist</h2>
+        <h2 className="font-narrow text-base font-bold">Source playlist</h2>
         <select
           value={sort}
           onChange={(e) => onSortChange(e.target.value as SourceSort)}
           aria-label="Order of the source playlist"
           title="Songs with no confidence score go last"
-          className="min-w-0 rounded border border-neutral-700 bg-neutral-900 px-1 py-0.5 text-xs text-neutral-300"
+          className="min-w-0 rounded-md border border-line-strong bg-panel px-1.5 py-1 text-xs text-ink"
         >
           <option value="playlist">Playlist order</option>
           <option value="least-confident">Least confident first</option>
@@ -48,18 +49,18 @@ export function SourcePlaylistPanel({
         </select>
       </div>
       {sort !== "playlist" && tracks.length > 0 && scored < tracks.length && (
-        <p className="mx-3 mb-2 text-[11px] text-neutral-500">
+        <p className="mx-3 mb-2 text-[11px] text-muted">
           {scored === 0 ? "No songs here have" : `Only ${scored} of ${tracks.length} songs have`} confidence scores
           yet, so the rest stay in playlist order at the end. Score them with the Generate genres button, or by opening each
           song.
         </p>
       )}
       {error && (
-        <p className="mx-3 mb-2 rounded-md bg-red-900/30 px-2 py-1.5 text-xs text-red-400">
+        <p className="mx-3 mb-2 rounded-md bg-danger/15 px-2 py-1.5 text-xs text-danger">
           {error}
         </p>
       )}
-      <ul className="flex-1 overflow-y-auto">
+      <ul className="flex-1 overflow-y-auto px-1.5 pb-2">
         {tracks.map((item, index) => {
           if (!item.track) return null;
           const isCurrent = index === currentIndex;
@@ -69,10 +70,8 @@ export function SourcePlaylistPanel({
             <li key={`${item.track.id}-${index}`}>
               <button
                 onClick={() => onSelect(index)}
-                className={`flex w-full items-center gap-2 px-3 py-2 text-left text-sm ${
-                  isCurrent
-                    ? "bg-green-600/20 text-green-400"
-                    : "text-neutral-300 hover:bg-neutral-800"
+                className={`flex w-full items-center gap-2.5 rounded-md px-2 py-1.5 text-left text-sm ${
+                  isCurrent ? "bg-raised font-semibold text-ink" : "text-ink hover:bg-panel"
                 }`}
               >
                 {item.track.album.images[item.track.album.images.length - 1] ? (
@@ -80,36 +79,29 @@ export function SourcePlaylistPanel({
                   <img
                     src={item.track.album.images[item.track.album.images.length - 1].url}
                     alt=""
-                    className="h-10 w-10 flex-shrink-0 rounded object-cover"
+                    className="h-9 w-9 flex-shrink-0 rounded object-cover"
                   />
                 ) : (
-                  <div className="h-10 w-10 flex-shrink-0 rounded bg-neutral-800" />
+                  <div className="h-9 w-9 flex-shrink-0 rounded bg-raised" />
                 )}
                 <div className="min-w-0 flex-1">
-                  <div className="truncate font-medium">{item.track.name}</div>
-                  <div className="truncate text-xs text-neutral-500">
+                  <div className="truncate">{item.track.name}</div>
+                  <div className="truncate text-xs font-normal text-muted">
                     {item.track.artists.map((a) => a.name).join(", ")}
                   </div>
                   {item.track.uri === pendingRemovalUri && (
-                    <div className="truncate text-[10px] text-amber-500">
+                    <div className="truncate text-[10px] text-warn">
                       Leaving source playlist when you move on…
                     </div>
                   )}
                 </div>
-                {confidence !== null && (
-                  <span
-                    className={`flex-shrink-0 text-[10px] tabular-nums ${confidenceColor(confidence)}`}
-                    title="How confident the AI is in this song's tags, on average"
-                  >
-                    {confidence}%
-                  </span>
-                )}
+                {confidence !== null && <ConfidenceMeter score={confidence} width={48} stacked />}
                 {inOtherPlaylists > 0 && (
                   <span
-                    className="flex-shrink-0 rounded-full bg-green-600/20 px-1.5 py-0.5 text-[10px] font-medium text-green-400"
+                    className="flex-shrink-0 rounded border border-line-strong px-1 py-px text-[10px] font-medium text-muted"
                     title={`Already in ${inOtherPlaylists} of your other playlist${inOtherPlaylists === 1 ? "" : "s"}`}
                   >
-                    ✓{inOtherPlaylists}
+                    <span className="inline-flex items-center gap-0.5"><CheckIcon size={10} />{inOtherPlaylists}</span>
                   </span>
                 )}
               </button>
@@ -117,7 +109,7 @@ export function SourcePlaylistPanel({
           );
         })}
         {tracks.length === 0 && !error && (
-          <li className="px-3 py-2 text-sm text-neutral-500">No tracks in this playlist.</li>
+          <li className="px-3 py-2 text-sm text-muted">No tracks in this playlist.</li>
         )}
       </ul>
     </div>
