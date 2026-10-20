@@ -130,6 +130,22 @@ const IMPLIED_PARENTS: Record<string, string> = {
   djent: "metal",
   grunge: "rock",
   shoegaze: "rock",
+  neurofunk: "drum and bass",
+  techstep: "drum and bass",
+  brostep: "dubstep",
+};
+
+// Subgenres whose names don't contain their umbrella genre, matched when a
+// genre is or ends with them ("ragga jungle" is drum and bass, but "jungle
+// terror" isn't). Words that mean different things in different scenes
+// (garage, riddim) stay out.
+const IMPLIED_BY_ENDING: Record<string, string> = {
+  "liquid funk": "drum and bass",
+  jungle: "drum and bass",
+  "jump up": "drum and bass",
+  halftime: "drum and bass",
+  "speed garage": "house",
+  bassline: "house",
 };
 
 // A genre also counts as a parent when this many songs are tagged with
@@ -183,15 +199,22 @@ function getGenreIndex(): Promise<GenreIndex> {
   return genreIndex;
 }
 
+const impliedByEndingKey = new Map(
+  Object.entries(IMPLIED_BY_ENDING).map(([ending, parent]) => [genreKey(ending), genreKey(parent)])
+);
+
 // The broader genres a genre belongs to: known genres its name ends with
 // ("90s alternative rock" -> "alternative rock", "rock"), plus families
-// its words imply ("southern sludge" -> "metal").
+// its words or ending imply ("southern sludge" -> "metal", "liquid funk"
+// -> "drum and bass").
 function parentKeys(genre: string, parents: Set<string>): string[] {
   const words = genre.split(/[\s-]+/).filter(Boolean);
   const found: string[] = [];
-  for (let i = 1; i < words.length; i++) {
+  for (let i = 0; i < words.length; i++) {
     const key = genreKey(words.slice(i).join(" "));
-    if (parents.has(key)) found.push(key);
+    if (i > 0 && parents.has(key)) found.push(key);
+    const implied = impliedByEndingKey.get(key);
+    if (implied) found.push(implied);
   }
   for (const word of words) {
     const implied = IMPLIED_PARENTS[word];
