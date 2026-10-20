@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { SpotifyPlaylist } from "@/lib/spotify/client";
 import {
   LIKED_SONGS_ID,
@@ -295,6 +295,24 @@ function GenreCell({
   onSaveTags: (tags: string[]) => Promise<void>;
 }) {
   const [editing, setEditing] = useState(false);
+  // Tags show on one line; the ones that don't fit are counted and can be
+  // expanded into view.
+  const [expanded, setExpanded] = useState(false);
+  const [hiddenCount, setHiddenCount] = useState(0);
+  const chipsRef = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    const el = chipsRef.current;
+    if (!el) return;
+    const count = () => {
+      const items = [...el.children] as HTMLElement[];
+      const firstTop = items[0]?.offsetTop ?? 0;
+      setHiddenCount(items.filter((item) => item.offsetTop > firstTop).length);
+    };
+    count();
+    const observer = new ResizeObserver(count);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [genres, editing]);
   const loading = state === "loading";
   const error = state && state !== "loading" ? state.error : null;
   return (
@@ -318,10 +336,23 @@ function GenreCell({
           className="flex items-center gap-1"
         >
           <div className="min-w-0 flex-1">
-            <div className="flex max-h-[1.25rem] flex-wrap gap-1 overflow-hidden">
+            <div
+              ref={chipsRef}
+              className={`flex flex-wrap gap-1 ${expanded ? "" : "max-h-[1.25rem] overflow-hidden"}`}
+            >
               <GenreChips genres={genres} size="sm" />
               {genres.subgenres.length === 0 && <span className="text-[11px] text-muted">No subgenres listed.</span>}
             </div>
+            {(expanded || hiddenCount > 0) && (
+              <button
+                type="button"
+                onClick={() => setExpanded((open) => !open)}
+                aria-expanded={expanded}
+                className="text-[11px] text-muted underline-offset-2 hover:text-ink hover:underline"
+              >
+                {expanded ? "Show less" : `+${hiddenCount} more`}
+              </button>
+            )}
           </div>
           <div
             className={`flex flex-shrink-0 items-center gap-1 ${
