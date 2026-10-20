@@ -1386,6 +1386,20 @@ export function LostTracksView({ tabs }: { tabs: ReactNode }) {
                 )}
               </label>
               <span className="text-xs text-neutral-600">of {totalSongs} songs in your library</span>
+              {(sort === "least-confident" || sort === "most-confident") &&
+                (() => {
+                  const scored = rows.filter((row) => (genresFor(row)?.songConfidence ?? null) !== null).length;
+                  return (
+                    scored < rows.length && (
+                      <span
+                        className="text-xs text-amber-400/80"
+                        title="Songs without scores go last. Score them with Generate genres, or by opening them in the Subgenre sorter."
+                      >
+                        {scored} of {rows.length} scored
+                      </span>
+                    )
+                  );
+                })()}
               <input
                 type="search"
                 value={query}

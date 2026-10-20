@@ -29,6 +29,8 @@ export function SourcePlaylistPanel({
   sort,
   onSortChange,
 }: Props) {
+  const scored = tracks.filter((item) => item.track && (confidences[item.track.id] ?? null) !== null).length;
+
   return (
     <div className="flex h-full flex-col overflow-hidden">
       <div className="mb-2 flex items-center justify-between gap-2 px-3 pt-3">
@@ -45,6 +47,13 @@ export function SourcePlaylistPanel({
           <option value="most-confident">Most confident first</option>
         </select>
       </div>
+      {sort !== "playlist" && tracks.length > 0 && scored < tracks.length && (
+        <p className="mx-3 mb-2 text-[11px] text-neutral-500">
+          {scored === 0 ? "No songs here have" : `Only ${scored} of ${tracks.length} songs have`} confidence scores
+          yet, so the rest stay in playlist order at the end. Score them with the Generate genres button, or by opening each
+          song.
+        </p>
+      )}
       {error && (
         <p className="mx-3 mb-2 rounded-md bg-red-900/30 px-2 py-1.5 text-xs text-red-400">
           {error}

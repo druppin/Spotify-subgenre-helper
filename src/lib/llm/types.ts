@@ -40,7 +40,8 @@ export interface StoredTags {
   confidence: Record<string, number>;
   // Own tags the user added, which the AI doesn't score.
   userTags: string[];
-  // The average of the scored tags, or null if none are scored.
+  // The average of the scored tags (the user's own count as 100), or null
+  // if none are scored.
   songConfidence: number | null;
 }
 

@@ -272,7 +272,9 @@ async function describeStored(entry: TrackGenres): Promise<StoredTags> {
     const score = entry.confidence[i];
     if (score !== null && score !== undefined) confidence[shown] = Math.max(confidence[shown] ?? 0, score);
   }
-  const scores = Object.values(confidence);
+  // Tags the user added are ones they're sure of, so a song they've
+  // corrected sorts as confident rather than unknown.
+  const scores = [...Object.values(confidence), ...userTags.map(() => 100)];
   const songConfidence = scores.length > 0 ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length) : null;
   return { own, broader, edited: entry.edited, confidence, userTags, songConfidence };
 }
