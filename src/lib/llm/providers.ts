@@ -1,7 +1,7 @@
 import { fetchWithTimeout, FetchTimeoutError } from "@/lib/fetchWithTimeout";
 import type { LlmConfig } from "./types";
 
-const OPENAI_COMPATIBLE_BASE_URL: Record<string, string> = {
+export const OPENAI_COMPATIBLE_BASE_URL: Record<string, string> = {
   openai: "https://api.openai.com/v1",
   groq: "https://api.groq.com/openai/v1",
   openrouter: "https://openrouter.ai/api/v1",

@@ -84,6 +84,30 @@ The installers aren't signed yet, so the first launch warns about it:
 Your settings and library are kept in the app's data folder (the window links
 to it), so they survive updates.
 
+### Getting started
+
+The first time it opens, the app asks for two things. Both are free, and
+together they take about ten minutes.
+
+![The setup screen](docs/setup.png)
+
+1. **Your own Spotify app.** Spotify only lets an app serve a handful of
+   people, so everyone registers their own. You need **Spotify Premium**.
+   Log in to the
+   [Spotify Developer Dashboard](https://developer.spotify.com/dashboard) and
+   click **Create app**. Any name and description work. Paste the Redirect
+   URI the setup screen shows (it has a Copy button), tick **Web API** and
+   **Web Playback SDK**, and save. Then copy the app's Client ID and Client
+   secret into the setup screen.
+2. **An AI key**, for the genre guesses. Google Gemini's free tier is the
+   easiest: get a key at [aistudio.google.com/apikey](https://aistudio.google.com/apikey),
+   pick Google as the provider, and paste it in. The app fills in a model for
+   you.
+3. Optionally, a free [Last.fm API key](https://www.last.fm/api/account/create)
+   for extra tags.
+4. Click **Save**. The app checks each key with its service before saving it
+   and tells you if one is wrong. Then click **Connect Spotify**.
+
 To run from source instead, follow Setup below.
 
 ### Building the installers

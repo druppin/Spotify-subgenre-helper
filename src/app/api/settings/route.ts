@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { checkLastfm, checkLlm, checkSpotify, type CheckResult } from "@/lib/checkSettings";
 import { checkLocalRequest } from "@/lib/localRequest";
 import {
   getLlmConfig,
@@ -12,6 +13,7 @@ import {
   spotifyConfigured,
   type SettingName,
 } from "@/lib/settings";
+import type { LlmProvider } from "@/lib/llm/types";
 
 export interface SettingState {
   source: "app" | "env" | null;
@@ -26,6 +28,8 @@ export interface SettingsResponse {
   redirectUri: string;
   spotifyConfigured: boolean;
   llmConfigured: boolean;
+  // After a save: keys that couldn't be checked (the service was unreachable).
+  warnings?: string[];
 }
 
 function settingsResponse(): SettingsResponse {
@@ -69,6 +73,24 @@ export async function PUT(request: Request) {
   if (provider && !LLM_PROVIDERS.includes(provider as (typeof LLM_PROVIDERS)[number])) {
     return NextResponse.json({ error: `Unknown AI provider: ${provider}` }, { status: 400 });
   }
+
+  // Check the keys being changed, with the saved values filling in the rest.
+  const after = (name: SettingName) => (name in changes ? changes[name]?.trim() : getSetting(name)) || "";
+  const touched = (...names: SettingName[]) => names.some((name) => changes[name]?.trim());
+  const checks: Promise<CheckResult>[] = [];
+  if (touched("SPOTIFY_CLIENT_ID", "SPOTIFY_CLIENT_SECRET") && after("SPOTIFY_CLIENT_ID") && after("SPOTIFY_CLIENT_SECRET")) {
+    checks.push(checkSpotify(after("SPOTIFY_CLIENT_ID"), after("SPOTIFY_CLIENT_SECRET")));
+  }
+  const llmProvider = after("LLM_PROVIDER") as LlmProvider;
+  if (touched("LLM_PROVIDER", "LLM_API_KEY", "LLM_MODEL") && llmProvider && after("LLM_API_KEY") && after("LLM_MODEL")) {
+    checks.push(checkLlm({ provider: llmProvider, apiKey: after("LLM_API_KEY"), model: after("LLM_MODEL") }));
+  }
+  if (touched("LASTFM_API_KEY")) checks.push(checkLastfm(after("LASTFM_API_KEY")));
+  const results = await Promise.all(checks);
+  const rejected = results.flatMap((r) => (!r.ok && r.kind === "rejected" ? [r.message] : []));
+  if (rejected.length > 0) return NextResponse.json({ error: rejected.join(" ") }, { status: 400 });
+
   saveSettings(changes);
-  return NextResponse.json(settingsResponse());
+  const warnings = results.flatMap((r) => (!r.ok ? [r.message] : []));
+  return NextResponse.json({ ...settingsResponse(), ...(warnings.length > 0 && { warnings }) });
 }

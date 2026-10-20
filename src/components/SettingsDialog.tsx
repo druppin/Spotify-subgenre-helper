@@ -7,17 +7,11 @@ import type { SettingName } from "@/lib/settings";
 import { setDisplayPrefs, useDisplayPrefs, type ConfidenceDisplay, type ThemePref } from "@/lib/displayPrefs";
 import { CloseIcon } from "./Icons";
 
+// Free options first: Gemini's free tier is the easiest start.
 const PROVIDERS: { id: string; label: string; keyUrl: string; modelHint: string }[] = [
   {
-    id: "anthropic",
-    label: "Anthropic (Claude)",
-    keyUrl: "https://console.anthropic.com/settings/keys",
-    modelHint: "e.g. claude-haiku-4-5-20251001",
-  },
-  { id: "openai", label: "OpenAI", keyUrl: "https://platform.openai.com/api-keys", modelHint: "An OpenAI model ID" },
-  {
     id: "google",
-    label: "Google Gemini (free tier)",
+    label: "Google Gemini (free tier, recommended)",
     keyUrl: "https://aistudio.google.com/apikey",
     modelHint: "A Gemini Flash model ID (see ai.google.dev/gemini-api/docs/models)",
   },
@@ -27,6 +21,13 @@ const PROVIDERS: { id: string; label: string; keyUrl: string; modelHint: string 
     keyUrl: "https://console.groq.com/keys",
     modelHint: "e.g. llama-3.3-70b-versatile",
   },
+  {
+    id: "anthropic",
+    label: "Anthropic (Claude)",
+    keyUrl: "https://console.anthropic.com/settings/keys",
+    modelHint: "e.g. claude-haiku-4-5",
+  },
+  { id: "openai", label: "OpenAI", keyUrl: "https://platform.openai.com/api-keys", modelHint: "An OpenAI model ID" },
   {
     id: "openrouter",
     label: "OpenRouter",
@@ -78,12 +79,43 @@ export function SettingsForm({ onSaved }: { onSaved?: (settings: SettingsRespons
   const [draft, setDraft] = useState<Partial<Record<SettingName, string>>>({});
   const [status, setStatus] = useState<{ kind: "saving" | "saved" | "error"; message?: string } | null>(null);
   const [copied, setCopied] = useState(false);
+  // The models the entered key can use, best guess first; null until asked.
+  const [models, setModels] = useState<{ provider: string; ids: string[] } | null>(null);
 
   useEffect(() => {
     sendJson<SettingsResponse>("/api/settings", "GET")
       .then(setLoaded)
       .catch((err) => setStatus({ kind: "error", message: err.message }));
   }, []);
+
+  // Ask the provider which models the key can use once both are known
+  // (a typed key, or the saved one), and fill in its best guess if the
+  // Model box is empty.
+  const llmProvider = draft.LLM_PROVIDER ?? loaded?.settings.LLM_PROVIDER.value ?? "";
+  const typedKey = draft.LLM_API_KEY ?? "";
+  const hasKey = typedKey.trim() !== "" || Boolean(loaded?.settings.LLM_API_KEY.hint);
+  useEffect(() => {
+    if (!llmProvider || !hasKey) return;
+    let cancelled = false;
+    const timer = setTimeout(() => {
+      sendJson<{ models: string[] }>("/api/settings/models", "POST", { provider: llmProvider, apiKey: typedKey })
+        .then(({ models: ids }) => {
+          if (cancelled) return;
+          setModels({ provider: llmProvider, ids });
+          if (ids.length > 0) {
+            setDraft((prev) => {
+              const current = prev.LLM_MODEL ?? (prev.LLM_PROVIDER ? "" : loaded?.settings.LLM_MODEL.value) ?? "";
+              return current ? prev : { ...prev, LLM_MODEL: ids[0] };
+            });
+          }
+        })
+        .catch(() => !cancelled && setModels({ provider: llmProvider, ids: [] }));
+    }, 500);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [llmProvider, typedKey, hasKey, loaded]);
 
   if (!loaded) {
     return <p className="text-sm text-muted">{status?.message ?? "Loading settings…"}</p>;
@@ -94,6 +126,13 @@ export function SettingsForm({ onSaved }: { onSaved?: (settings: SettingsRespons
   const set = (name: SettingName) => (e: { target: { value: string } }) =>
     setDraft((prev) => ({ ...prev, [name]: e.target.value }));
   const provider = PROVIDERS.find((p) => p.id === value("LLM_PROVIDER"));
+  const modelIds = models?.provider === llmProvider ? models.ids : [];
+  const modelNote =
+    models?.provider !== llmProvider || !hasKey
+      ? "Filled in for you once there's a key."
+      : modelIds.length > 0
+        ? `${modelIds[0]} suits this well; click the box to see the other ${modelIds.length - 1}.`
+        : "Couldn't list this key's models. Check the key, or type a model ID.";
 
   const secretNote = (name: SettingName) => {
     const state = saved[name];
@@ -125,7 +164,7 @@ export function SettingsForm({ onSaved }: { onSaved?: (settings: SettingsRespons
       const next = await sendJson<SettingsResponse>("/api/settings", "PUT", changes);
       setLoaded(next);
       setDraft({});
-      setStatus({ kind: "saved" });
+      setStatus({ kind: "saved", message: next.warnings?.join(" ") });
       onSaved?.(next);
     } catch (err) {
       setStatus({ kind: "error", message: (err as Error).message });
@@ -144,9 +183,13 @@ export function SettingsForm({ onSaved }: { onSaved?: (settings: SettingsRespons
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
       <Section title="Spotify (required)">
+        <p className="text-sm text-muted">
+          Spotify only lets each app serve a few people, so everyone makes their own. It takes about five minutes and
+          needs <span className="text-ink">Spotify Premium</span>, which playing songs in the app needs too.
+        </p>
         <ol className="list-decimal space-y-1 pl-5 text-sm text-muted">
           <li>
-            Open the{" "}
+            Log in to the{" "}
             <a
               href="https://developer.spotify.com/dashboard"
               target="_blank"
@@ -155,10 +198,10 @@ export function SettingsForm({ onSaved }: { onSaved?: (settings: SettingsRespons
             >
               Spotify Developer Dashboard
             </a>{" "}
-            and create an app. Any name works; tick &ldquo;Web API&rdquo; and &ldquo;Web Playback SDK&rdquo;.
+            and click <span className="text-ink">Create app</span>. Any name and description work.
           </li>
           <li>
-            Add this Redirect URI:{" "}
+            Under Redirect URIs, paste this and click <span className="text-ink">Add</span>:{" "}
             <code className="rounded bg-raised px-1 text-ink">{loaded.redirectUri}</code>{" "}
             <button
               type="button"
@@ -170,9 +213,16 @@ export function SettingsForm({ onSaved }: { onSaved?: (settings: SettingsRespons
               {copied ? "Copied" : "Copy"}
             </button>
           </li>
-          <li>Copy the app&apos;s Client ID and Client secret into the boxes below.</li>
+          <li>
+            Under &ldquo;Which API/SDKs are you planning to use?&rdquo;, tick{" "}
+            <span className="text-ink">Web API</span> and <span className="text-ink">Web Playback SDK</span>. Agree to
+            the terms and save.
+          </li>
+          <li>
+            On the app&apos;s page, open <span className="text-ink">Settings</span> and copy the Client ID and Client
+            secret (behind &ldquo;View client secret&rdquo;) into the boxes below.
+          </li>
         </ol>
-        <p className="text-xs text-muted">Playing songs in the app needs Spotify Premium.</p>
         <Field label="Client ID" note={envNote("SPOTIFY_CLIENT_ID")}>
           <input className={inputClass} value={value("SPOTIFY_CLIENT_ID")} onChange={set("SPOTIFY_CLIENT_ID")} />
         </Field>
@@ -193,7 +243,12 @@ export function SettingsForm({ onSaved }: { onSaved?: (settings: SettingsRespons
           separately from a claude.ai subscription.
         </p>
         <Field label="Provider" note={envNote("LLM_PROVIDER")}>
-          <select className={inputClass} value={value("LLM_PROVIDER")} onChange={set("LLM_PROVIDER")}>
+          <select
+            className={inputClass}
+            value={value("LLM_PROVIDER")}
+            // Another provider's model ID won't work here; a new one is suggested.
+            onChange={(e) => setDraft((prev) => ({ ...prev, LLM_PROVIDER: e.target.value, LLM_MODEL: "" }))}
+          >
             <option value="">Not set</option>
             {PROVIDERS.map((p) => (
               <option key={p.id} value={p.id}>
@@ -224,13 +279,19 @@ export function SettingsForm({ onSaved }: { onSaved?: (settings: SettingsRespons
             onChange={set("LLM_API_KEY")}
           />
         </Field>
-        <Field label="Model" note={envNote("LLM_MODEL")}>
+        <Field label="Model" note={envNote("LLM_MODEL") ?? modelNote}>
           <input
             className={inputClass}
             value={value("LLM_MODEL")}
             onChange={set("LLM_MODEL")}
             placeholder={provider?.modelHint}
+            list="llm-models"
           />
+          <datalist id="llm-models">
+            {modelIds.map((id) => (
+              <option key={id} value={id} />
+            ))}
+          </datalist>
         </Field>
       </Section>
 
@@ -259,14 +320,16 @@ export function SettingsForm({ onSaved }: { onSaved?: (settings: SettingsRespons
       </Section>
 
       <div className="flex items-center justify-end gap-3">
-        {status?.kind === "saved" && <span className="text-sm text-ok">Saved</span>}
+        {status?.kind === "saved" && (
+          <span className={`text-sm ${status.message ? "text-warn" : "text-ok"}`}>{status.message ?? "Saved"}</span>
+        )}
         {status?.kind === "error" && <span className="text-sm text-danger">{status.message}</span>}
         <button
           type="submit"
           disabled={status?.kind === "saving"}
           className="rounded-md bg-ink px-4 py-1.5 text-sm font-semibold text-ground hover:bg-ink-2 disabled:opacity-50"
         >
-          {status?.kind === "saving" ? "Saving…" : "Save"}
+          {status?.kind === "saving" ? "Checking and saving…" : "Save"}
         </button>
       </div>
     </form>
