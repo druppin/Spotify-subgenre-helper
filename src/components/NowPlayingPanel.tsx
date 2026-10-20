@@ -6,6 +6,7 @@ import type { ShownSummary, TrackContext } from "@/lib/llm/types";
 import { usePlayer } from "./PlayerProvider";
 import { TrackDataPanel } from "./TrackDataPanel";
 import { GenreTagEditor, saveGenreTags } from "./GenreTagEditor";
+import { TrackChat } from "./TrackChat";
 import { fetchWithTimeout } from "@/lib/fetchWithTimeout";
 
 interface Props {
@@ -178,6 +179,7 @@ function TrackData({
         )}
       </div>
 
+      {state.summary && <TrackChat trackId={trackId} firstTag={state.summary.own[0]} />}
     </div>
   );
 }

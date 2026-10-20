@@ -82,6 +82,16 @@ CREATE TABLE IF NOT EXISTS track_genre_tags (
 );
 CREATE INDEX IF NOT EXISTS track_genre_tags_genre ON track_genre_tags(genre);
 
+-- Follow-up questions about a song and the AI's answers.
+CREATE TABLE IF NOT EXISTS track_chat_messages (
+  id INTEGER PRIMARY KEY,
+  track_id TEXT NOT NULL,
+  role TEXT NOT NULL CHECK (role IN ('user', 'assistant')),
+  content TEXT NOT NULL,
+  created_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS track_chat_messages_track ON track_chat_messages(track_id, id);
+
 -- One-time imports already done (see once).
 CREATE TABLE IF NOT EXISTS done_once (key TEXT PRIMARY KEY);
 

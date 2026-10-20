@@ -29,6 +29,23 @@ export interface LlmReply {
   host?: string;
 }
 
+// One turn of a conversation, for follow-up questions.
+export interface ChatMessage {
+  role: "user" | "assistant";
+  content: string;
+}
+
+interface CallOptions {
+  // Ask for a JSON object back (summaries) rather than prose (chat).
+  json: boolean;
+  timeoutMs: number;
+  maxTokens: number;
+}
+
+const JSON_CALL: CallOptions = { json: true, timeoutMs: 20_000, maxTokens: 1024 };
+// Chat answers are longer prose, so they get more room and time.
+const CHAT_CALL: CallOptions = { json: false, timeoutMs: 60_000, maxTokens: 2048 };
+
 function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -36,7 +53,8 @@ function sleep(ms: number) {
 async function callOpenAiCompatible(
   config: LlmConfig,
   systemPrompt: string,
-  userPrompt: string
+  messages: ChatMessage[],
+  options: CallOptions
 ): Promise<LlmReply> {
   const baseUrl = OPENAI_COMPATIBLE_BASE_URL[config.provider];
   const res = await fetchWithTimeout(
@@ -49,11 +67,8 @@ async function callOpenAiCompatible(
       },
       body: JSON.stringify({
         model: config.model,
-        messages: [
-          { role: "system", content: systemPrompt },
-          { role: "user", content: userPrompt },
-        ],
-        response_format: { type: "json_object" },
+        messages: [{ role: "system", content: systemPrompt }, ...messages],
+        ...(options.json && { response_format: { type: "json_object" } }),
         temperature: 0.4,
         // OpenRouter otherwise may route to a host that silently ignores
         // response_format, which is where malformed JSON came from.
@@ -62,7 +77,7 @@ async function callOpenAiCompatible(
         }),
       }),
     },
-    20_000
+    options.timeoutMs
   );
   if (!res.ok) {
     throw new LlmApiError(res.status, `${config.provider} request failed: ${res.status} ${await res.text()}`);
@@ -74,7 +89,8 @@ async function callOpenAiCompatible(
 async function callAnthropic(
   config: LlmConfig,
   systemPrompt: string,
-  userPrompt: string
+  messages: ChatMessage[],
+  options: CallOptions
 ): Promise<LlmReply> {
   const res = await fetchWithTimeout(
     "https://api.anthropic.com/v1/messages",
@@ -87,12 +103,12 @@ async function callAnthropic(
       },
       body: JSON.stringify({
         model: config.model,
-        max_tokens: 1024,
+        max_tokens: options.maxTokens,
         system: systemPrompt,
-        messages: [{ role: "user", content: userPrompt }],
+        messages,
       }),
     },
-    20_000
+    options.timeoutMs
   );
   if (!res.ok) {
     throw new LlmApiError(res.status, `anthropic request failed: ${res.status} ${await res.text()}`);
@@ -104,7 +120,8 @@ async function callAnthropic(
 async function callGoogle(
   config: LlmConfig,
   systemPrompt: string,
-  userPrompt: string
+  messages: ChatMessage[],
+  options: CallOptions
 ): Promise<LlmReply> {
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${config.model}:generateContent?key=${config.apiKey}`;
   const res = await fetchWithTimeout(
@@ -114,11 +131,12 @@ async function callGoogle(
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         systemInstruction: { parts: [{ text: systemPrompt }] },
-        contents: [{ role: "user", parts: [{ text: userPrompt }] }],
-        generationConfig: { responseMimeType: "application/json", temperature: 0.4 },
+        // Google calls the assistant's turns "model".
+        contents: messages.map((m) => ({ role: m.role === "assistant" ? "model" : "user", parts: [{ text: m.content }] })),
+        generationConfig: { ...(options.json && { responseMimeType: "application/json" }), temperature: 0.4 },
       }),
     },
-    20_000
+    options.timeoutMs
   );
   if (!res.ok) {
     throw new LlmApiError(res.status, `google request failed: ${res.status} ${await res.text()}`);
@@ -127,16 +145,21 @@ async function callGoogle(
   return { text: body.candidates?.[0]?.content?.parts?.[0]?.text ?? "" };
 }
 
-function callProvider(config: LlmConfig, systemPrompt: string, userPrompt: string): Promise<LlmReply> {
+function callProvider(
+  config: LlmConfig,
+  systemPrompt: string,
+  messages: ChatMessage[],
+  options: CallOptions
+): Promise<LlmReply> {
   switch (config.provider) {
     case "openai":
     case "groq":
     case "openrouter":
-      return callOpenAiCompatible(config, systemPrompt, userPrompt);
+      return callOpenAiCompatible(config, systemPrompt, messages, options);
     case "anthropic":
-      return callAnthropic(config, systemPrompt, userPrompt);
+      return callAnthropic(config, systemPrompt, messages, options);
     case "google":
-      return callGoogle(config, systemPrompt, userPrompt);
+      return callGoogle(config, systemPrompt, messages, options);
   }
 }
 
@@ -149,15 +172,25 @@ function callProvider(config: LlmConfig, systemPrompt: string, userPrompt: strin
  * request, and the client waiting on the whole thing has its own ceiling,
  * so it's kept tight rather than stacking a long budget on top of that.
  */
-export async function callLlm(
+export function callLlm(config: LlmConfig, systemPrompt: string, userPrompt: string): Promise<LlmReply> {
+  return callWithRetry(config, systemPrompt, [{ role: "user", content: userPrompt }], JSON_CALL);
+}
+
+/** A conversation (ending on the user's turn); the reply is plain prose. */
+export function callLlmChat(config: LlmConfig, systemPrompt: string, messages: ChatMessage[]): Promise<LlmReply> {
+  return callWithRetry(config, systemPrompt, messages, CHAT_CALL);
+}
+
+async function callWithRetry(
   config: LlmConfig,
   systemPrompt: string,
-  userPrompt: string
+  messages: ChatMessage[],
+  options: CallOptions
 ): Promise<LlmReply> {
   const MAX_ATTEMPTS = 2;
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
     try {
-      return await callProvider(config, systemPrompt, userPrompt);
+      return await callProvider(config, systemPrompt, messages, options);
     } catch (err) {
       const isTransient =
         (err instanceof LlmApiError && TRANSIENT_STATUS_CODES.has(err.status)) ||
