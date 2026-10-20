@@ -16,6 +16,8 @@ import { usePlayer } from "./PlayerProvider";
 import { PlaylistPicker } from "./PlaylistPicker";
 import { PlaylistThumb } from "./PlaylistThumb";
 import { SeekBar } from "./SeekBar";
+import { VersionsDialog } from "./VersionsDialog";
+import type { VersionChange } from "@/lib/versions";
 import { NewPlaylistDialog } from "./QuickActions";
 import { GenerateGenresDialog, PlaylistGenresDialog } from "./GenreDialogs";
 import { CloseIcon, HeartIcon, PauseIcon, PencilIcon, PlayIcon, RefreshIcon } from "./Icons";
@@ -64,6 +66,9 @@ const MODE_STORAGE_KEY = "lostTracks.mode";
 const HIDDEN_STORAGE_KEY = "lostTracks.hiddenByPlace";
 const HIDE_RULES_STORAGE_KEY = "lostTracks.hideIfAlsoIn";
 const SHOW_GENRES_STORAGE_KEY = "lostTracks.showGenres";
+// Groups of versions the user said are different on purpose, each as its
+// sorted URIs joined by "|". A group that gains a version is flagged again.
+const KEPT_APART_STORAGE_KEY = "lostTracks.keptApartVersions";
 // Other homes shown as chips in a song's row before the rest fold into "+N",
 // so a song in many playlists doesn't make its row taller.
 const MAX_PLACE_CHIPS = 3;
@@ -548,6 +553,9 @@ export function LostTracksView({ tabs }: { tabs: ReactNode }) {
     { kind: "summary" | "generate"; playlistId: string | null } | null
   >(null);
   const [showGenres, setShowGenres] = useState(() => loadJson<boolean>(SHOW_GENRES_STORAGE_KEY, true));
+  const [keptApart, setKeptApart] = useState<Set<string>>(() => new Set(loadJson<string[]>(KEPT_APART_STORAGE_KEY, [])));
+  // The song whose versions are open for comparing.
+  const [versionsSongId, setVersionsSongId] = useState<string | null>(null);
   // Songs hidden within a playlist in the homes view, as placeId -> track
   // URIs. Hidden songs still show, greyed out at the bottom, and can't be
   // selected. A song counts as hidden if any of its versions is listed.
@@ -687,6 +695,20 @@ export function LostTracksView({ tabs }: { tabs: ReactNode }) {
     }
     return versions;
   }, [songOf]);
+
+  const versionGroupKey = useCallback(
+    (songId: string) => [...(songVersions.get(songId) ?? [songId])].sort().join("|"),
+    [songVersions]
+  );
+  const setKeptApartGroup = (key: string, apart: boolean) => {
+    setKeptApart((prev) => {
+      const next = new Set(prev);
+      if (apart) next.add(key);
+      else next.delete(key);
+      saveJson(KEPT_APART_STORAGE_KEY, [...next]);
+      return next;
+    });
+  };
 
   // The track ID a row's genre info is stored under: its own version's,
   // or failing that another version's that has some.
@@ -1083,6 +1105,37 @@ export function LostTracksView({ tabs }: { tabs: ReactNode }) {
     );
   };
 
+  // After keeping one version (or undoing that): the saved membership
+  // follows what changed in each place.
+  const applyVersionChanges = (keep: string, changes: VersionChange[], undo: boolean) => {
+    const now = new Date().toISOString();
+    for (const change of changes) {
+      const removed: [string, string][] = change.removed.map(({ uri }) => [uri, places[change.placeId]?.get(uri) ?? now]);
+      applyMembership(change.placeId, removed, undo);
+      if (change.keptAdded) applyMembership(change.placeId, [[keep, now]], !undo);
+    }
+  };
+
+  const undoKeepVersion = async (keep: string, changes: VersionChange[], name: string) => {
+    setNotice(null);
+    try {
+      const res = await fetch("/api/versions/undo", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ keep, changes }),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.error ?? `HTTP ${res.status}`);
+      }
+      applyVersionChanges(keep, changes, true);
+      setNotice({ kind: "ok", text: `Put the other versions of ${name} back where they were.` });
+    } catch (err) {
+      console.error("Failed to undo keeping a version:", err);
+      setNotice({ kind: "error", text: `Couldn't put the versions of ${name} back: ${err instanceof Error ? err.message : err}` });
+    }
+  };
+
   const removeSongsFromPlace = async (songIds: string[], placeId: string) => {
     // Every version of each song that's in this playlist, not just one.
     const songSet = new Set(songIds);
@@ -1246,6 +1299,49 @@ export function LostTracksView({ tabs }: { tabs: ReactNode }) {
           {status === "loading" && load.fetchMode !== "none" ? "Scanning…" : "Update library"}
         </button>
       </header>
+      {versionsSongId && (
+        <VersionsDialog
+          versions={(songVersions.get(versionsSongId) ?? []).flatMap((uri) =>
+            trackDetails[uri]
+              ? [
+                  {
+                    uri,
+                    details: trackDetails[uri],
+                    placeIds: Object.keys(places).filter((id) => places[id].has(uri)),
+                    genres: genres[trackIdOf(uri)],
+                  },
+                ]
+              : []
+          )}
+          placeName={placeName}
+          onClose={() => setVersionsSongId(null)}
+          onKeepApart={() => {
+            const key = versionGroupKey(versionsSongId);
+            const name = trackDetails[versionsSongId]?.name ?? "this song";
+            setKeptApartGroup(key, true);
+            setNotice({
+              kind: "ok",
+              text: `${name}'s versions won't be flagged again.`,
+              onUndo: () => {
+                setKeptApartGroup(key, false);
+                setNotice(null);
+              },
+            });
+          }}
+          onKept={(keep, changes) => {
+            const name = trackDetails[keep]?.name ?? "this song";
+            applyVersionChanges(keep, changes, false);
+            setNotice({
+              kind: "ok",
+              text:
+                changes.length === 0
+                  ? `Nothing to change for ${name}.`
+                  : `Kept one version of ${name} in ${changes.length} ${changes.length === 1 ? "place" : "places"}.`,
+              onUndo: changes.length > 0 ? () => undoKeepVersion(keep, changes, name) : undefined,
+            });
+          }}
+        />
+      )}
       {genreDialog?.kind === "summary" && (
         <PlaylistGenresDialog
           playlists={genreDialogPlaylists}
@@ -1623,13 +1719,18 @@ export function LostTracksView({ tabs }: { tabs: ReactNode }) {
                             )}
                             {row.details.name}
                           </span>
-                          {row.versions > 1 && (
-                            <span
-                              className="flex-shrink-0 rounded bg-raised px-1 text-[11px] text-muted"
-                              title="Released more than once (e.g. single and album); counted as one song"
+                          {row.versions > 1 && !keptApart.has(versionGroupKey(row.songId)) && (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setVersionsSongId(row.songId);
+                              }}
+                              className="flex-shrink-0 rounded bg-raised px-1 text-[11px] text-muted hover:bg-line hover:text-ink"
+                              title="Released more than once (e.g. single and album); counted as one song. Click to compare them."
                             >
                               {row.versions} versions
-                            </span>
+                            </button>
                           )}
                         </div>
                         <div className="truncate text-xs text-muted">{row.details.artists.join(", ")}</div>

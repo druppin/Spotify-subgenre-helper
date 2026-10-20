@@ -3,7 +3,7 @@
 import { useRef, useState } from "react";
 import { usePlayer } from "./PlayerProvider";
 
-function formatMs(ms: number): string {
+export function formatMs(ms: number): string {
   const totalSeconds = Math.floor(ms / 1000);
   const minutes = Math.floor(totalSeconds / 60);
   const seconds = totalSeconds % 60;

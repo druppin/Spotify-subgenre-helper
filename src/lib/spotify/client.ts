@@ -387,6 +387,12 @@ export class SpotifyClient {
     return toLibraryTrack(await this.request<RawLibraryTrack>(`/tracks/${trackId}`), "");
   }
 
+  /** The kind of release a track's copy is on: album, single (or EP), or compilation. */
+  async getAlbumType(trackId: string): Promise<string | null> {
+    const raw = await this.request<{ album?: { album_type?: string } }>(`/tracks/${trackId}`);
+    return raw.album?.album_type ?? null;
+  }
+
   // One small request that says whether a cached copy of a playlist is
   // still current, instead of downloading the whole playlist to find out.
   async getPlaylistSnapshot(playlistId: string): Promise<string | null> {
@@ -432,6 +438,23 @@ export class SpotifyClient {
       snapshotId = body?.snapshot_id ?? null;
     }
     return snapshotId;
+  }
+
+  /** Inserts songs at a position in a playlist (0 is the top). */
+  async addTracksToPlaylistAt(playlistId: string, trackUris: string[], position: number): Promise<string | null> {
+    const body = await this.request<{ snapshot_id?: string }>(`/playlists/${playlistId}/items`, {
+      method: "POST",
+      body: JSON.stringify({ uris: trackUris, position }),
+    });
+    return body?.snapshot_id ?? null;
+  }
+
+  // Unlikes songs (takes them out of Liked Songs). Needs user-library-modify.
+  async removeFromLibrary(trackUris: string[]): Promise<void> {
+    for (let i = 0; i < trackUris.length; i += 40) {
+      const uris = trackUris.slice(i, i + 40).join(",");
+      await this.request(`/me/library?uris=${encodeURIComponent(uris)}`, { method: "DELETE" });
+    }
   }
 
   // Likes songs (adds them to Liked Songs). Needs user-library-modify.

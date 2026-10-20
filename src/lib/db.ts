@@ -169,12 +169,20 @@ const ADDED_COLUMNS: { table: string; column: string; declaration: string }[] = 
   { table: "track_genre_tags", column: "by_user", declaration: "INTEGER NOT NULL DEFAULT 0" },
   { table: "track_chat_messages", column: "suggestion", declaration: "TEXT" },
   { table: "track_chat_messages", column: "applied", declaration: "INTEGER NOT NULL DEFAULT 0" },
+  // When the song itself first came out (see releaseInfo.ts), which for a
+  // remaster is earlier than its album's release_date. Null until looked
+  // up; original_release_checked_at says when that was, found or not.
+  { table: "tracks", column: "original_release_date", declaration: "TEXT" },
+  { table: "tracks", column: "original_release_checked_at", declaration: "INTEGER" },
+  // Spotify's album_type for the release this copy is on: album, single
+  // (singles and EPs) or compilation. Null until looked up.
+  { table: "tracks", column: "album_type", declaration: "TEXT" },
 ];
 // Indexes on added columns, created once the columns exist.
 const LATE_INDEXES = "CREATE INDEX IF NOT EXISTS tracks_base_title ON tracks(base_title);";
 // Bumped whenever the schema changes, so a dev server's open connection
 // picks the change up without a restart.
-const SCHEMA_VERSION = 6;
+const SCHEMA_VERSION = 7;
 
 interface DbState {
   db: DatabaseSync;

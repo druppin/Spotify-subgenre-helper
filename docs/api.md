@@ -31,6 +31,7 @@ Every endpoint returns songs in this shape:
   "artists": ["TOOL"],
   "album": "Ænima",
   "releaseDate": "1996-09-17",
+  "originalReleaseDate": "1996-09-17",
   "durationMs": 311293,
   "genres": {
     "tags": ["progressive metal", "alternative metal"],
@@ -47,6 +48,7 @@ Every endpoint returns songs in this shape:
 - `genres` is `null` until genres have been generated for the song.
 - `id` is `null` for songs Spotify has no track ID for (local files, episodes).
 - `album` and `releaseDate` can be `null` for songs cached before album details were collected.
+- `releaseDate` is when the album or single this copy is on came out. `originalReleaseDate` is when the song itself first came out: for a remaster, the original's date; for a remix, the remix's own. It's `null` until the app has looked it up (for example by comparing a song's versions in My library).
 
 ## Endpoints
 

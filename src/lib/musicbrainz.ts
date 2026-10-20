@@ -200,3 +200,68 @@ export async function getMusicBrainzInfo(
     artistGenres,
   };
 }
+
+interface DatedRecording {
+  title: string;
+  score?: number;
+  length?: number;
+  "first-release-date"?: string;
+}
+
+// Lengths further apart than this are a different recording (a radio edit,
+// a live take), not the same one released again.
+const SAME_RECORDING_MAX_DIFF_MS = 10_000;
+
+const foldTitle = (title: string) =>
+  title
+    .normalize("NFKD")
+    .replace(/\p{M}/gu, "")
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}]+/gu, "");
+
+// The earliest first-release date among recordings of about this length.
+function earliestDate(recordings: DatedRecording[], durationMs: number): string | null {
+  const dates = recordings
+    .filter((r) => !r.length || !durationMs || Math.abs(r.length - durationMs) <= SAME_RECORDING_MAX_DIFF_MS)
+    .map((r) => r["first-release-date"])
+    .filter((d): d is string => Boolean(d));
+  return dates.length > 0 ? dates.sort()[0] : null;
+}
+
+/**
+ * When a song first came out: the first-release date of its MusicBrainz
+ * recording. A remaster is usually the same recording, so it gets the
+ * original's date; a remix is its own recording, so it gets its own.
+ * Looked up by ISRC, or failing that by title and artist. Null when
+ * MusicBrainz has nothing; `failed` is set when it couldn't be asked.
+ */
+export async function getOriginalReleaseDate(song: {
+  isrc: string | null;
+  artist: string;
+  title: string;
+  durationMs: number;
+}): Promise<{ date: string | null; failed: boolean }> {
+  let failed = false;
+  const onFailure = () => {
+    failed = true;
+  };
+  if (song.isrc) {
+    const byIsrc = await get<{ recordings?: DatedRecording[] }>(`/isrc/${encodeURIComponent(song.isrc)}`, onFailure);
+    const date = earliestDate(byIsrc?.recordings ?? [], song.durationMs);
+    if (date) return { date, failed: false };
+  }
+  if (!song.artist || !song.title) return { date: null, failed };
+  // Only the most specific title: dropping a remix's name would find the
+  // original song and its date.
+  const [title] = candidateTitles(song.title);
+  const query = `recording:${luceneQuote(title)} AND artist:${luceneQuote(song.artist)}`;
+  const search = await get<{ recordings?: DatedRecording[] }>(
+    `/recording?limit=25&query=${encodeURIComponent(query)}`,
+    onFailure
+  );
+  // The search also finds other titles containing this one ("Track (Live)").
+  const sameTitle = (search?.recordings ?? []).filter(
+    (r) => (r.score ?? 0) >= MIN_MATCH_SCORE && foldTitle(r.title) === foldTitle(title)
+  );
+  return { date: earliestDate(sameTitle, song.durationMs), failed };
+}

@@ -1,4 +1,5 @@
 import { findTracksByBaseTitle, findTracksByIsrc, getTrack } from "@/lib/libraryStore";
+import { knownOriginalReleaseDates } from "@/lib/releaseInfo";
 import { baseTitle, foldText, normalizeTitle } from "@/lib/songIdentity";
 import type { LibraryTrack } from "@/lib/spotify/client";
 import { describeGenres, getTrackGenreDetails, listTracksWithGenres } from "@/lib/trackGenres";
@@ -30,6 +31,9 @@ export interface ApiTrack {
   // Null when unknown or not yet collected for this song.
   album: string | null;
   releaseDate: string | null;
+  // When the song itself first came out (a remaster's original, a remix's
+  // own date). Null until it's been looked up, e.g. by comparing versions.
+  originalReleaseDate: string | null;
   durationMs: number;
   // Null until genres are generated for the song in the app.
   genres: ApiGenres | null;
@@ -55,6 +59,7 @@ export async function toApiTracks(tracks: LibraryTrack[]): Promise<ApiTrack[]> {
       updatedAt: new Date(entry.updatedAt).toISOString(),
     });
   }
+  const originalDates = knownOriginalReleaseDates(tracks.map((t) => t.uri));
   return tracks.map((t) => {
     const id = trackId(t.uri);
     return {
@@ -65,6 +70,7 @@ export async function toApiTracks(tracks: LibraryTrack[]): Promise<ApiTrack[]> {
       artists: t.artists,
       album: t.album ?? null,
       releaseDate: t.releaseDate ?? null,
+      originalReleaseDate: originalDates.get(t.uri) ?? null,
       durationMs: t.durationMs,
       genres: (id && genres.get(id)) || null,
     };

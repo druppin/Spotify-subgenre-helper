@@ -301,7 +301,8 @@ export function getPlaylistTracksCached(spotify: SpotifyClient, playlistId: stri
  */
 export function recordOwnEdit(
   playlistId: string,
-  change: { added?: string[]; removed?: string[] },
+  // Added songs go at the end, or at `position` when they were inserted.
+  change: { added?: string[]; removed?: string[]; position?: number },
   newSnapshotId: string | null
 ): Promise<void> {
   // The cached list's snapshot for this playlist is now out of date.
@@ -326,7 +327,10 @@ export function recordOwnEdit(
         if (!isCompleteTrack(details)) version = Math.min(version, MIN_USABLE_VERSION);
         added.push({ ...details, addedAt: now });
       }
-      tracks = [...tracks, ...added];
+      tracks =
+        change.position === undefined
+          ? [...tracks, ...added]
+          : [...tracks.slice(0, change.position), ...added, ...tracks.slice(change.position)];
     }
     saveEntry(playlistId, { snapshotId: newSnapshotId, version, fetchedAt: Date.now() }, tracks);
   });
@@ -406,6 +410,16 @@ export function recordLikedAdd(uris: string[]): Promise<void> {
       tracks.unshift({ ...details, addedAt: now });
     }
     savePlace(LIKED_SONGS_ID, { ...entry, version }, tracks);
+  });
+}
+
+/** Takes the app's own unlikes out of the saved Liked Songs, as recordLikedAdd. */
+export function recordLikedRemove(uris: string[]): Promise<void> {
+  return serialized(async () => {
+    const entry = getPlaceInfo(LIKED_SONGS_ID);
+    if (!entry) return;
+    const removed = new Set(uris);
+    savePlace(LIKED_SONGS_ID, entry, getPlaceTracks(LIKED_SONGS_ID).filter((t) => !removed.has(t.uri)));
   });
 }
 
