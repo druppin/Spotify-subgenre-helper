@@ -1,11 +1,12 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import type { SpotifyTrack } from "@/lib/spotify/client";
 import type { ShownSummary, TrackContext } from "@/lib/llm/types";
 import { usePlayer } from "./PlayerProvider";
 import { TrackDataPanel } from "./TrackDataPanel";
 import { ConfidenceMeter, GenreChips, GenreTagEditor, saveGenreTags, type SavedGenres } from "./GenreTagEditor";
+import { SeekBar } from "./SeekBar";
 import { TrackChat } from "./TrackChat";
 import { NextIcon, PauseIcon, PlayIcon, PreviousIcon, VolumeIcon } from "./Icons";
 import { fetchWithTimeout } from "@/lib/fetchWithTimeout";
@@ -18,13 +19,6 @@ interface Props {
   canGoNext: boolean;
   // Hears the song's tag confidence once its tags load, are scored, or are edited.
   onConfidenceChange?: (trackId: string, confidence: number | null) => void;
-}
-
-function formatMs(ms: number): string {
-  const totalSeconds = Math.floor(ms / 1000);
-  const minutes = Math.floor(totalSeconds / 60);
-  const seconds = totalSeconds % 60;
-  return `${minutes}:${seconds.toString().padStart(2, "0")}`;
 }
 
 type FetchState =
@@ -228,27 +222,8 @@ export function NowPlayingPanel({
   canGoNext,
   onConfidenceChange,
 }: Props) {
-  const { ready, isPaused, position, duration, volume, playbackError, togglePlay, seek, setVolume } =
-    usePlayer();
+  const { ready, isPaused, volume, playbackError, togglePlay, setVolume } = usePlayer();
   const [retryNonce, setRetryNonce] = useState(0);
-  // Where the seek bar is while it's being dragged. Each change event would
-  // otherwise be its own seek request to Spotify — dozens per drag — so the
-  // bar moves locally and one seek goes out when it's let go.
-  const [scrubPosition, setScrubPosition] = useState<number | null>(null);
-  // Mirrors scrubPosition so a release right after the last change event
-  // seeks to where the bar actually is, whether or not React re-rendered.
-  const scrubRef = useRef<number | null>(null);
-  const scrubTo = (value: number) => {
-    scrubRef.current = value;
-    setScrubPosition(value);
-  };
-  const commitScrub = () => {
-    if (scrubRef.current === null) return;
-    seek(scrubRef.current);
-    scrubRef.current = null;
-    setScrubPosition(null);
-  };
-  const shownPosition = scrubPosition ?? position;
   const [forceNextFetch, setForceNextFetch] = useState(false);
 
   const refresh = (force: boolean) => {
@@ -282,23 +257,7 @@ export function NowPlayingPanel({
       </div>
 
       <div className="w-full max-w-xl space-y-1.5">
-        <div className="flex items-center gap-2">
-          <span className="w-10 text-right text-xs text-muted">{formatMs(shownPosition)}</span>
-          <input
-            type="range"
-            min={0}
-            max={duration || 0}
-            value={Math.min(shownPosition, duration || 0)}
-            onChange={(e) => scrubTo(Number(e.target.value))}
-            onPointerUp={commitScrub}
-            onKeyUp={commitScrub}
-            onBlur={commitScrub}
-            disabled={!ready || !duration}
-            aria-label="Position in song"
-            className="min-w-0 flex-1 accent-[var(--ink)]"
-          />
-          <span className="w-10 text-xs text-muted">{formatMs(duration)}</span>
-        </div>
+        <SeekBar />
         <div className="grid grid-cols-[1fr_auto_1fr] items-center">
           <span />
           <div className="flex items-center gap-2">

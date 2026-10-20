@@ -15,6 +15,7 @@ import { groupSongs } from "@/lib/songIdentity";
 import { usePlayer } from "./PlayerProvider";
 import { PlaylistPicker } from "./PlaylistPicker";
 import { PlaylistThumb } from "./PlaylistThumb";
+import { SeekBar } from "./SeekBar";
 import { NewPlaylistDialog } from "./QuickActions";
 import { GenerateGenresDialog, PlaylistGenresDialog } from "./GenreDialogs";
 import { CloseIcon, HeartIcon, PauseIcon, PencilIcon, PlayIcon, RefreshIcon } from "./Icons";
@@ -1722,7 +1723,7 @@ export function LostTracksView({ tabs }: { tabs: ReactNode }) {
             </ul>
 
             <footer className="flex flex-wrap items-center gap-3 border-t border-line px-4 py-3">
-              <div className="flex min-w-0 flex-1 items-center gap-2">
+              <div className="flex min-w-72 flex-1 items-center gap-2">
                 <button
                   type="button"
                   onClick={() => togglePlay()}
@@ -1739,6 +1740,7 @@ export function LostTracksView({ tabs }: { tabs: ReactNode }) {
                       : "Click a song to preview it"}
                 </span>
                 {playbackError && <span className="truncate text-xs text-danger">{playbackError}</span>}
+                {currentUri && <SeekBar className="min-w-36 max-w-72 flex-1" />}
               </div>
               {notice && (
                 <span className={`text-xs ${notice.kind === "ok" ? "text-ok" : "text-danger"}`}>
