@@ -189,22 +189,11 @@ function LikedSongsThumb({ size = 32 }: { size?: number }) {
   );
 }
 
-// What's saved of the library and how current it is, with what it would
-// cost (in Spotify requests) to bring it up to date.
-function CoverageBar({
-  coverage,
-  scanError,
-  onFetch,
-}: {
-  coverage: LibraryCoverage;
-  scanError: string | null;
-  onFetch: (mode: LibraryFetchMode) => void;
-}) {
+// What's saved of the library and how current it is, in one line, for the
+// header.
+function coverageSummary(coverage: LibraryCoverage): string {
   const p = coverage.playlists;
   const scanned = p.fresh + p.incomplete + p.changed;
-  const likedNeedsUpdate = coverage.likedSongs === "notScanned" || coverage.likedSongs === "unchecked";
-  const needsUpdate = p.changed + p.notScanned > 0 || likedNeedsUpdate;
-  const needsDetails = p.incomplete > 0 || coverage.likedSongs === "incomplete";
   const likedLabel: Record<LibraryCoverage["likedSongs"], string> = {
     fresh: "up to date",
     incomplete: "saved, missing album details",
@@ -219,10 +208,28 @@ function CoverageBar({
     p.incomplete && `${p.incomplete} missing album details`,
     `Liked Songs ${likedLabel[coverage.likedSongs]}`,
   ].filter(Boolean);
+  return parts.join(" · ");
+}
+
+// Shown under the header only when the saved library needs attention:
+// what's wrong, and what it would cost (in Spotify requests) to fix.
+function CoverageBar({
+  coverage,
+  scanError,
+  onFetch,
+}: {
+  coverage: LibraryCoverage;
+  scanError: string | null;
+  onFetch: (mode: LibraryFetchMode) => void;
+}) {
+  const p = coverage.playlists;
+  const likedNeedsUpdate = coverage.likedSongs === "notScanned" || coverage.likedSongs === "unchecked";
+  const needsUpdate = p.changed + p.notScanned > 0 || likedNeedsUpdate;
+  const needsDetails = p.incomplete > 0 || coverage.likedSongs === "incomplete";
+  if (!needsUpdate && !needsDetails && !scanError) return null;
   const likedNote = coverage.likedSongs === "notScanned" || coverage.likedSongs === "incomplete" ? " + Liked Songs" : "";
   return (
     <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-neutral-800 bg-neutral-900/50 px-4 py-2 text-xs text-neutral-400">
-      <span>{parts.join(" · ")}</span>
       {p.changed + p.notScanned > 0 && (
         <span className="text-amber-400/80">
           Songs in unsaved or changed playlists can show as lost when they aren&apos;t.
@@ -1139,19 +1146,25 @@ export function LostTracksView({ tabs }: { tabs: ReactNode }) {
             </button>
           ))}
         </div>
+        <span
+          className="min-w-0 flex-1 truncate text-xs text-neutral-500"
+          title={status === "ready" && coverage ? coverageSummary(coverage) : undefined}
+        >
+          {status === "ready" && coverage && coverageSummary(coverage)}
+        </span>
         <button
           type="button"
           onClick={() => openGenreDialog("summary")}
           title="See which subgenres make up a playlist"
-          className="ml-auto rounded-md border border-neutral-700 px-3 py-1.5 text-sm text-neutral-300 hover:border-green-600 hover:bg-green-600/10"
+          className="flex-shrink-0 rounded-md border border-neutral-700 px-3 py-1.5 text-sm text-neutral-300 hover:border-green-600 hover:bg-green-600/10"
         >
           Playlist genres
         </button>
         <button
           type="button"
           onClick={() => openGenreDialog("generate")}
-          title="Generate genre info for a playlist's songs that don't have it yet"
-          className="rounded-md border border-neutral-700 px-3 py-1.5 text-sm text-neutral-300 hover:border-green-600 hover:bg-green-600/10"
+          title="Generate genre info for a playlist's songs that don't have it yet, or score older tags"
+          className="flex-shrink-0 rounded-md border border-neutral-700 px-3 py-1.5 text-sm text-neutral-300 hover:border-green-600 hover:bg-green-600/10"
         >
           Generate genres
         </button>
@@ -1178,7 +1191,7 @@ export function LostTracksView({ tabs }: { tabs: ReactNode }) {
           onClick={() => startLoad("update")}
           disabled={status === "loading"}
           title="Download playlists that changed or were never scanned"
-          className="rounded-md border border-neutral-700 px-3 py-1.5 text-sm text-neutral-300 hover:border-neutral-500 disabled:opacity-50"
+          className="flex-shrink-0 rounded-md border border-neutral-700 px-3 py-1.5 text-sm text-neutral-300 hover:border-neutral-500 disabled:opacity-50"
         >
           {status === "loading" && load.fetchMode !== "none" ? "Scanning…" : "Update library"}
         </button>
