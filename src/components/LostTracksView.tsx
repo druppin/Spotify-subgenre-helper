@@ -270,6 +270,18 @@ function CoverageBar({
 // A song's genre info as a column in its row: subgenres and mood, with
 // the AI's reasoning on hover, and ways to edit the tags or generate or
 // regenerate them.
+// What a song with no tags starts from in the tag editor.
+const NO_GENRES: SongGenres = {
+  own: [],
+  broader: [],
+  subgenres: [],
+  edited: false,
+  confidence: {},
+  userTags: [],
+  songConfidence: null,
+  moodVibe: "",
+};
+
 function GenreCell({
   genres,
   state,
@@ -287,9 +299,9 @@ function GenreCell({
   const error = state && state !== "loading" ? state.error : null;
   return (
     <div className="w-64 flex-shrink-0" onClick={(e) => e.stopPropagation()}>
-      {genres && editing ? (
+      {editing ? (
         <GenreTagEditor
-          genres={genres}
+          genres={genres ?? NO_GENRES}
           size="sm"
           onSave={async (tags) => {
             await onSaveTags(tags);
@@ -344,14 +356,26 @@ function GenreCell({
           </div>
         </div>
       ) : (
-        <button
-          type="button"
-          onClick={() => onGenerate(false)}
-          disabled={loading}
-          className="rounded-md border border-line px-2 py-0.5 text-[11px] text-muted hover:border-ink-2 hover:bg-raised hover:text-ink disabled:opacity-50"
-        >
-          {loading ? "Generating…" : "Generate genre info"}
-        </button>
+        <div className="flex items-center gap-1.5">
+          <button
+            type="button"
+            onClick={() => onGenerate(false)}
+            disabled={loading}
+            className="rounded-md border border-line px-2 py-0.5 text-[11px] text-muted hover:border-ink-2 hover:bg-raised hover:text-ink disabled:opacity-50"
+          >
+            {loading ? "Generating…" : "Generate genre info"}
+          </button>
+          {!loading && (
+            <button
+              type="button"
+              onClick={() => setEditing(true)}
+              title="Tag this song yourself"
+              className="rounded-md border border-line px-2 py-0.5 text-[11px] text-muted hover:border-ink-2 hover:bg-raised hover:text-ink"
+            >
+              Add tags
+            </button>
+          )}
+        </div>
       )}
       {error && (
         <div className="mt-0.5 truncate text-[11px] text-danger" title={error}>
@@ -655,7 +679,7 @@ export function LostTracksView({ tabs }: { tabs: ReactNode }) {
   const saveTags = async (row: SongRow, tags: string[]) => {
     const trackId = genreTrackIdFor(row);
     const saved: SavedGenres = await saveGenreTags(trackId, tags);
-    setGenres((prev) => ({ ...prev, [trackId]: { ...prev[trackId], ...saved } }));
+    setGenres((prev) => ({ ...prev, [trackId]: { ...(prev[trackId] ?? { moodVibe: "" }), ...saved } }));
   };
 
   // Picks up genres generated in bulk so the genre column shows them.

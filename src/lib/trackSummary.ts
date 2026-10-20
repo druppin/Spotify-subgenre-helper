@@ -87,6 +87,12 @@ export async function summarizeTrackById(
 
   const llmConfig = getLlmConfig();
   if (!llmConfig) {
+    // Tags already saved (the user's own, say) still show without an AI.
+    const stored = forceRegenerate ? undefined : await getStoredGenres(id);
+    if (stored) {
+      const summary = { moodVibe: stored.moodVibe, subgenres: stored.subgenres, rationale: "" };
+      return NextResponse.json({ summary: await shownSummary(id, summary), context, cached: true });
+    }
     return NextResponse.json({
       context,
       summaryError: "No AI provider set up yet. Choose one and add its key in Settings.",

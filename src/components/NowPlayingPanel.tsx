@@ -5,7 +5,7 @@ import type { SpotifyTrack } from "@/lib/spotify/client";
 import type { ShownSummary, TrackContext } from "@/lib/llm/types";
 import { usePlayer } from "./PlayerProvider";
 import { TrackDataPanel } from "./TrackDataPanel";
-import { ConfidenceMeter, GenreChips, GenreTagEditor, saveGenreTags } from "./GenreTagEditor";
+import { ConfidenceMeter, GenreChips, GenreTagEditor, saveGenreTags, type SavedGenres } from "./GenreTagEditor";
 import { TrackChat } from "./TrackChat";
 import { NextIcon, PauseIcon, PlayIcon, PreviousIcon, VolumeIcon } from "./Icons";
 import { fetchWithTimeout } from "@/lib/fetchWithTimeout";
@@ -100,13 +100,30 @@ function TrackData({
     );
   }
 
-  const saveTags = async (tags: string[]) => {
-    const saved = await saveGenreTags(trackId, tags);
+  // New tags from the editor or a chat suggestion. A song with no summary
+  // yet (no AI answer) gets one holding just the tags.
+  const showTags = (saved: SavedGenres) => {
     onConfidenceChange?.(trackId, saved.songConfidence);
     setState((prev) =>
-      prev.status === "ready" && prev.summary ? { ...prev, summary: { ...prev.summary, ...saved } } : prev
+      prev.status === "ready"
+        ? { ...prev, summary: { moodVibe: "", rationale: "", ...prev.summary, ...saved } }
+        : prev
     );
+  };
+
+  const saveTags = async (tags: string[]) => {
+    showTags(await saveGenreTags(trackId, tags));
     setEditing(false);
+  };
+
+  const noTags: SavedGenres = {
+    own: [],
+    broader: [],
+    subgenres: [],
+    edited: false,
+    confidence: {},
+    userTags: [],
+    songConfidence: null,
   };
 
   return (
@@ -117,7 +134,7 @@ function TrackData({
         {state.summary && (
           <div className="space-y-2">
             <div className="flex items-start justify-between gap-2">
-              <p className="text-[15px] font-semibold text-ink">{state.summary.moodVibe}</p>
+              <p className="text-[15px] font-semibold text-ink">{state.summary.moodVibe || "Your tags"}</p>
               <div className="flex flex-shrink-0 gap-3">
                 {!editing && (
                   <button
@@ -163,23 +180,42 @@ function TrackData({
                 )}
               </div>
             )}
+            {state.summary.rationale && (
             <p className="max-w-[62ch] text-[13px] leading-relaxed text-muted">
               {state.summary.edited && <span className="text-faint">The AI&apos;s original reasoning: </span>}
               {state.summary.rationale}
             </p>
+            )}
           </div>
         )}
-        {state.summaryError && (
-          <div className="space-y-1">
-            <p className="text-xs text-danger">AI summary: {state.summaryError}</p>
-            <button onClick={() => onRefresh(true)} className="text-xs text-ink underline underline-offset-2">
-              Retry summary
-            </button>
+        {!state.summary && (
+          <div className="space-y-2">
+            {state.summaryError && <p className="text-xs text-danger">AI summary: {state.summaryError}</p>}
+            {editing ? (
+              <GenreTagEditor genres={noTags} onSave={saveTags} onCancel={() => setEditing(false)} />
+            ) : (
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  onClick={() => setEditing(true)}
+                  className="rounded-md bg-ink px-3 py-1.5 text-[13px] font-semibold text-ground hover:bg-ink-2"
+                >
+                  Add tags yourself
+                </button>
+                {state.summaryError && (
+                  <button
+                    onClick={() => onRefresh(true)}
+                    className="rounded-md border border-line-strong px-3 py-1.5 text-[13px] font-medium text-ink hover:bg-raised"
+                  >
+                    Retry the AI
+                  </button>
+                )}
+              </div>
+            )}
           </div>
         )}
       </div>
 
-      {state.summary && <TrackChat trackId={trackId} firstTag={state.summary.own[0]} />}
+      <TrackChat trackId={trackId} firstTag={state.summary?.own[0]} onTagsApplied={showTags} />
     </div>
   );
 }

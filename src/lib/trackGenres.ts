@@ -373,7 +373,13 @@ export async function saveTrackGenres(
  * their scores; new ones count as the user's. The mood and model stay as
  * the AI left them; the AI won't overwrite these tags unless regenerated.
  */
-export async function setTrackGenresByUser(trackId: string, tags: string[]): Promise<StoredTags> {
+export async function setTrackGenresByUser(
+  trackId: string,
+  tags: string[],
+  // Tags the AI proposed (in a chat) with its scores: these count as the
+  // AI's, scored, rather than the user's own.
+  aiScores: Record<string, number> = {}
+): Promise<StoredTags> {
   ensureBackfilled();
   const seen = new Set<string>();
   const subgenres = tags
@@ -382,10 +388,19 @@ export async function setTrackGenresByUser(trackId: string, tags: string[]): Pro
   if (subgenres.length === 0) throw new Error("A song needs at least one tag.");
   const existing = readGenres(trackId);
   const before = (genre: string) => existing?.subgenres.findIndex((g) => genreKey(g) === genreKey(genre)) ?? -1;
+  const aiScore = new Map(
+    Object.entries(aiScores).map(([genre, score]) => [genreKey(normalizeGenre(genre)), score])
+  );
   const entry: TrackGenres = {
     subgenres,
-    confidence: subgenres.map((g) => (before(g) >= 0 ? (existing!.confidence[before(g)] ?? null) : null)),
-    byUser: subgenres.map((g) => (before(g) >= 0 ? existing!.byUser[before(g)] : true)),
+    confidence: subgenres.map((g) =>
+      aiScore.has(genreKey(g))
+        ? aiScore.get(genreKey(g))!
+        : before(g) >= 0
+          ? (existing!.confidence[before(g)] ?? null)
+          : null
+    ),
+    byUser: subgenres.map((g) => (aiScore.has(genreKey(g)) ? false : before(g) >= 0 ? existing!.byUser[before(g)] : true)),
     moodVibe: existing?.moodVibe ?? "",
     model: existing?.model ?? "user",
     updatedAt: Date.now(),

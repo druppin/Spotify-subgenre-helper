@@ -19,7 +19,7 @@ export const FAMILY_NAMES: Record<GenreFamily, string> = {
 
 // Checked in order, so "bass house" is bass music and "pop punk" is punk.
 const RULES: [GenreFamily, RegExp][] = [
-  ["bass", /\b(drum (and|&|'?n'?) bass|dnb|jungle|dubstep|riddim|bass|breakbeat|breaks|neurofunk|garage|grime)\b/],
+  ["bass", /\b(drum (and|&|'?n'?) bass|dnb|jungle|dubstep|riddim|bass|breakbeat|breaks|neurofunk|liquid|garage|grime)\b/],
   ["hiphop", /\b(hip[ -]?hop|rap|trap|drill|r ?(and|&|'?n'?) ?b|rnb|boom bap|phonk)\b/],
   ["rock", /(rock|punk|metal|grunge|emo|shoegaze|hardcore|post-punk|sludge|doom|djent|indie)/],
   ["pop", /(pop|disco|funk|soul|new wave|synth|motown|dance|eurobeat|city)/],
