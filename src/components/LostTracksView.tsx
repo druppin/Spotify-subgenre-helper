@@ -420,7 +420,13 @@ export function LostTracksView({ tabs }: { tabs: ReactNode }) {
   const [removing, setRemoving] = useState(false);
   // Bulk remove takes a second click, which shows what it's about to do.
   const [removeArmed, setRemoveArmed] = useState(false);
-  const [notice, setNotice] = useState<{ kind: "ok" | "error"; text: string; onUndo?: () => void } | null>(
+  const [notice, setNotice] = useState<{
+    kind: "ok" | "error";
+    text: string;
+    onUndo?: () => void;
+    // Spotify needs a permission granted since login.
+    reconnect?: boolean;
+  } | null>(
     null
   );
   const newPlaylistDialogRef = useRef<HTMLDialogElement>(null);
@@ -1016,6 +1022,10 @@ export function LostTracksView({ tabs }: { tabs: ReactNode }) {
       });
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
+        if (body.needsReconnect) {
+          setNotice({ kind: "error", text: body.error, reconnect: true });
+          return;
+        }
         throw new Error(body.error ?? `HTTP ${res.status}`);
       }
       // Now in a second place, so lost songs drop out of the lost list.
@@ -1040,7 +1050,11 @@ export function LostTracksView({ tabs }: { tabs: ReactNode }) {
   };
 
   const currentDetails = currentUri ? trackDetails[currentUri] : undefined;
-  const destinationPlaylists = playlists.filter((p) => p.canModify);
+  // Liked Songs can be added to (liking the songs) once it's been read.
+  const destinationPlaylists = [
+    ...(places[LIKED_SONGS_ID] ? [LIKED_SONGS_PICKER_ENTRY] : []),
+    ...playlists.filter((p) => p.canModify),
+  ];
   const totalSongs = songHomes.size;
 
   return (
@@ -1546,6 +1560,11 @@ export function LostTracksView({ tabs }: { tabs: ReactNode }) {
                     <button type="button" onClick={notice.onUndo} className="ml-2 font-semibold underline hover:text-white">
                       Undo
                     </button>
+                  )}
+                  {notice.reconnect && (
+                    <a href="/api/auth/login" className="ml-2 font-semibold underline hover:text-white">
+                      Reconnect Spotify
+                    </a>
                   )}
                 </span>
               )}

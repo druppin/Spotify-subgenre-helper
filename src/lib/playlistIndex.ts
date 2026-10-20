@@ -384,6 +384,31 @@ export async function getLikedSongs(
   });
 }
 
+/**
+ * Adds the app's own likes to the saved Liked Songs, so they count as a
+ * home right away. The change marker is left as it was: the next update
+ * still sees Liked Songs as changed and downloads it to get Spotify's copy.
+ */
+export function recordLikedAdd(uris: string[]): Promise<void> {
+  return serialized(async () => {
+    const entry = getPlaceInfo(LIKED_SONGS_ID);
+    if (!entry) return;
+    const tracks = getPlaceTracks(LIKED_SONGS_ID);
+    const have = new Set(tracks.map((t) => t.uri));
+    const now = new Date().toISOString();
+    let version = entry.version;
+    for (const uri of uris) {
+      if (have.has(uri)) continue;
+      const details = findTrackDetails(uri);
+      if (!details) continue;
+      if (!isCompleteTrack(details)) version = Math.min(version, MIN_USABLE_VERSION);
+      // Newest first, as Spotify lists Liked Songs.
+      tracks.unshift({ ...details, addedAt: now });
+    }
+    savePlace(LIKED_SONGS_ID, { ...entry, version }, tracks);
+  });
+}
+
 // ---------------------------------------------------------------------------
 // Single songs
 

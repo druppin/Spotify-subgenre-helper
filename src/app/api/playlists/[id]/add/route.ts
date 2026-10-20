@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getValidAccessToken } from "@/lib/spotify/auth";
+import { getValidAccessToken, hasScope } from "@/lib/spotify/auth";
 import { SpotifyClient } from "@/lib/spotify/client";
 import { spotifyErrorResponse } from "@/lib/spotify/routeError";
-import { recordOwnEdit } from "@/lib/playlistIndex";
+import { recordLikedAdd, recordOwnEdit } from "@/lib/playlistIndex";
+import { LIKED_SONGS_ID } from "@/lib/library";
+import { getSession } from "@/lib/session";
 import { ORGANIZE_SOURCES, recordOrganizeEvent, type OrganizeSource } from "@/lib/organizeLog";
 
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -16,8 +18,21 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const accessToken = await getValidAccessToken();
     const client = new SpotifyClient(accessToken);
     const uris: string[] = trackUri ? [trackUri] : trackUris;
-    const snapshotId = await client.addTracksToPlaylist(id, uris);
-    await recordOwnEdit(id, { added: uris }, snapshotId);
+    // Liked Songs isn't a playlist: adding to it likes the songs.
+    if (id === LIKED_SONGS_ID) {
+      const session = await getSession();
+      if (!hasScope(session.scope, "user-library-modify")) {
+        return NextResponse.json(
+          { error: "Spotify needs one more permission to add to Liked Songs.", needsReconnect: true },
+          { status: 403 }
+        );
+      }
+      await client.saveToLibrary(uris);
+      await recordLikedAdd(uris);
+    } else {
+      const snapshotId = await client.addTracksToPlaylist(id, uris);
+      await recordOwnEdit(id, { added: uris }, snapshotId);
+    }
     await recordOrganizeEvent({ action: "add", playlistId: id, uris, source: sourceOf(body) });
     return NextResponse.json({ ok: true });
   } catch (err) {

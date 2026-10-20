@@ -7,7 +7,7 @@ const TOKEN_URL = "https://accounts.spotify.com/api/token";
 
 // Scopes needed: Web Playback SDK ("streaming" + user read), reading/pinning
 // playlists, modifying both the destination and source playlists, and
-// reading Liked Songs for the lost tracks finder.
+// reading and adding to Liked Songs for the lost tracks finder.
 export const SPOTIFY_SCOPES = [
   "streaming",
   "user-read-email",
@@ -19,6 +19,7 @@ export const SPOTIFY_SCOPES = [
   "playlist-modify-public",
   "playlist-modify-private",
   "user-library-read",
+  "user-library-modify",
 ].join(" ");
 
 export function hasScope(grantedScope: string | undefined, scope: string): boolean {

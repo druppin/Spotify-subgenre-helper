@@ -292,7 +292,9 @@ export class SpotifyClient {
 
   private async parseResponse<T>(res: Response): Promise<T> {
     if (res.status === 204) return undefined as T;
-    return res.json();
+    // Some writes (PUT /me/library) answer 200 with an empty body.
+    const text = await res.text();
+    return (text ? JSON.parse(text) : undefined) as T;
   }
 
   getCurrentUser() {
@@ -430,6 +432,15 @@ export class SpotifyClient {
       snapshotId = body?.snapshot_id ?? null;
     }
     return snapshotId;
+  }
+
+  // Likes songs (adds them to Liked Songs). Needs user-library-modify.
+  async saveToLibrary(trackUris: string[]): Promise<void> {
+    // Spotify takes at most 40 URIs per request.
+    for (let i = 0; i < trackUris.length; i += 40) {
+      const uris = trackUris.slice(i, i + 40).join(",");
+      await this.request(`/me/library?uris=${encodeURIComponent(uris)}`, { method: "PUT" });
+    }
   }
 
   removeTrackFromPlaylist(playlistId: string, trackUri: string): Promise<string | null> {
