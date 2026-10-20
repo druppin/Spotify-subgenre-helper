@@ -30,9 +30,10 @@ function loadTab(): TabId {
 // Songs this app has filed into playlists, per tool: exact since tracking
 // began, plus an estimate (shown with ~) for the time before that.
 function OrganizedCount({ stats }: { stats: OrganizeStats }) {
-  const before = stats.before?.bySource ?? { sorter: 0, "lost-tracks": 0 };
+  const before = stats.before?.bySource ?? { sorter: 0, "lost-tracks": 0, flows: 0 };
   const sorter = before.sorter + stats.bySource.sorter;
   const lost = before["lost-tracks"] + stats.bySource["lost-tracks"];
+  const flows = stats.bySource.flows;
   const estimated = (stats.before?.songs ?? 0) > 0;
   const approx = estimated ? "~" : "";
   return (
@@ -40,7 +41,7 @@ function OrganizedCount({ stats }: { stats: OrganizeStats }) {
       className="ml-2 text-xs text-muted"
       title={
         `Since tracking began: ${stats.songsOrganized} songs (${stats.bySource.sorter} sorter, ` +
-        `${stats.bySource["lost-tracks"]} My library), ${stats.adds} adds. ` +
+        `${stats.bySource["lost-tracks"]} My library, ${flows} Flows), ${stats.adds} adds. ` +
         `Moves: ${stats.movesBySource.sorter} sorter, ${stats.movesBySource["lost-tracks"]} My library. ` +
         `Removals: ${stats.removalsBySource.sorter} sorter, ${stats.removalsBySource["lost-tracks"]} My library. ` +
         `A removal counts as a move when the song was also added to another playlist within 2 hours. ` +
@@ -52,9 +53,9 @@ function OrganizedCount({ stats }: { stats: OrganizeStats }) {
       }
     >
       {approx}
-      {sorter + lost} songs organized · Subgenre sorter {approx}
+      {sorter + lost + flows} songs organized · Subgenre sorter {approx}
       {sorter} · My library {approx}
-      {lost} · {stats.moves} move{stats.moves === 1 ? "" : "s"} · {stats.removals} removal
+      {lost} · Flows {flows} · {stats.moves} move{stats.moves === 1 ? "" : "s"} · {stats.removals} removal
       {stats.removals === 1 ? "" : "s"}
     </span>
   );

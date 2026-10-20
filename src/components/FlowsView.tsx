@@ -57,8 +57,13 @@ const CRATE_W = 236;
 const CRATE_H = 150;
 const CRATE_GAP = 26;
 const BOARD_PAD = 28;
+// The target sits this far right when there's room, and wires shorten
+// down to MIN_WIRE when there isn't (say, with the filter panel open).
 const TARGET_X = 640;
 const TARGET_W = 320;
+const MIN_WIRE = 120;
+// The board's side padding (px-8).
+const BOARD_SIDES = 64;
 
 function hasFilters(s: FlowSource) {
   return s.families.length > 0 || s.genres.length > 0 || s.minConfidence !== null;
@@ -174,6 +179,14 @@ export function FlowsView({ tabs }: { tabs: ReactNode }) {
   const [running, setRunning] = useState(false);
   const runDialogRef = useRef<HTMLDialogElement>(null);
   const newPlaylistRef = useRef<HTMLDialogElement>(null);
+  const [boardWidth, setBoardWidth] = useState<number | null>(null);
+  const boardObserver = useRef<ResizeObserver | null>(null);
+  const measureBoard = useCallback((el: HTMLDivElement | null) => {
+    boardObserver.current?.disconnect();
+    if (!el) return;
+    boardObserver.current = new ResizeObserver(() => setBoardWidth(el.clientWidth));
+    boardObserver.current.observe(el);
+  }, []);
 
   const flow = flows?.find((f) => f.id === selectedId) ?? null;
 
@@ -285,6 +298,10 @@ export function FlowsView({ tabs }: { tabs: ReactNode }) {
   const targetOptions = flow ? editable.filter((p) => !flow.sources.some((s) => s.sourceId === p.id)) : [];
 
   const sources = flow?.sources ?? [];
+  const targetX =
+    boardWidth === null
+      ? TARGET_X
+      : Math.min(TARGET_X, Math.max(BOARD_PAD + CRATE_W + MIN_WIRE, boardWidth - BOARD_SIDES - TARGET_W));
   const boardHeight = Math.max(BOARD_PAD * 2 + sources.length * (CRATE_H + CRATE_GAP), 420);
   const targetTop = Math.max(BOARD_PAD, boardHeight / 2 - 150);
   const stats = (id: string) => preview?.sources.find((s) => s.sourceId === id);
@@ -370,187 +387,192 @@ export function FlowsView({ tabs }: { tabs: ReactNode }) {
           )}
         </aside>
 
-        <main className="relative min-h-0 min-w-0 overflow-auto">
-          {!flow ? (
-            <div className="flex h-full items-center justify-center p-8 text-center text-muted">
-              {flows === null ? "Loading flows…" : "Create a flow on the left to start pooling playlists."}
-            </div>
-          ) : (
-            <div className="min-w-[1000px] px-8 py-6">
-              <div className="flex flex-wrap items-start justify-between gap-4">
-                <div className="space-y-1">
-                  <h1 className="font-narrow text-3xl font-bold leading-tight">{flow.name}</h1>
-                  <p className="max-w-[62ch] text-[13px] text-muted">
-                    {sources.length === 0
-                      ? "Add the playlists that feed this flow."
-                      : `${sources.length} crate${sources.length === 1 ? " feeds" : "s feed"} ${
-                          flow.targetId ? placeName(flow.targetId) : "this flow"
-                        }. Running adds the songs it doesn't have yet; it never takes any out.`}
-                  </p>
-                </div>
-                <div className="flex flex-wrap items-center gap-2">
-                  <div className="w-52">
-                    <PlaylistPicker
-                      playlists={sourceOptions}
-                      selectedId={null}
-                      onSelect={(id) =>
-                        void save({
-                          sources: [...sources, { sourceId: id, families: [], genres: [], minConfidence: null, includeUntagged: false }],
-                        })
-                      }
-                      placeholder="Add a crate"
-                      fullWidth
-                    />
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const name = window.prompt("Rename this flow", flow.name);
-                      if (name?.trim()) void save({ name: name.trim() });
-                    }}
-                    className="rounded-md border border-line-strong px-3 py-1.5 text-[13px] font-medium hover:bg-raised"
-                  >
-                    Rename
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => void deleteFlow()}
-                    className="rounded-md border border-danger/50 px-3 py-1.5 text-[13px] font-medium text-danger hover:bg-danger/10"
-                  >
-                    Delete flow
-                  </button>
-                </div>
+        {/* The filter panel is a column of its own, so the board (and Run flow)
+            scrolls beside it instead of hiding under it. */}
+        <main className="flex min-h-0 min-w-0">
+          <div ref={measureBoard} className="min-h-0 min-w-0 flex-1 overflow-auto">
+            {!flow ? (
+              <div className="flex h-full items-center justify-center p-8 text-center text-muted">
+                {flows === null ? "Loading flows…" : "Create a flow on the left to start pooling playlists."}
               </div>
-
-              {error && <p className="mt-3 text-[13px] text-danger">{error}</p>}
-              {notice && <p className="mt-3 text-[13px] text-ok">{notice}</p>}
-
-              <div className="relative mt-6" style={{ height: boardHeight }}>
-                <svg className="pointer-events-none absolute inset-0 h-full w-full" aria-hidden>
-                  {flow.targetId &&
-                    sources.map((s, i) => {
-                      const x1 = BOARD_PAD + CRATE_W;
-                      const y1 = BOARD_PAD + i * (CRATE_H + CRATE_GAP) + 100;
-                      const x2 = TARGET_X;
-                      const y2 = targetTop + 120 + (i - (sources.length - 1) / 2) * 18;
-                      const dim = editing !== null && editing !== s.sourceId;
-                      const colour = placeMark(s.sourceId);
-                      return (
-                        <g key={s.sourceId} opacity={dim ? 0.4 : 1}>
-                          <path
-                            d={`M ${x1} ${y1} C ${x1 + 200} ${y1}, ${x2 - 200} ${y2}, ${x2} ${y2}`}
-                            fill="none"
-                            stroke={colour}
-                            strokeWidth={editing === s.sourceId ? 5 : 3}
-                            strokeLinecap="round"
-                          />
-                          <circle cx={x1} cy={y1} r={5} fill="var(--ground)" stroke={colour} strokeWidth={2.5} />
-                          <circle cx={x2} cy={y2} r={5} fill="var(--ground)" stroke={colour} strokeWidth={2.5} />
-                        </g>
-                      );
-                    })}
-                </svg>
-
-                {sources.map((s, i) => {
-                  const st = stats(s.sourceId);
-                  const top = BOARD_PAD + i * (CRATE_H + CRATE_GAP);
-                  const label = hasFilters(s) ? filterSummary(s) : null;
-                  return (
-                    <div key={s.sourceId}>
-                      <div className="absolute" style={{ left: BOARD_PAD, top, width: CRATE_W, height: CRATE_H }}>
-                        <Crate
-                          name={placeName(s.sourceId)}
-                          detail={
-                            st
-                              ? hasFilters(s)
-                                ? `${st.passing} of ${st.total} songs pass`
-                                : `${st.total} songs`
-                              : "Not saved yet: scan it in My library"
-                          }
-                          colour={placeColour(s.sourceId)}
-                          covers={st?.covers ?? []}
-                          onClick={() => setEditing(s.sourceId)}
-                        />
-                      </div>
-                      {flow.targetId && (
-                        <button
-                          type="button"
-                          onClick={() => setEditing(s.sourceId)}
-                          className="absolute flex -translate-x-1/2 -translate-y-1/2 items-center gap-1.5 rounded-full border bg-panel px-2.5 py-1 text-xs font-semibold hover:bg-raised"
-                          style={{
-                            left: (BOARD_PAD + CRATE_W + TARGET_X) / 2,
-                            top: (top + 100 + targetTop + 120 + (i - (sources.length - 1) / 2) * 18) / 2,
-                            borderColor: placeMark(s.sourceId),
-                          }}
-                        >
-                          <span className="h-[7px] w-[7px] rounded-full" style={{ background: placeMark(s.sourceId) }} />
-                          {label ?? (st && st.newCount > 0 ? `+${st.newCount}` : "all songs")}
-                        </button>
-                      )}
-                    </div>
-                  );
-                })}
-
-                <div className="absolute" style={{ left: TARGET_X, top: targetTop, width: TARGET_W, height: 300 }}>
-                  {flow.targetId ? (
-                    <div className="relative h-[236px]">
-                      <Crate
-                        big
-                        name={placeName(flow.targetId)}
-                        detail={`${preview?.targetTotal ?? target?.tracks?.total ?? "?"} songs${
-                          flow.lastRunAt ? `, last run ${ago(flow.lastRunAt)}` : ""
-                        }`}
-                        colour="var(--band)"
-                        covers={[
-                          ...(preview?.newSongs.map((s) => s.image).filter((c): c is string => !!c) ?? []),
-                          ...(target?.images?.[0] ? [target.images[0].url] : []),
-                        ]}
+            ) : (
+              <div className="px-8 py-6" style={{ minWidth: targetX + TARGET_W + BOARD_SIDES }}>
+                <div className="flex flex-wrap items-start justify-between gap-4">
+                  <div className="space-y-1">
+                    <h1 className="font-narrow text-3xl font-bold leading-tight">{flow.name}</h1>
+                    <p className="max-w-[62ch] text-[13px] text-muted">
+                      {sources.length === 0
+                        ? "Add the playlists that feed this flow."
+                        : `${sources.length} crate${sources.length === 1 ? " feeds" : "s feed"} ${
+                            flow.targetId ? placeName(flow.targetId) : "this flow"
+                          }. Running adds the songs it doesn't have yet; it never takes any out.`}
+                    </p>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <div className="w-52">
+                      <PlaylistPicker
+                        playlists={sourceOptions}
+                        selectedId={null}
+                        onSelect={(id) =>
+                          void save({
+                            sources: [...sources, { sourceId: id, families: [], genres: [], minConfidence: null, includeUntagged: false }],
+                          })
+                        }
+                        placeholder="Add a crate"
+                        fullWidth
                       />
                     </div>
-                  ) : (
-                    <div className="flex h-[236px] flex-col items-center justify-center gap-3 rounded-xl border-2 border-dashed border-line-strong p-5 text-center">
-                      <p className="text-[13px] text-muted">Which playlist should this flow fill?</p>
-                    </div>
-                  )}
-                  <div className="mt-3 space-y-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const name = window.prompt("Rename this flow", flow.name);
+                        if (name?.trim()) void save({ name: name.trim() });
+                      }}
+                      className="rounded-md border border-line-strong px-3 py-1.5 text-[13px] font-medium hover:bg-raised"
+                    >
+                      Rename
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void deleteFlow()}
+                      className="rounded-md border border-danger/50 px-3 py-1.5 text-[13px] font-medium text-danger hover:bg-danger/10"
+                    >
+                      Delete flow
+                    </button>
+                  </div>
+                </div>
+
+                {error && <p className="mt-3 text-[13px] text-danger">{error}</p>}
+                {notice && <p className="mt-3 text-[13px] text-ok">{notice}</p>}
+
+                <div className="relative mt-6" style={{ height: boardHeight }}>
+                  <svg className="pointer-events-none absolute inset-0 h-full w-full" aria-hidden>
+                    {flow.targetId &&
+                      sources.map((s, i) => {
+                        const x1 = BOARD_PAD + CRATE_W;
+                        const y1 = BOARD_PAD + i * (CRATE_H + CRATE_GAP) + 100;
+                        const x2 = targetX;
+                        const bend = (x2 - x1) / 2;
+                        const y2 = targetTop + 120 + (i - (sources.length - 1) / 2) * 18;
+                        const dim = editing !== null && editing !== s.sourceId;
+                        const colour = placeMark(s.sourceId);
+                        return (
+                          <g key={s.sourceId} opacity={dim ? 0.4 : 1}>
+                            <path
+                              d={`M ${x1} ${y1} C ${x1 + bend} ${y1}, ${x2 - bend} ${y2}, ${x2} ${y2}`}
+                              fill="none"
+                              stroke={colour}
+                              strokeWidth={editing === s.sourceId ? 5 : 3}
+                              strokeLinecap="round"
+                            />
+                            <circle cx={x1} cy={y1} r={5} fill="var(--ground)" stroke={colour} strokeWidth={2.5} />
+                            <circle cx={x2} cy={y2} r={5} fill="var(--ground)" stroke={colour} strokeWidth={2.5} />
+                          </g>
+                        );
+                      })}
+                  </svg>
+
+                  {sources.map((s, i) => {
+                    const st = stats(s.sourceId);
+                    const top = BOARD_PAD + i * (CRATE_H + CRATE_GAP);
+                    const label = hasFilters(s) ? filterSummary(s) : null;
+                    return (
+                      <div key={s.sourceId}>
+                        <div className="absolute" style={{ left: BOARD_PAD, top, width: CRATE_W, height: CRATE_H }}>
+                          <Crate
+                            name={placeName(s.sourceId)}
+                            detail={
+                              st
+                                ? hasFilters(s)
+                                  ? `${st.passing} of ${st.total} songs pass`
+                                  : `${st.total} songs`
+                                : "Not saved yet: scan it in My library"
+                            }
+                            colour={placeColour(s.sourceId)}
+                            covers={st?.covers ?? []}
+                            onClick={() => setEditing(s.sourceId)}
+                          />
+                        </div>
+                        {flow.targetId && (
+                          <button
+                            type="button"
+                            onClick={() => setEditing(s.sourceId)}
+                            className="absolute flex -translate-x-1/2 -translate-y-1/2 items-center gap-1.5 rounded-full border bg-panel px-2.5 py-1 text-xs font-semibold hover:bg-raised"
+                            style={{
+                              left: (BOARD_PAD + CRATE_W + targetX) / 2,
+                              top: (top + 100 + targetTop + 120 + (i - (sources.length - 1) / 2) * 18) / 2,
+                              borderColor: placeMark(s.sourceId),
+                            }}
+                          >
+                            <span className="h-[7px] w-[7px] rounded-full" style={{ background: placeMark(s.sourceId) }} />
+                            {label ?? (st && st.newCount > 0 ? `+${st.newCount}` : "all songs")}
+                          </button>
+                        )}
+                      </div>
+                    );
+                  })}
+
+                  <div className="absolute" style={{ left: targetX, top: targetTop, width: TARGET_W, height: 300 }}>
                     {flow.targetId ? (
-                      <button
-                        type="button"
-                        onClick={() => runDialogRef.current?.showModal()}
-                        disabled={!preview || sources.length === 0}
-                        className="flex h-11 w-full items-center justify-center gap-2.5 rounded-lg bg-ink text-[15px] font-bold text-ground hover:bg-ink-2 disabled:opacity-50"
-                      >
-                        Run flow
-                        <span className="text-[13px] font-medium opacity-75">
-                          {preview ? `${preview.newTotal} new song${preview.newTotal === 1 ? "" : "s"}` : "…"}
-                        </span>
-                      </button>
-                    ) : null}
-                    <div className="flex gap-2">
-                      <div className="min-w-0 flex-1">
-                        <PlaylistPicker
-                          playlists={targetOptions}
-                          selectedId={null}
-                          onSelect={(id) =>
-                            void save({ targetId: id, sources: sources.filter((s) => s.sourceId !== id) })
-                          }
-                          placeholder={flow.targetId ? "Fill a different playlist" : "Pick a playlist to fill"}
-                          fullWidth
+                      <div className="relative h-[236px]">
+                        <Crate
+                          big
+                          name={placeName(flow.targetId)}
+                          detail={`${preview?.targetTotal ?? target?.tracks?.total ?? "?"} songs${
+                            flow.lastRunAt ? `, last run ${ago(flow.lastRunAt)}` : ""
+                          }`}
+                          colour="var(--band)"
+                          covers={[
+                            ...(preview?.newSongs.map((s) => s.image).filter((c): c is string => !!c) ?? []),
+                            ...(target?.images?.[0] ? [target.images[0].url] : []),
+                          ]}
                         />
                       </div>
-                      <button
-                        type="button"
-                        onClick={() => newPlaylistRef.current?.showModal()}
-                        className="rounded-md border border-line-strong px-3 text-[13px] font-medium hover:bg-raised"
-                      >
-                        New playlist
-                      </button>
+                    ) : (
+                      <div className="flex h-[236px] flex-col items-center justify-center gap-3 rounded-xl border-2 border-dashed border-line-strong p-5 text-center">
+                        <p className="text-[13px] text-muted">Which playlist should this flow fill?</p>
+                      </div>
+                    )}
+                    <div className="mt-3 space-y-2">
+                      {flow.targetId ? (
+                        <button
+                          type="button"
+                          onClick={() => runDialogRef.current?.showModal()}
+                          disabled={!preview || sources.length === 0}
+                          className="flex h-11 w-full items-center justify-center gap-2.5 rounded-lg bg-ink text-[15px] font-bold text-ground hover:bg-ink-2 disabled:opacity-50"
+                        >
+                          Run flow
+                          <span className="text-[13px] font-medium opacity-75">
+                            {preview ? `${preview.newTotal} new song${preview.newTotal === 1 ? "" : "s"}` : "…"}
+                          </span>
+                        </button>
+                      ) : null}
+                      <div className="flex gap-2">
+                        <div className="min-w-0 flex-1">
+                          <PlaylistPicker
+                            playlists={targetOptions}
+                            selectedId={null}
+                            onSelect={(id) =>
+                              void save({ targetId: id, sources: sources.filter((s) => s.sourceId !== id) })
+                            }
+                            placeholder={flow.targetId ? "Fill a different playlist" : "Pick a playlist to fill"}
+                            fullWidth
+                          />
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => newPlaylistRef.current?.showModal()}
+                          className="rounded-md border border-line-strong px-3 text-[13px] font-medium hover:bg-raised"
+                        >
+                          New playlist
+                        </button>
+                      </div>
                     </div>
                   </div>
                 </div>
               </div>
-            </div>
-          )}
+            )}
+          </div>
 
           {flow && editingSource && (
             <FilterPanel
@@ -719,7 +741,7 @@ function FilterPanel({
   return (
     <aside
       aria-label={`Filters for ${name}`}
-      className="absolute inset-y-0 right-0 flex w-[380px] flex-col gap-5 overflow-y-auto border-l border-line bg-panel px-5 py-5 shadow-[-16px_0_40px_rgba(0,0,0,0.3)]"
+      className="flex w-[380px] shrink-0 flex-col gap-5 overflow-y-auto border-l border-line bg-panel px-5 py-5 shadow-[-16px_0_40px_rgba(0,0,0,0.3)]"
     >
       <div className="flex items-start justify-between gap-3">
         <div>

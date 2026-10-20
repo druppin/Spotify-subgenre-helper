@@ -2,6 +2,7 @@ import { sql, transaction } from "@/lib/db";
 import { LIKED_SONGS_ID } from "@/lib/library";
 import { getPlaceTracks } from "@/lib/libraryStore";
 import { familyOf, type GenreFamily } from "@/lib/genreFamily";
+import { recordOrganizeEvent } from "@/lib/organizeLog";
 import { getLikedSongs, getPlaylistTracksCached, recordOwnEdit } from "@/lib/playlistIndex";
 import type { LibraryTrack, SpotifyClient } from "@/lib/spotify/client";
 import { getTrackGenreDetails, normalizeGenre, type TrackGenreDetails } from "@/lib/trackGenres";
@@ -234,6 +235,7 @@ export async function runFlow(flow: Flow, spotify: SpotifyClient): Promise<FlowR
   if (uris.length > 0) {
     const snapshotId = await spotify.addTracksToPlaylist(flow.targetId, uris);
     await recordOwnEdit(flow.targetId, { added: uris }, snapshotId);
+    await recordOrganizeEvent({ action: "add", playlistId: flow.targetId, uris, source: "flows" });
   }
   sql("UPDATE flows SET last_run_at = ?, last_run_added = ? WHERE id = ?").run(Date.now(), uris.length, flow.id);
   return result;

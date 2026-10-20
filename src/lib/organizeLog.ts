@@ -13,8 +13,8 @@ import { DATA_DIR } from "@/lib/dataDir";
 const LOG_PATH = path.join(DATA_DIR, "organize-log.jsonl");
 
 // Which part of the app made a change.
-export type OrganizeSource = "sorter" | "lost-tracks";
-export const ORGANIZE_SOURCES: OrganizeSource[] = ["sorter", "lost-tracks"];
+export type OrganizeSource = "sorter" | "lost-tracks" | "flows";
+export const ORGANIZE_SOURCES: OrganizeSource[] = ["sorter", "lost-tracks", "flows"];
 
 export interface OrganizeEvent {
   at: string;
@@ -26,6 +26,7 @@ export interface OrganizeEvent {
 }
 
 type BySource = Record<OrganizeSource, number>;
+const noneBySource = (): BySource => ({ sorter: 0, "lost-tracks": 0, flows: 0 });
 
 export interface OrganizeStats {
   // Distinct songs this app has added to a playlist since tracking began.
@@ -67,6 +68,7 @@ interface Baseline {
   // in one request with the same added_at. So songs that arrived in a group
   // sharing a timestamp are counted as Lost tracks, lone ones as the sorter
   // (which also catches anything added one at a time in Spotify itself).
+  // Flows came after tracking began, so they never have a share.
   bySource?: BySource;
 }
 const baselineCache = getCache<Baseline>("organize-baseline");
@@ -125,7 +127,7 @@ async function ensureBaseline(): Promise<Baseline> {
     songs: songs.size,
     since: APP_STARTED,
     until,
-    bySource: { sorter: bySourceSongs.sorter.size, "lost-tracks": bySourceSongs["lost-tracks"].size },
+    bySource: { sorter: bySourceSongs.sorter.size, "lost-tracks": bySourceSongs["lost-tracks"].size, flows: 0 },
   };
   await baselineCache.set("baseline", baseline);
   return baseline;
@@ -135,7 +137,7 @@ export async function getOrganizeStats(): Promise<OrganizeStats> {
   const baseline = await ensureBaseline();
   const events = await readEvents();
   const added = new Set<string>();
-  const addedBySource = { sorter: new Set<string>(), "lost-tracks": new Set<string>() };
+  const addedBySource = { sorter: new Set<string>(), "lost-tracks": new Set<string>(), flows: new Set<string>() };
   let adds = 0;
   let removes = 0;
   // uri -> when and where the app added it, for spotting moves.
@@ -153,8 +155,8 @@ export async function getOrganizeStats(): Promise<OrganizeStats> {
   }
   let moves = 0;
   let removals = 0;
-  const movesBySource: BySource = { sorter: 0, "lost-tracks": 0 };
-  const removalsBySource: BySource = { sorter: 0, "lost-tracks": 0 };
+  const movesBySource = noneBySource();
+  const removalsBySource = noneBySource();
   for (const event of events) {
     if (event.action !== "remove") continue;
     removes += event.uris.length;
@@ -170,7 +172,11 @@ export async function getOrganizeStats(): Promise<OrganizeStats> {
   }
   return {
     songsOrganized: added.size,
-    bySource: { sorter: addedBySource.sorter.size, "lost-tracks": addedBySource["lost-tracks"].size },
+    bySource: {
+      sorter: addedBySource.sorter.size,
+      "lost-tracks": addedBySource["lost-tracks"].size,
+      flows: addedBySource.flows.size,
+    },
     adds,
     removes,
     moves,
@@ -178,6 +184,11 @@ export async function getOrganizeStats(): Promise<OrganizeStats> {
     movesBySource,
     removalsBySource,
     trackingSince: baseline.until,
-    before: { songs: baseline.songs, since: baseline.since, bySource: baseline.bySource ?? null },
+    // Baselines saved before Flows existed lack its (always zero) share.
+    before: {
+      songs: baseline.songs,
+      since: baseline.since,
+      bySource: baseline.bySource ? { ...noneBySource(), ...baseline.bySource } : null,
+    },
   };
 }
