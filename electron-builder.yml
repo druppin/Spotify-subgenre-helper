@@ -30,6 +30,10 @@ mac:
   # Apple Silicon Macs need to open it at all.
   identity: "-"
   hardenedRuntime: false
+# The static AppImage runtime has FUSE built in. The default one needs
+# libfuse.so.2 installed, which most current distros no longer ship.
+toolsets:
+  appimage: "1.0.3"
 linux:
   target: AppImage
   category: Audio
