@@ -61,6 +61,9 @@ const MODE_STORAGE_KEY = "lostTracks.mode";
 const HIDDEN_STORAGE_KEY = "lostTracks.hiddenByPlace";
 const HIDE_RULES_STORAGE_KEY = "lostTracks.hideIfAlsoIn";
 const SHOW_GENRES_STORAGE_KEY = "lostTracks.showGenres";
+// Other homes shown as chips in a song's row before the rest fold into "+N",
+// so a song in many playlists doesn't make its row taller.
+const MAX_PLACE_CHIPS = 3;
 
 function loadJson<T>(key: string, fallback: T): T {
   try {
@@ -127,7 +130,7 @@ function SelectByBar({
   // A choice that no longer applies to the shown songs falls back to none.
   const available = [...playlists, ...genres].some((o) => o.value === category) ? category : "";
   return (
-    <div className="flex flex-wrap items-center gap-2 border-b border-neutral-800 px-4 py-2 text-xs text-neutral-400">
+    <div className="flex items-center gap-2">
       <span>Select songs</span>
       <select
         value={matching ? "in" : "not-in"}
@@ -294,23 +297,20 @@ function GenreCell({
         />
       ) : genres ? (
         <div
-          title={[genres.moodVibe, genres.rationale].filter(Boolean).join("\n\n") || undefined}
-          className="flex items-start gap-1"
+          title={
+            [genres.edited && "Tags edited by you", genres.moodVibe, genres.rationale].filter(Boolean).join("\n\n") ||
+            undefined
+          }
+          className="flex items-center gap-1"
         >
           <div className="min-w-0 flex-1">
-            <div className="flex max-h-[2.5rem] flex-wrap gap-1 overflow-hidden">
+            <div className="flex max-h-[1.25rem] flex-wrap gap-1 overflow-hidden">
               <GenreChips genres={genres} size="sm" />
               {genres.subgenres.length === 0 && <span className="text-[11px] text-neutral-500">No subgenres listed.</span>}
             </div>
-            {(genres.moodVibe || genres.edited) && (
-              <div className="mt-0.5 truncate text-[11px] text-neutral-500">
-                {genres.edited && <span title="You changed these tags by hand">edited{genres.moodVibe && " · "}</span>}
-                {genres.moodVibe}
-              </div>
-            )}
           </div>
           <div
-            className={`flex flex-shrink-0 flex-col items-center ${
+            className={`flex flex-shrink-0 items-center gap-1 ${
               loading ? "" : "opacity-0 focus-within:opacity-100 group-hover:opacity-100"
             }`}
           >
@@ -395,7 +395,7 @@ function PlaceChip({
   }
   return (
     <span
-      className={`flex max-w-[180px] items-center rounded-full border text-[11px] ${
+      className={`flex min-w-0 max-w-[180px] flex-shrink items-center rounded-full border text-[11px] ${
         ignored
           ? "border-neutral-800 text-neutral-600"
           : "border-neutral-700 text-neutral-300 hover:border-green-600"
@@ -1269,8 +1269,8 @@ export function LostTracksView({ tabs }: { tabs: ReactNode }) {
                 {mode === "lost"
                   ? "Songs with exactly one home."
                   : "Pick one to see where else each of its songs lives."}{" "}
-                Mark a catch-all playlist <span className="text-neutral-300">Don&apos;t count</span> so it isn&apos;t
-                treated as a song&apos;s home.
+                Hover a catch-all playlist and choose <span className="text-neutral-300">Don&apos;t count</span> so it
+                isn&apos;t treated as a song&apos;s home.
               </p>
               <input
                 type="search"
@@ -1309,7 +1309,7 @@ export function LostTracksView({ tabs }: { tabs: ReactNode }) {
                         Not counted as a home
                       </div>
                     )}
-                    <div className="flex items-center">
+                    <div className="group flex items-center">
                       <button
                         type="button"
                         onClick={() => selectable && setSelectedPlaceId(place.id)}
@@ -1345,7 +1345,7 @@ export function LostTracksView({ tabs }: { tabs: ReactNode }) {
                         className={`mr-2 flex-shrink-0 rounded border px-1.5 py-0.5 text-[10px] ${
                           place.ignored
                             ? "border-amber-700/60 text-amber-400 hover:bg-amber-900/30"
-                            : "border-neutral-800 text-neutral-500 hover:border-neutral-600 hover:text-neutral-200"
+                            : "border-neutral-800 text-neutral-500 opacity-0 hover:border-neutral-600 hover:text-neutral-200 focus:opacity-100 group-hover:opacity-100"
                         }`}
                       >
                         {place.ignored ? "Count" : "Don't count"}
@@ -1422,51 +1422,58 @@ export function LostTracksView({ tabs }: { tabs: ReactNode }) {
                 Genres
               </button>
             </div>
-            {rows.length > 0 && (
-              <SelectByBar
-                playlists={selectByOptions.playlists}
-                genres={selectByOptions.genres}
-                onSelect={selectBy}
-              />
-            )}
-            {mode === "homes" && selectedPlaceId && (
-              <div className="flex flex-wrap items-center gap-2 border-b border-neutral-800 px-4 py-2 text-xs text-neutral-400">
-                <span>Hide songs also in:</span>
-                {(hideRules[selectedPlaceId] ?? []).map((id) => (
-                  <span key={id} className="flex items-center rounded-full border border-neutral-700 text-neutral-200">
-                    <span className="max-w-[180px] truncate py-0.5 pl-2 pr-1">{placeName(id)}</span>
+            {(rows.length > 0 || (mode === "homes" && selectedPlaceId)) && (
+              <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-b border-neutral-800 px-4 py-2 text-xs text-neutral-400">
+                {rows.length > 0 && (
+                  <SelectByBar
+                    playlists={selectByOptions.playlists}
+                    genres={selectByOptions.genres}
+                    onSelect={selectBy}
+                  />
+                )}
+                {mode === "homes" && selectedPlaceId && (
+                  <>
+                    {rows.length > 0 && <span className="h-5 w-px bg-neutral-800" aria-hidden />}
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span>Hide songs also in:</span>
+                      {(hideRules[selectedPlaceId] ?? []).map((id) => (
+                        <span key={id} className="flex items-center rounded-full border border-neutral-700 text-neutral-200">
+                          <span className="max-w-[180px] truncate py-0.5 pl-2 pr-1">{placeName(id)}</span>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              saveHideRules(
+                                selectedPlaceId,
+                                (hideRules[selectedPlaceId] ?? []).filter((ruleId) => ruleId !== id)
+                              )
+                            }
+                            aria-label={`Stop hiding songs also in ${placeName(id)}`}
+                            className="rounded-full pr-1.5 text-neutral-500 hover:text-red-400"
+                          >
+                            ×
+                          </button>
+                        </span>
+                      ))}
+                      <PlaylistPicker
+                        playlists={[
+                          ...(places[LIKED_SONGS_ID] ? [LIKED_SONGS_PICKER_ENTRY] : []),
+                          ...playlists.filter((p) => places[p.id]),
+                        ].filter((p) => p.id !== selectedPlaceId && !(hideRules[selectedPlaceId] ?? []).includes(p.id))}
+                        selectedId={null}
+                        onSelect={(id) => saveHideRules(selectedPlaceId, [...(hideRules[selectedPlaceId] ?? []), id])}
+                        placeholder="+ Add playlist"
+                      />
+                    </div>
                     <button
                       type="button"
-                      onClick={() =>
-                        saveHideRules(
-                          selectedPlaceId,
-                          (hideRules[selectedPlaceId] ?? []).filter((ruleId) => ruleId !== id)
-                        )
-                      }
-                      aria-label={`Stop hiding songs also in ${placeName(id)}`}
-                      className="rounded-full pr-1.5 text-neutral-500 hover:text-red-400"
+                      onClick={selectSongsLivingElsewhere}
+                      title="Check every shown song that's also in another counted playlist, ready to remove from this one"
+                      className="ml-auto rounded-md border border-neutral-700 px-2.5 py-1 text-xs text-neutral-200 hover:border-green-600 hover:bg-green-600/10"
                     >
-                      ×
+                      Select songs that live elsewhere
                     </button>
-                  </span>
-                ))}
-                <PlaylistPicker
-                  playlists={[
-                    ...(places[LIKED_SONGS_ID] ? [LIKED_SONGS_PICKER_ENTRY] : []),
-                    ...playlists.filter((p) => places[p.id]),
-                  ].filter((p) => p.id !== selectedPlaceId && !(hideRules[selectedPlaceId] ?? []).includes(p.id))}
-                  selectedId={null}
-                  onSelect={(id) => saveHideRules(selectedPlaceId, [...(hideRules[selectedPlaceId] ?? []), id])}
-                  placeholder="+ Add playlist"
-                />
-                <button
-                  type="button"
-                  onClick={selectSongsLivingElsewhere}
-                  title="Check every shown song that's also in another counted playlist, ready to remove from this one"
-                  className="ml-auto rounded-md border border-neutral-700 px-2.5 py-1 text-xs text-neutral-200 hover:border-green-600 hover:bg-green-600/10"
-                >
-                  Select songs that live elsewhere
-                </button>
+                  </>
+                )}
               </div>
             )}
 
@@ -1485,7 +1492,7 @@ export function LostTracksView({ tabs }: { tabs: ReactNode }) {
                     <div
                       onClick={() => ready && playTrack(row.uri).catch((err) => console.error(err))}
                       title={ready ? "Click to play" : "Player is still connecting…"}
-                      className={`group flex cursor-pointer items-center gap-3 px-4 py-1.5 text-sm ${
+                      className={`group flex cursor-pointer items-center gap-3 px-4 py-1 text-sm ${
                         isCurrent
                           ? "bg-green-600/20 text-green-400"
                           : hidden
@@ -1509,9 +1516,9 @@ export function LostTracksView({ tabs }: { tabs: ReactNode }) {
                       />
                       {row.details.image ? (
                         // eslint-disable-next-line @next/next/no-img-element
-                        <img src={row.details.image} alt="" loading="lazy" className="h-9 w-9 flex-shrink-0 rounded object-cover" />
+                        <img src={row.details.image} alt="" loading="lazy" className="h-8 w-8 flex-shrink-0 rounded object-cover" />
                       ) : (
-                        <div className="h-9 w-9 flex-shrink-0 rounded bg-neutral-800" />
+                        <div className="h-8 w-8 flex-shrink-0 rounded bg-neutral-800" />
                       )}
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-1.5">
@@ -1536,13 +1543,13 @@ export function LostTracksView({ tabs }: { tabs: ReactNode }) {
                         </span>
                       )}
                       {mode === "homes" && (
-                        <div className="hidden max-w-[45%] flex-wrap justify-end gap-1 md:flex">
+                        <div className="hidden max-w-[45%] flex-nowrap items-center justify-end gap-1 overflow-hidden md:flex">
                           {row.countedOtherHomes === 0 && (
-                            <span className="rounded-full bg-amber-900/40 px-2 py-0.5 text-[11px] text-amber-300">
+                            <span className="flex-shrink-0 rounded-full bg-amber-900/40 px-2 py-0.5 text-[11px] text-amber-300">
                               Only here
                             </span>
                           )}
-                          {row.otherPlaceIds.map((id) => (
+                          {row.otherPlaceIds.slice(0, MAX_PLACE_CHIPS).map((id) => (
                             <PlaceChip
                               key={id}
                               name={placeName(id)}
@@ -1551,6 +1558,14 @@ export function LostTracksView({ tabs }: { tabs: ReactNode }) {
                               onRemove={id === LIKED_SONGS_ID ? undefined : () => removeSongsFromPlace([row.songId], id)}
                             />
                           ))}
+                          {row.otherPlaceIds.length > MAX_PLACE_CHIPS && (
+                            <span
+                              className="flex-shrink-0 rounded-full border border-neutral-800 px-2 py-0.5 text-[11px] text-neutral-400"
+                              title={`Also in ${row.otherPlaceIds.slice(MAX_PLACE_CHIPS).map(placeName).join(", ")}`}
+                            >
+                              +{row.otherPlaceIds.length - MAX_PLACE_CHIPS}
+                            </span>
+                          )}
                         </div>
                       )}
                       {hidden && reason && reason.alsoIn.length > 0 && (
