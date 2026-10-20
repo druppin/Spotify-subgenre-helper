@@ -1,0 +1,930 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-10-20T05:29:29+00:00",
+  "title": "Design System: Spotify Subgenre Assistant",
+  "extensions": {
+    "colorMeta": {
+      "stained-wood": {
+        "role": "neutral",
+        "displayName": "Stained Wood",
+        "canonical": "#1a1613",
+        "tonalRamp": [
+          "#0e0a08",
+          "#282421",
+          "#46413d",
+          "#65605c",
+          "#86817d",
+          "#a9a4a0",
+          "#cec8c4",
+          "#f3ede9"
+        ]
+      },
+      "wood-side": {
+        "role": "neutral",
+        "displayName": "Wood Side",
+        "canonical": "#1e1916",
+        "tonalRamp": [
+          "#0f0a08",
+          "#292421",
+          "#46413d",
+          "#66605c",
+          "#87817d",
+          "#aaa39f",
+          "#cfc7c3",
+          "#f4ede8"
+        ]
+      },
+      "wood-panel": {
+        "role": "neutral",
+        "displayName": "Wood Panel",
+        "canonical": "#241e1a",
+        "tonalRamp": [
+          "#0f0a07",
+          "#2a2420",
+          "#47403c",
+          "#67605b",
+          "#88817c",
+          "#aba39e",
+          "#d0c7c2",
+          "#f5ede7"
+        ]
+      },
+      "wood-raised": {
+        "role": "neutral",
+        "displayName": "Wood Raised",
+        "canonical": "#2f2722",
+        "tonalRamp": [
+          "#100906",
+          "#2b231e",
+          "#49403b",
+          "#685f59",
+          "#8a807a",
+          "#ada39c",
+          "#d1c7c0",
+          "#f7ece5"
+        ]
+      },
+      "wood-line": {
+        "role": "neutral",
+        "displayName": "Wood Line",
+        "canonical": "#3b322b",
+        "tonalRamp": [
+          "#110905",
+          "#2c231c",
+          "#494039",
+          "#695f57",
+          "#8b8078",
+          "#aea39a",
+          "#d2c7be",
+          "#f8ece3"
+        ]
+      },
+      "wood-line-strong": {
+        "role": "neutral",
+        "displayName": "Wood Line Strong",
+        "canonical": "#4a3f36",
+        "tonalRamp": [
+          "#120903",
+          "#2d231a",
+          "#4b4037",
+          "#6b5f55",
+          "#8c8076",
+          "#afa298",
+          "#d4c6bb",
+          "#faece0"
+        ]
+      },
+      "sleeve-ink": {
+        "role": "neutral",
+        "displayName": "Sleeve Ink",
+        "canonical": "#f1e9dd",
+        "tonalRamp": [
+          "#0f0a04",
+          "#2a241b",
+          "#474137",
+          "#676056",
+          "#888176",
+          "#aba499",
+          "#d0c8bc",
+          "#f5ede1"
+        ]
+      },
+      "sleeve-ink-soft": {
+        "role": "neutral",
+        "displayName": "Sleeve Ink Soft",
+        "canonical": "#e2d8ca",
+        "tonalRamp": [
+          "#100a03",
+          "#2b2419",
+          "#494135",
+          "#686054",
+          "#8a8174",
+          "#ada496",
+          "#d1c8ba",
+          "#f7eddf"
+        ]
+      },
+      "sleeve-muted": {
+        "role": "neutral",
+        "displayName": "Sleeve Muted",
+        "canonical": "#b9ad9c",
+        "tonalRamp": [
+          "#120901",
+          "#2d2316",
+          "#4a4032",
+          "#6a5f50",
+          "#8c8170",
+          "#afa392",
+          "#d4c7b6",
+          "#f9eddb"
+        ]
+      },
+      "sleeve-faint": {
+        "role": "neutral",
+        "displayName": "Sleeve Faint",
+        "canonical": "#a39684",
+        "tonalRamp": [
+          "#120900",
+          "#2d2314",
+          "#4b4030",
+          "#6b5f4e",
+          "#8d806f",
+          "#b0a391",
+          "#d5c7b4",
+          "#faecd9"
+        ]
+      },
+      "oxblood-band": {
+        "role": "primary",
+        "displayName": "Oxblood Band",
+        "canonical": "#5e1a24",
+        "tonalRamp": [
+          "#280001",
+          "#4a0514",
+          "#6d2730",
+          "#91484e",
+          "#b6696e",
+          "#dc8b90",
+          "#ffafb3",
+          "#ffd4d8"
+        ],
+        "note": "Same in both themes; inside the band the neutrals are redefined to oxblood-ground/panel/raised."
+      },
+      "oxblood-ground": {
+        "role": "primary",
+        "displayName": "Oxblood Ground",
+        "canonical": "#2c0c12",
+        "tonalRamp": [
+          "#1c0106",
+          "#3b191e",
+          "#5b363b",
+          "#7c5559",
+          "#9f757a",
+          "#c4989c",
+          "#e9bcc0",
+          "#ffe1e5"
+        ]
+      },
+      "oxblood-panel": {
+        "role": "primary",
+        "displayName": "Oxblood Panel",
+        "canonical": "#43141c",
+        "tonalRamp": [
+          "#210004",
+          "#41121b",
+          "#633037",
+          "#854f55",
+          "#a97076",
+          "#ce9398",
+          "#f5b6bb",
+          "#ffdbe0"
+        ]
+      },
+      "oxblood-raised": {
+        "role": "primary",
+        "displayName": "Oxblood Raised",
+        "canonical": "#74303b",
+        "tonalRamp": [
+          "#270002",
+          "#490618",
+          "#6b2834",
+          "#8f4852",
+          "#b46972",
+          "#da8c94",
+          "#ffafb8",
+          "#ffd4dd"
+        ]
+      },
+      "band-muted": {
+        "role": "primary",
+        "displayName": "Band Muted",
+        "canonical": "#e8cdd0",
+        "tonalRamp": [
+          "#160608",
+          "#321f22",
+          "#513b3e",
+          "#715a5d",
+          "#947b7e",
+          "#b79ea0",
+          "#dcc1c4",
+          "#ffe7ea"
+        ]
+      },
+      "danger": {
+        "role": "status",
+        "displayName": "Danger",
+        "canonical": "#f0b2a4",
+        "tonalRamp": [
+          "#220000",
+          "#43130a",
+          "#643127",
+          "#875145",
+          "#ab7265",
+          "#d09487",
+          "#f6b8aa",
+          "#ffddce"
+        ]
+      },
+      "ok": {
+        "role": "status",
+        "displayName": "OK",
+        "canonical": "#a7c47c",
+        "tonalRamp": [
+          "#021000",
+          "#182c00",
+          "#344b00",
+          "#526b25",
+          "#738d47",
+          "#95b16a",
+          "#b8d68d",
+          "#ddfcb1"
+        ]
+      },
+      "warn": {
+        "role": "status",
+        "displayName": "Warn",
+        "canonical": "#e2b547",
+        "tonalRamp": [
+          "#1f0000",
+          "#411900",
+          "#613800",
+          "#835900",
+          "#a67b00",
+          "#ca9e2a",
+          "#f0c356",
+          "#ffe98d"
+        ]
+      },
+      "paper-ground": {
+        "role": "neutral",
+        "displayName": "Paper Ground",
+        "canonical": "#f3ede3",
+        "tonalRamp": [
+          "#0e0b05",
+          "#29241d",
+          "#464139",
+          "#666058",
+          "#878279",
+          "#aaa49b",
+          "#cec8bf",
+          "#f4eee4"
+        ],
+        "theme": "light"
+      },
+      "paper-side": {
+        "role": "neutral",
+        "displayName": "Paper Side",
+        "canonical": "#eee6da",
+        "tonalRamp": [
+          "#0f0a04",
+          "#2a241b",
+          "#474137",
+          "#676056",
+          "#888176",
+          "#aba499",
+          "#d0c8bc",
+          "#f5ede1"
+        ],
+        "theme": "light"
+      },
+      "paper-panel": {
+        "role": "neutral",
+        "displayName": "Paper Panel",
+        "canonical": "#fbf8f2",
+        "tonalRamp": [
+          "#0d0b07",
+          "#272520",
+          "#44423d",
+          "#63615c",
+          "#85827d",
+          "#a7a59f",
+          "#ccc9c3",
+          "#f1eee8"
+        ],
+        "theme": "light"
+      },
+      "paper-raised": {
+        "role": "neutral",
+        "displayName": "Paper Raised",
+        "canonical": "#e4dacb",
+        "tonalRamp": [
+          "#100a02",
+          "#2b2418",
+          "#494134",
+          "#696053",
+          "#8a8173",
+          "#ada495",
+          "#d2c8b9",
+          "#f7edde"
+        ],
+        "theme": "light"
+      },
+      "paper-line": {
+        "role": "neutral",
+        "displayName": "Paper Line",
+        "canonical": "#d8cdbd",
+        "tonalRamp": [
+          "#110a02",
+          "#2c2417",
+          "#4a4133",
+          "#696052",
+          "#8b8172",
+          "#aea394",
+          "#d2c7b8",
+          "#f8eddc"
+        ],
+        "theme": "light"
+      },
+      "paper-line-strong": {
+        "role": "neutral",
+        "displayName": "Paper Line Strong",
+        "canonical": "#bfb2a0",
+        "tonalRamp": [
+          "#120901",
+          "#2d2315",
+          "#4b4031",
+          "#6b5f4f",
+          "#8d806f",
+          "#b0a391",
+          "#d4c7b5",
+          "#faecd9"
+        ],
+        "theme": "light"
+      },
+      "wood-ink": {
+        "role": "neutral",
+        "displayName": "Wood Ink",
+        "canonical": "#241c16",
+        "tonalRamp": [
+          "#110905",
+          "#2b231d",
+          "#494039",
+          "#695f58",
+          "#8a8079",
+          "#ada39b",
+          "#d2c7bf",
+          "#f8ece4"
+        ],
+        "theme": "light"
+      },
+      "wood-ink-soft": {
+        "role": "neutral",
+        "displayName": "Wood Ink Soft",
+        "canonical": "#3a2f26",
+        "tonalRamp": [
+          "#120903",
+          "#2d231a",
+          "#4b3f36",
+          "#6b5f55",
+          "#8d8075",
+          "#b0a297",
+          "#d4c6bb",
+          "#faebe0"
+        ],
+        "theme": "light"
+      },
+      "wood-muted": {
+        "role": "neutral",
+        "displayName": "Wood Muted",
+        "canonical": "#66594b",
+        "tonalRamp": [
+          "#130901",
+          "#2e2316",
+          "#4c4032",
+          "#6c5f51",
+          "#8e8071",
+          "#b1a293",
+          "#d5c6b6",
+          "#fbecdb"
+        ],
+        "theme": "light"
+      },
+      "wood-faint": {
+        "role": "neutral",
+        "displayName": "Wood Faint",
+        "canonical": "#6f6254",
+        "tonalRamp": [
+          "#120901",
+          "#2e2316",
+          "#4c4032",
+          "#6c5f51",
+          "#8d8071",
+          "#b1a293",
+          "#d5c6b7",
+          "#fbecdb"
+        ],
+        "theme": "light"
+      },
+      "danger-light": {
+        "role": "status",
+        "displayName": "Danger (light)",
+        "canonical": "#9e3424",
+        "tonalRamp": [
+          "#2d0000",
+          "#580000",
+          "#7d1002",
+          "#a33928",
+          "#ca5c4a",
+          "#f17f6b",
+          "#ffa48e",
+          "#ffd0bd"
+        ],
+        "theme": "light"
+      },
+      "ok-light": {
+        "role": "status",
+        "displayName": "OK (light)",
+        "canonical": "#4f6e2a",
+        "tonalRamp": [
+          "#001100",
+          "#132d00",
+          "#2f4c00",
+          "#4d6c28",
+          "#6e8f4a",
+          "#90b26c",
+          "#b3d790",
+          "#d8fdb4"
+        ],
+        "theme": "light"
+      },
+      "warn-light": {
+        "role": "status",
+        "displayName": "Warn (light)",
+        "canonical": "#8a650c",
+        "tonalRamp": [
+          "#1f0100",
+          "#3d1c00",
+          "#5d3a00",
+          "#7f5a00",
+          "#a17c2d",
+          "#c69f52",
+          "#ebc376",
+          "#ffe89b"
+        ],
+        "theme": "light"
+      },
+      "fam-house": {
+        "role": "secondary",
+        "displayName": "House Teal",
+        "canonical": "#5db8b0",
+        "tonalRamp": [
+          "#001412",
+          "#00312d",
+          "#00504b",
+          "#00716a",
+          "#35938c",
+          "#5cb7af",
+          "#82dcd4",
+          "#a7fff9"
+        ]
+      },
+      "fam-bass": {
+        "role": "secondary",
+        "displayName": "Bass Violet",
+        "canonical": "#9a8bea",
+        "tonalRamp": [
+          "#110038",
+          "#290861",
+          "#432e84",
+          "#6150a9",
+          "#8272ce",
+          "#a495f5",
+          "#c7b9ff",
+          "#ece1ff"
+        ]
+      },
+      "fam-rock": {
+        "role": "secondary",
+        "displayName": "Rock Coral",
+        "canonical": "#e58a76",
+        "tonalRamp": [
+          "#2c0000",
+          "#4f0000",
+          "#732313",
+          "#984433",
+          "#bd6653",
+          "#e48975",
+          "#ffad98",
+          "#ffd2bc"
+        ]
+      },
+      "fam-pop": {
+        "role": "secondary",
+        "displayName": "Pop Mustard",
+        "canonical": "#e2b547",
+        "tonalRamp": [
+          "#1f0000",
+          "#411900",
+          "#613800",
+          "#835900",
+          "#a67b00",
+          "#ca9e2a",
+          "#f0c356",
+          "#ffe98d"
+        ]
+      },
+      "fam-hiphop": {
+        "role": "secondary",
+        "displayName": "Hip Hop Blue",
+        "canonical": "#78ade6",
+        "tonalRamp": [
+          "#000533",
+          "#002453",
+          "#0d4375",
+          "#316498",
+          "#5286bd",
+          "#75a9e2",
+          "#98ceff",
+          "#bcf4ff"
+        ]
+      },
+      "fam-roots": {
+        "role": "secondary",
+        "displayName": "Roots Sage",
+        "canonical": "#a7c47c",
+        "tonalRamp": [
+          "#021000",
+          "#182c00",
+          "#344b00",
+          "#526b25",
+          "#738d47",
+          "#95b16a",
+          "#b8d68d",
+          "#ddfcb1"
+        ]
+      },
+      "fam-none": {
+        "role": "secondary",
+        "displayName": "Other Taupe",
+        "canonical": "#8f857a",
+        "tonalRamp": [
+          "#110a03",
+          "#2c231a",
+          "#494037",
+          "#695f55",
+          "#8a8076",
+          "#aea398",
+          "#d2c7bb",
+          "#f8ece0"
+        ]
+      },
+      "fam-house-mark-light": {
+        "role": "secondary",
+        "displayName": "House Teal mark (light)",
+        "canonical": "#23857d",
+        "tonalRamp": [
+          "#001411",
+          "#00312c",
+          "#00504a",
+          "#007169",
+          "#36938b",
+          "#5db7ae",
+          "#82dcd3",
+          "#a8fff8"
+        ],
+        "theme": "light"
+      },
+      "fam-bass-mark-light": {
+        "role": "secondary",
+        "displayName": "Bass Violet mark (light)",
+        "canonical": "#6a5ad0",
+        "tonalRamp": [
+          "#0e003a",
+          "#270074",
+          "#402498",
+          "#5c4abe",
+          "#7b6de5",
+          "#9c91ff",
+          "#bfb6ff",
+          "#e6e3ff"
+        ],
+        "theme": "light"
+      },
+      "fam-rock-mark-light": {
+        "role": "secondary",
+        "displayName": "Rock Coral mark (light)",
+        "canonical": "#c4553f",
+        "tonalRamp": [
+          "#2d0000",
+          "#580000",
+          "#7e0e00",
+          "#a43823",
+          "#cb5b45",
+          "#f37f67",
+          "#ffa38a",
+          "#ffd1bb"
+        ],
+        "theme": "light"
+      },
+      "fam-pop-mark-light": {
+        "role": "secondary",
+        "displayName": "Pop Mustard mark (light)",
+        "canonical": "#a87c12",
+        "tonalRamp": [
+          "#210000",
+          "#401900",
+          "#613800",
+          "#835800",
+          "#a67a0d",
+          "#ca9d40",
+          "#f0c166",
+          "#ffe78d"
+        ],
+        "theme": "light"
+      },
+      "fam-hiphop-mark-light": {
+        "role": "secondary",
+        "displayName": "Hip Hop Blue mark (light)",
+        "canonical": "#3170b8",
+        "tonalRamp": [
+          "#00003b",
+          "#001f61",
+          "#004084",
+          "#2262a9",
+          "#4584ce",
+          "#68a8f5",
+          "#8ccdff",
+          "#b6f3ff"
+        ],
+        "theme": "light"
+      },
+      "fam-roots-mark-light": {
+        "role": "secondary",
+        "displayName": "Roots Sage mark (light)",
+        "canonical": "#5e7f33",
+        "tonalRamp": [
+          "#001100",
+          "#122e00",
+          "#2f4c00",
+          "#4d6d1f",
+          "#6d8f43",
+          "#8fb366",
+          "#b3d889",
+          "#d7fead"
+        ],
+        "theme": "light"
+      },
+      "fam-none-mark-light": {
+        "role": "secondary",
+        "displayName": "Other Taupe mark (light)",
+        "canonical": "#7a6f63",
+        "tonalRamp": [
+          "#110903",
+          "#2c2319",
+          "#4a4035",
+          "#6a5f53",
+          "#8c8074",
+          "#afa396",
+          "#d3c7ba",
+          "#f9ecdf"
+        ],
+        "theme": "light"
+      }
+    },
+    "typographyMeta": {
+      "display": {
+        "displayName": "Display",
+        "purpose": "The playing song's title; narrow width."
+      },
+      "headline": {
+        "displayName": "Headline",
+        "purpose": "Settings sheet title in its band strip; narrow width."
+      },
+      "title": {
+        "displayName": "Title",
+        "purpose": "Panel headings; narrow width."
+      },
+      "summary": {
+        "displayName": "Summary",
+        "purpose": "The AI mood line on the summary card."
+      },
+      "body": {
+        "displayName": "Body",
+        "purpose": "Song rows, nav tabs, list text."
+      },
+      "body-dense": {
+        "displayName": "Dense Body",
+        "purpose": "Buttons, playlist rows, fields, tag names."
+      },
+      "label": {
+        "displayName": "Label",
+        "purpose": "Sentence-case group labels such as Starred."
+      },
+      "meta": {
+        "displayName": "Meta",
+        "purpose": "Percentages, counts, yours/unscored; tabular."
+      },
+      "divider-tab": {
+        "displayName": "Divider Tab",
+        "purpose": "Playlist name on a crate divider tab; narrow width."
+      }
+    },
+    "shadows": [
+      {
+        "name": "cover-cast",
+        "value": "0 14px 30px rgba(0,0,0,0.35)",
+        "purpose": "Now-playing album cover only."
+      },
+      {
+        "name": "sheet",
+        "value": "0 24px 60px rgba(0,0,0,0.45)",
+        "purpose": "The Settings sheet."
+      },
+      {
+        "name": "menu",
+        "value": "0 20px 25px -5px rgba(0,0,0,0.1), 0 8px 10px -6px rgba(0,0,0,0.1)",
+        "purpose": "Dropdown menus over the band (playlist picker)."
+      }
+    ],
+    "motion": [
+      {
+        "name": "file-drop",
+        "value": "200ms cubic-bezier(0.16, 1, 0.3, 1)",
+        "purpose": "A filed divider or row drops 3px into place while flashing a 24% wash of its family colour; reduced-motion skips it."
+      }
+    ],
+    "focus": {
+      "value": "outline: 2px solid var(--ink); outline-offset: 2px",
+      "purpose": "All keyboard focus."
+    },
+    "selection": {
+      "value": "background: var(--band); color: var(--band-ink)"
+    },
+    "scrollbar": {
+      "value": "scrollbar-color: var(--line-strong) transparent; scrollbar-width: thin"
+    },
+    "theming": {
+      "default": "dark",
+      "switch": "prefers-color-scheme, pinned by data-theme on <html> from Settings, applied before first paint",
+      "bandScope": "the .band class redefines neutral tokens to the oxblood family"
+    },
+    "layout": {
+      "sorterColumns": "280px 1fr 340px",
+      "libraryColumns": "300px 1fr",
+      "centreMeasure": "576px",
+      "minWidth": "1024px (desktop only)",
+      "dividerStagger": [
+        0,
+        48,
+        96,
+        24,
+        72
+      ]
+    }
+  },
+  "components": [
+    {
+      "name": "Filing Action (Add)",
+      "kind": "button",
+      "refersTo": "button-file",
+      "description": "The ink-filled committing action on a crate divider; one per row.",
+      "html": "<button class=\"ds-btn-file\">Add</button>",
+      "css": ".ds-btn-file { font-family: var(--font-archivo), system-ui, sans-serif; display:inline-flex; align-items:center; justify-content:center; height:28px; width:72px; border:0; border-radius:6px; background:var(--ink,#f1e9dd); color:var(--ground,#1a1613); font-size:12.5px; font-weight:600; cursor:pointer; } .ds-btn-file:hover { background:var(--ink-2,#e2d8ca); } .ds-btn-file:focus-visible { outline:2px solid var(--ink,#f1e9dd); outline-offset:2px; } .ds-btn-file:disabled { opacity:.5; }"
+    },
+    {
+      "name": "Filed State",
+      "kind": "button",
+      "refersTo": "button-filed",
+      "description": "After filing: an outlined check that turns to Remove in danger on hover.",
+      "html": "<button class=\"ds-btn-filed\"><svg width=\"13\" height=\"13\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"m5 12.5 4.5 4.5L19 7.5\"/></svg>Added</button>",
+      "css": ".ds-btn-filed { font-family: var(--font-archivo), system-ui, sans-serif; display:inline-flex; align-items:center; justify-content:center; gap:4px; height:28px; width:72px; border:1px solid var(--line-strong,#4a3f36); border-radius:6px; background:transparent; color:var(--muted,#b9ad9c); font-size:12.5px; font-weight:600; cursor:pointer; } .ds-btn-filed:hover { border-color:var(--danger,#f0b2a4); color:var(--danger,#f0b2a4); } .ds-btn-filed:focus-visible { outline:2px solid var(--ink,#f1e9dd); outline-offset:2px; }"
+    },
+    {
+      "name": "Outline Button",
+      "kind": "button",
+      "refersTo": "button-outline",
+      "description": "Toolbar and secondary actions.",
+      "html": "<button class=\"ds-btn-outline\">Playlist genres</button>",
+      "css": ".ds-btn-outline { font-family: var(--font-archivo), system-ui, sans-serif; border:1px solid var(--line-strong,#4a3f36); border-radius:6px; padding:6px 12px; background:transparent; color:var(--ink,#f1e9dd); font-size:13px; font-weight:500; cursor:pointer; } .ds-btn-outline:hover { border-color:var(--ink-2,#e2d8ca); background:var(--raised,#2f2722); } .ds-btn-outline:focus-visible { outline:2px solid var(--ink,#f1e9dd); outline-offset:2px; }"
+    },
+    {
+      "name": "Band Navigation",
+      "kind": "nav",
+      "refersTo": "nav-tab",
+      "description": "Tool tabs in the oxblood shell band.",
+      "html": "<nav class=\"ds-band\"><button class=\"ds-tab\" aria-current=\"page\">Subgenre sorter</button><button class=\"ds-tab\">My library</button><button class=\"ds-tab\">Settings</button><span class=\"ds-band-status\">886 songs organized</span></nav>",
+      "css": ".ds-band { font-family: var(--font-archivo), system-ui, sans-serif; display:flex; align-items:center; gap:4px; padding:10px 16px; background:#5e1a24; color:#f1e9dd; } .ds-tab { font-family: var(--font-archivo), system-ui, sans-serif; border:0; border-radius:6px; padding:6px 12px; background:transparent; color:#e8cdd0; font-size:14px; font-weight:500; cursor:pointer; } .ds-tab:hover, .ds-tab[aria-current=page] { background:#74303b; color:#f1e9dd; } .ds-tab:focus-visible { outline:2px solid #f1e9dd; outline-offset:2px; } .ds-band-status { margin-left:8px; font-size:12px; color:#e8cdd0; }"
+    },
+    {
+      "name": "Search Field",
+      "kind": "input",
+      "refersTo": "input-search",
+      "description": "Ground-filled inset field.",
+      "html": "<input class=\"ds-input\" type=\"search\" placeholder=\"Find a playlist (14)\">",
+      "css": ".ds-input { font-family: var(--font-archivo), system-ui, sans-serif; width:100%; border:1px solid var(--line,#3b322b); border-radius:6px; padding:6px 10px; background:var(--ground,#1a1613); color:var(--ink,#f1e9dd); font-size:13px; outline:none; } .ds-input::placeholder { color:var(--faint,#a39684); } .ds-input:focus { border-color:var(--ink-2,#e2d8ca); }"
+    },
+    {
+      "name": "Tag Chip",
+      "kind": "chip",
+      "refersTo": "chip-tag",
+      "description": "An editable tag with its remove control.",
+      "html": "<span class=\"ds-chip\">tech house<button class=\"ds-chip-x\" aria-label=\"Remove\"><svg width=\"11\" height=\"11\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\"><path d=\"M6 6l12 12M18 6 6 18\"/></svg></button></span>",
+      "css": ".ds-chip { font-family: var(--font-archivo), system-ui, sans-serif; display:inline-flex; align-items:center; gap:4px; border-radius:9999px; padding:2px 4px 2px 8px; background:var(--raised,#2f2722); color:var(--ink,#f1e9dd); font-size:12px; } .ds-chip-x { display:inline-flex; border:0; border-radius:9999px; padding:2px 4px; background:transparent; color:var(--muted,#b9ad9c); cursor:pointer; } .ds-chip-x:hover { background:var(--line,#3b322b); color:var(--ink,#f1e9dd); }"
+    },
+    {
+      "name": "Crate Divider",
+      "kind": "custom",
+      "refersTo": "divider-card",
+      "description": "A starred playlist as a divider: staggered card-stock tab over a panel card with a family-coloured top edge.",
+      "html": "<div class=\"ds-divider\"><span class=\"ds-divider-tab\" style=\"margin-left:48px\">Angry Riffs</span><div class=\"ds-divider-card\"><div class=\"ds-divider-thumb\"></div><div class=\"ds-divider-text\"><div class=\"ds-divider-genres\">alternative metal, grunge</div><div class=\"ds-divider-count\">57 songs</div></div><button class=\"ds-divider-add\">Add</button></div></div>",
+      "css": ".ds-divider { font-family: var(--font-archivo), system-ui, sans-serif; --fam:#e58a76; width:310px; } .ds-divider-tab { display:inline-block; border-radius:5px 5px 0 0; padding:2px 10px 1px; background:var(--fam); color:#1a1613; font-size:12px; font-weight:700; font-stretch:80%; } .ds-divider-card { display:flex; align-items:center; gap:8px; border-top:2px solid var(--fam); border-radius:6px; padding:6px 4px 6px 6px; background:var(--panel,#241e1a); } .ds-divider-thumb { width:32px; height:32px; border-radius:4px; background:var(--raised,#2f2722); } .ds-divider-text { flex:1; min-width:0; } .ds-divider-genres { font-size:12.5px; color:var(--ink-2,#e2d8ca); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; } .ds-divider-count { font-size:11.5px; color:var(--muted,#b9ad9c); } .ds-divider-add { font-family: var(--font-archivo), system-ui, sans-serif; height:28px; width:72px; border:0; border-radius:6px; background:var(--ink,#f1e9dd); color:var(--ground,#1a1613); font-size:12.5px; font-weight:600; cursor:pointer; } .ds-divider-add:hover { background:var(--ink-2,#e2d8ca); }"
+    },
+    {
+      "name": "Confidence Meter",
+      "kind": "custom",
+      "refersTo": "confidence-bar",
+      "description": "Exact-length bar in the tag's family mark plus percentage; weak guesses fade and get a dashed underline.",
+      "html": "<div class=\"ds-tags\"><div class=\"ds-tag\"><span class=\"ds-dot\" style=\"background:#5db8b0\"></span><span>tech house</span><span class=\"ds-bar\"><span style=\"width:88%;background:#5db8b0\"></span></span><span class=\"ds-pct\">88%</span></div><div class=\"ds-tag\"><span class=\"ds-dot\" style=\"background:#5db8b0\"></span><span class=\"ds-weak\" style=\"border-color:#5db8b0\">minimal</span><span class=\"ds-bar\"><span style=\"width:34%;background:#5db8b0;opacity:.6\"></span></span><span class=\"ds-pct\">34%</span></div></div>",
+      "css": ".ds-tags { font-family: var(--font-archivo), system-ui, sans-serif; display:flex; flex-direction:column; gap:8px; width:360px; color:var(--ink,#f1e9dd); } .ds-tag { display:grid; grid-template-columns:10px 7.5rem 1fr auto; align-items:center; gap:10px; font-size:13px; font-weight:600; } .ds-dot { width:9px; height:9px; border-radius:9999px; } .ds-weak { border-bottom:1px dashed; justify-self:start; } .ds-bar { position:relative; height:4px; border-radius:9999px; background:var(--line,#3b322b); } .ds-bar > span { position:absolute; inset:0 auto 0 0; border-radius:9999px; } .ds-pct { font-size:11.5px; font-weight:500; color:var(--muted,#b9ad9c); font-variant-numeric:tabular-nums; }"
+    },
+    {
+      "name": "Play Button",
+      "kind": "button",
+      "refersTo": "button-play",
+      "description": "The ink-filled round transport control.",
+      "html": "<button class=\"ds-play\" aria-label=\"Play\"><svg width=\"18\" height=\"18\" viewBox=\"0 0 24 24\"><path d=\"M7 4.5v15L19.5 12 7 4.5z\" fill=\"currentColor\"/></svg></button>",
+      "css": ".ds-play { display:flex; align-items:center; justify-content:center; width:44px; height:44px; border:0; border-radius:9999px; background:var(--ink,#f1e9dd); color:var(--ground,#1a1613); cursor:pointer; } .ds-play:hover { background:var(--ink-2,#e2d8ca); } .ds-play:focus-visible { outline:2px solid var(--ink,#f1e9dd); outline-offset:2px; }"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Record Shop at Closing Time",
+    "overview": "Filing a song should feel like dropping a record behind the right divider. The ground is stained wood, the text is sleeve paper, and the shell is an oxblood band across the top, the shop's painted fascia. Genre lives on card-stock dividers in six printed family colours, and nowhere else. It is a working tool for a listener with a pile to get through, so the room is dense, quiet and warm, and the colour is reserved for the one thing the listener is deciding: where this record goes.\n\nDark is the default and the system's home. Light mode is the same shop in daylight: sleeve-paper ground, wood-ink text, the same oxblood band unchanged. The theme follows the operating system unless Settings pins it, and it is set before first paint so the shop never flashes the wrong lighting.\n\nThe world refuses the streaming-app default of near-black panels with one green accent, and the grey SaaS dashboard. Its warmth comes from the brown-shifted neutrals and the oxblood, never from gradients or glow.",
+    "keyCharacteristics": [
+      "Warm brown neutrals in both themes; no pure black, white or grey.",
+      "One oxblood band carries navigation, the source picker and dialog headers.",
+      "Six genre-family colours, used only as divider tabs, tag dots and confidence bars.",
+      "Archivo throughout, with its width axis narrowed to 80% for titles and divider tabs.",
+      "Committing actions (filing, Play, a dialog's submit) are sleeve-ink-filled; everything else is outlined or quiet text.",
+      "Flat, tonal depth; the only motion is a record settling into the bin."
+    ],
+    "rules": [
+      {
+        "name": "The Card Stock Rule",
+        "body": "Genre colour lives only on divider tabs, tag dots, a divider's top edge and confidence bars (and the brief filing flash). Never on buttons, backgrounds, headings or chrome.",
+        "section": "colors"
+      },
+      {
+        "name": "The One Band Rule",
+        "body": "Oxblood is the shell, not an accent. It appears as the full-width band and its strips; it never becomes a button fill or a highlight inside the wood.",
+        "section": "colors"
+      },
+      {
+        "name": "The Same Shop Rule",
+        "body": "Light mode changes the lighting, not the shop: the band, the card-stock tabs and the dark text on them stay identical; only neutrals, status colours and family marks shift.",
+        "section": "colors"
+      },
+      {
+        "name": "The Narrow Label Rule",
+        "body": "The narrow width is for names of places and records (panel titles, the song title, divider tabs). Body copy, buttons and numbers stay at normal width.",
+        "section": "typography"
+      },
+      {
+        "name": "The Place-Keeping Rule",
+        "body": "Nothing the listener does reflows the lists they are working through: starring keeps the scroll position, tabs stay mounted when hidden, and filing changes a row's state in place.",
+        "section": "layout"
+      },
+      {
+        "name": "The Flat Wood Rule",
+        "body": "Surfaces in the room are flat at rest and on hover; a state change is a tonal step (panel to raised), never a lift.",
+        "section": "elevation"
+      }
+    ],
+    "dos": [
+      "**Do** put a new genre-coloured element only on a tab, dot, divider edge or confidence bar, using the family tab value for card stock and the mark value for dots and bars.",
+      "**Do** keep dark wood text (stained-wood) on card-stock tabs in both themes.",
+      "**Do** use the token neutrals for every surface, so the oxblood band's redefinition carries into anything placed inside it.",
+      "**Do** set panel titles and record names in narrow bold Archivo; everything else at normal width.",
+      "**Do** give the one committing action per row, bar or dialog the ink fill, and keep other buttons outlined or quiet.",
+      "**Do** draw icons as single-weight (2px) round-capped strokes in currentColor, 13 to 18px.",
+      "**Do** state depth with the side, panel and raised steps before reaching for a shadow."
+    ],
+    "donts": [
+      "**Don't** use near-black panels with one green accent, or cool grey dashboard neutrals.",
+      "**Don't** use genre colour on buttons, backgrounds, headings or chrome.",
+      "**Don't** use oxblood as a button fill or highlight inside the wood; it is the band.",
+      "**Don't** change the band or the card-stock tab colours between themes.",
+      "**Don't** add motion beyond the file drop, and never without the reduced-motion guard.",
+      "**Don't** lift surfaces on hover with shadows."
+    ]
+  }
+}

@@ -29,6 +29,33 @@
         ],
         "createdAt": "2026-10-20T04:54:07.793Z",
         "reason": "Claude: full-bleed 1440x900 app shell root; panels are meant to sit flush with the viewport edge"
+      },
+      {
+        "rule": "design-system-font",
+        "value": "*",
+        "files": [
+          ".impeccable/mocks/decision/model-pick.html"
+        ],
+        "createdAt": "2026-10-20T05:29:35.471Z",
+        "reason": "Claude: sketch of an alternative direction the user didn't choose; it uses that direction's own fonts on purpose and isn't shipped"
+      },
+      {
+        "rule": "design-system-font",
+        "value": "*",
+        "files": [
+          ".impeccable/mocks/decision/challenger-ticket-wallet.html"
+        ],
+        "createdAt": "2026-10-20T05:29:35.492Z",
+        "reason": "Claude: sketch of an alternative direction the user didn't choose; it uses that direction's own fonts on purpose and isn't shipped"
+      },
+      {
+        "rule": "design-system-font",
+        "value": "*",
+        "files": [
+          ".impeccable/mocks/decision/canon.html"
+        ],
+        "createdAt": "2026-10-20T05:29:35.518Z",
+        "reason": "Claude: sketch of an alternative direction the user didn't choose; it uses that direction's own fonts on purpose and isn't shipped"
       }
     ]
   }
