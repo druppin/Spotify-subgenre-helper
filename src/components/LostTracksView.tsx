@@ -292,10 +292,13 @@ const NO_GENRES: SongGenres = {
 function GenreCell({
   genres,
   state,
+  expandAll,
   onGenerate,
   onSaveTags,
 }: {
   genres: SongGenres | undefined;
+  // The list's "expand all genres" switch; each row can still be flipped.
+  expandAll: boolean;
   // "loading" while generating, an error message if that failed.
   state: "loading" | { error: string } | undefined;
   onGenerate: (force: boolean) => void;
@@ -304,7 +307,14 @@ function GenreCell({
   const [editing, setEditing] = useState(false);
   // Tags show on one line; the ones that don't fit are counted and can be
   // expanded into view.
-  const [expanded, setExpanded] = useState(false);
+  const [expanded, setExpanded] = useState(expandAll);
+  // Follows the switch whenever it's flipped (React's "adjust state when a
+  // prop changes" pattern).
+  const [lastExpandAll, setLastExpandAll] = useState(expandAll);
+  if (expandAll !== lastExpandAll) {
+    setLastExpandAll(expandAll);
+    setExpanded(expandAll);
+  }
   const [hiddenCount, setHiddenCount] = useState(0);
   const chipsRef = useRef<HTMLDivElement>(null);
   useLayoutEffect(() => {
@@ -350,7 +360,8 @@ function GenreCell({
               <GenreChips genres={genres} size="sm" />
               {genres.subgenres.length === 0 && <span className="text-[11px] text-muted">No subgenres listed.</span>}
             </div>
-            {(expanded || hiddenCount > 0) && (
+            {/* Counted open or folded: tags past the first line. */}
+            {hiddenCount > 0 && (
               <button
                 type="button"
                 onClick={() => setExpanded((open) => !open)}
@@ -557,6 +568,19 @@ export function LostTracksView({ tabs }: { tabs: ReactNode }) {
   const [keptApart, setKeptApart] = useState<Set<string>>(() => new Set(loadJson<string[]>(KEPT_APART_STORAGE_KEY, [])));
   // The song whose versions are open for comparing.
   const [versionsSongId, setVersionsSongId] = useState<string | null>(null);
+  // List-wide expand switches. A song in placesToggled shows the other way
+  // from placesExpandAll, so one row can be opened or folded on its own.
+  const [genresExpandAll, setGenresExpandAll] = useState(false);
+  const [placesExpandAll, setPlacesExpandAll] = useState(false);
+  const [placesToggled, setPlacesToggled] = useState<Set<string>>(new Set());
+  const placesExpanded = (songId: string) => placesToggled.has(songId) !== placesExpandAll;
+  const togglePlacesExpanded = (songId: string) =>
+    setPlacesToggled((prev) => {
+      const next = new Set(prev);
+      if (next.has(songId)) next.delete(songId);
+      else next.add(songId);
+      return next;
+    });
   // The song open in the sorter-style song view (by its row's URI).
   const [infoUri, setInfoUri] = useState<string | null>(null);
   // Songs hidden within a playlist in the homes view, as placeId -> track
@@ -1686,6 +1710,35 @@ export function LostTracksView({ tabs }: { tabs: ReactNode }) {
                     </button>
                   </>
                 )}
+                {rows.length > 0 && (
+                  <div className={`flex gap-2 ${mode === "homes" ? "" : "ml-auto"}`}>
+                    {showGenres && (
+                      <button
+                        type="button"
+                        onClick={() => setGenresExpandAll((open) => !open)}
+                        aria-pressed={genresExpandAll}
+                        title="Show every song's full genre list, or fold them back to one line"
+                        className="rounded-md border border-line-strong px-2.5 py-1 text-xs text-ink hover:border-ink-2 hover:bg-raised"
+                      >
+                        {genresExpandAll ? "Collapse genres" : "Expand genres"}
+                      </button>
+                    )}
+                    {mode === "homes" && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setPlacesExpandAll((open) => !open);
+                          setPlacesToggled(new Set());
+                        }}
+                        aria-pressed={placesExpandAll}
+                        title="Show every playlist each song is in, or fold them back"
+                        className="rounded-md border border-line-strong px-2.5 py-1 text-xs text-ink hover:border-ink-2 hover:bg-raised"
+                      >
+                        {placesExpandAll ? "Collapse playlists" : "Expand playlists"}
+                      </button>
+                    )}
+                  </div>
+                )}
               </div>
             )}
 
@@ -1775,13 +1828,17 @@ export function LostTracksView({ tabs }: { tabs: ReactNode }) {
                         </span>
                       )}
                       {mode === "homes" && (
-                        <div className="hidden max-w-[45%] flex-nowrap items-center justify-end gap-1 overflow-hidden md:flex">
+                        <div
+                          className={`hidden max-w-[45%] items-center justify-end gap-1 md:flex ${
+                            placesExpanded(row.songId) ? "flex-wrap py-1" : "flex-nowrap overflow-hidden"
+                          }`}
+                        >
                           {row.countedOtherHomes === 0 && (
                             <span className="flex-shrink-0 rounded-full bg-warn/20 px-2 py-0.5 text-[11px] text-warn">
                               Only here
                             </span>
                           )}
-                          {row.otherPlaceIds.slice(0, MAX_PLACE_CHIPS).map((id) => (
+                          {(placesExpanded(row.songId) ? row.otherPlaceIds : row.otherPlaceIds.slice(0, MAX_PLACE_CHIPS)).map((id) => (
                             <PlaceChip
                               key={id}
                               name={placeName(id)}
@@ -1791,12 +1848,22 @@ export function LostTracksView({ tabs }: { tabs: ReactNode }) {
                             />
                           ))}
                           {row.otherPlaceIds.length > MAX_PLACE_CHIPS && (
-                            <span
-                              className="flex-shrink-0 rounded-full border border-line px-2 py-0.5 text-[11px] text-muted"
-                              title={`Also in ${row.otherPlaceIds.slice(MAX_PLACE_CHIPS).map(placeName).join(", ")}`}
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                togglePlacesExpanded(row.songId);
+                              }}
+                              aria-expanded={placesExpanded(row.songId)}
+                              className="flex-shrink-0 rounded-full border border-line px-2 py-0.5 text-[11px] text-muted hover:border-ink-2 hover:text-ink"
+                              title={
+                                placesExpanded(row.songId)
+                                  ? "Fold these back"
+                                  : `Also in ${row.otherPlaceIds.slice(MAX_PLACE_CHIPS).map(placeName).join(", ")}`
+                              }
                             >
-                              +{row.otherPlaceIds.length - MAX_PLACE_CHIPS}
-                            </span>
+                              {placesExpanded(row.songId) ? "Show less" : `+${row.otherPlaceIds.length - MAX_PLACE_CHIPS}`}
+                            </button>
                           )}
                         </div>
                       )}
@@ -1830,6 +1897,7 @@ export function LostTracksView({ tabs }: { tabs: ReactNode }) {
                       {showGenres && (
                         <GenreCell
                           genres={genresFor(row)}
+                          expandAll={genresExpandAll}
                           state={genreStatus[row.songId]}
                           onGenerate={(force) => generateGenres(row, force)}
                           onSaveTags={(tags) => saveTags(row, tags)}
