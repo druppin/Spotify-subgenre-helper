@@ -16,6 +16,7 @@ import { usePlayer } from "./PlayerProvider";
 import { PlaylistPicker } from "./PlaylistPicker";
 import { PlaylistThumb } from "./PlaylistThumb";
 import { SeekBar } from "./SeekBar";
+import { SongInfoDialog } from "./SongInfoDialog";
 import { VersionsDialog } from "./VersionsDialog";
 import type { VersionChange } from "@/lib/versions";
 import { NewPlaylistDialog } from "./QuickActions";
@@ -556,6 +557,8 @@ export function LostTracksView({ tabs }: { tabs: ReactNode }) {
   const [keptApart, setKeptApart] = useState<Set<string>>(() => new Set(loadJson<string[]>(KEPT_APART_STORAGE_KEY, [])));
   // The song whose versions are open for comparing.
   const [versionsSongId, setVersionsSongId] = useState<string | null>(null);
+  // The song open in the sorter-style song view (by its row's URI).
+  const [infoUri, setInfoUri] = useState<string | null>(null);
   // Songs hidden within a playlist in the homes view, as placeId -> track
   // URIs. Hidden songs still show, greyed out at the bottom, and can't be
   // selected. A song counts as hidden if any of its versions is listed.
@@ -1299,6 +1302,26 @@ export function LostTracksView({ tabs }: { tabs: ReactNode }) {
           {status === "loading" && load.fetchMode !== "none" ? "Scanning…" : "Update library"}
         </button>
       </header>
+      {infoUri &&
+        trackDetails[infoUri] &&
+        (() => {
+          const index = rows.findIndex((row) => row.uri === infoUri);
+          return (
+            <SongInfoDialog
+              uri={infoUri}
+              details={trackDetails[infoUri]}
+              onPrevious={() => index > 0 && setInfoUri(rows[index - 1].uri)}
+              onNext={() => index >= 0 && index < rows.length - 1 && setInfoUri(rows[index + 1].uri)}
+              canGoPrevious={index > 0}
+              canGoNext={index >= 0 && index < rows.length - 1}
+              onClose={() => {
+                setInfoUri(null);
+                // Tags may have been generated or edited in there.
+                reloadGenres();
+              }}
+            />
+          );
+        })()}
       {versionsSongId && (
         <VersionsDialog
           versions={(songVersions.get(versionsSongId) ?? []).flatMap((uri) =>
@@ -1703,12 +1726,23 @@ export function LostTracksView({ tabs }: { tabs: ReactNode }) {
                         aria-label={hidden ? `${row.details.name} is hidden` : `Select ${row.details.name}`}
                         className="accent-band disabled:cursor-not-allowed"
                       />
-                      {row.details.image ? (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img src={row.details.image} alt="" loading="lazy" className="h-8 w-8 flex-shrink-0 rounded object-cover" />
-                      ) : (
-                        <div className="h-8 w-8 flex-shrink-0 rounded bg-raised" />
-                      )}
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setInfoUri(row.uri);
+                        }}
+                        title="Open the song's genres, AI notes and chat"
+                        aria-label={`Open ${row.details.name}'s genres and AI notes`}
+                        className="flex-shrink-0 rounded hover:ring-2 hover:ring-line-strong"
+                      >
+                        {row.details.image ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img src={row.details.image} alt="" loading="lazy" className="h-8 w-8 rounded object-cover" />
+                        ) : (
+                          <div className="h-8 w-8 rounded bg-raised" />
+                        )}
+                      </button>
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-1.5">
                           <span className="truncate font-medium">

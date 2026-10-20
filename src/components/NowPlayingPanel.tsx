@@ -19,6 +19,9 @@ interface Props {
   canGoNext: boolean;
   // Hears the song's tag confidence once its tags load, are scored, or are edited.
   onConfidenceChange?: (trackId: string, confidence: number | null) => void;
+  // Shown for a song that may not be the one playing (My library's song
+  // view): Play starts this song, and the seek bar only works once it has.
+  ownPlayback?: boolean;
 }
 
 type FetchState =
@@ -221,8 +224,9 @@ export function NowPlayingPanel({
   canGoPrevious,
   canGoNext,
   onConfidenceChange,
+  ownPlayback = false,
 }: Props) {
-  const { ready, isPaused, volume, playbackError, togglePlay, setVolume } = usePlayer();
+  const { ready, isPaused, currentUri, volume, playbackError, togglePlay, playTrack, setVolume } = usePlayer();
   const [retryNonce, setRetryNonce] = useState(0);
   const [forceNextFetch, setForceNextFetch] = useState(false);
 
@@ -238,6 +242,8 @@ export function NowPlayingPanel({
       </div>
     );
   }
+
+  const isThisPlaying = !ownPlayback || currentUri === track.uri;
 
   return (
     <div className="flex h-full flex-col items-center gap-4 overflow-y-auto px-8 py-6 text-center">
@@ -257,7 +263,7 @@ export function NowPlayingPanel({
       </div>
 
       <div className="w-full max-w-xl space-y-1.5">
-        <SeekBar />
+        <SeekBar disabled={!isThisPlaying} />
         <div className="grid grid-cols-[1fr_auto_1fr] items-center">
           <span />
           <div className="flex items-center gap-2">
@@ -270,12 +276,12 @@ export function NowPlayingPanel({
               <PreviousIcon size={18} />
             </button>
             <button
-              onClick={() => togglePlay()}
+              onClick={() => (isThisPlaying ? togglePlay() : void playTrack(track.uri))}
               disabled={!ready}
-              aria-label={isPaused ? "Play" : "Pause"}
+              aria-label={isThisPlaying && !isPaused ? "Pause" : "Play"}
               className="flex h-11 w-11 items-center justify-center rounded-full bg-ink text-ground hover:bg-ink-2 disabled:opacity-50"
             >
-              {isPaused ? <PlayIcon size={18} /> : <PauseIcon size={18} />}
+              {isThisPlaying && !isPaused ? <PauseIcon size={18} /> : <PlayIcon size={18} />}
             </button>
             <button
               onClick={onNext}
