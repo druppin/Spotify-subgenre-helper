@@ -68,7 +68,10 @@ CREATE TABLE IF NOT EXISTS track_genres (
   track_id TEXT PRIMARY KEY,
   mood_vibe TEXT NOT NULL,
   model TEXT NOT NULL,
-  updated_at INTEGER NOT NULL
+  updated_at INTEGER NOT NULL,
+  -- 1 once the user has changed the tags; the AI then leaves them alone
+  -- unless asked to regenerate.
+  edited INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE TABLE IF NOT EXISTS track_genre_tags (
@@ -114,12 +117,13 @@ LEFT JOIN tracks t ON t.id = g.track_id;
 // NOT EXISTS won't add to an existing database.
 const ADDED_COLUMNS: { table: string; column: string; declaration: string }[] = [
   { table: "tracks", column: "base_title", declaration: "TEXT" },
+  { table: "track_genres", column: "edited", declaration: "INTEGER NOT NULL DEFAULT 0" },
 ];
 // Indexes on added columns, created once the columns exist.
 const LATE_INDEXES = "CREATE INDEX IF NOT EXISTS tracks_base_title ON tracks(base_title);";
 // Bumped whenever the schema changes, so a dev server's open connection
 // picks the change up without a restart.
-const SCHEMA_VERSION = 2;
+const SCHEMA_VERSION = 3;
 
 interface DbState {
   db: DatabaseSync;

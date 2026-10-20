@@ -17,6 +17,7 @@ import { PlaylistPicker } from "./PlaylistPicker";
 import { PlaylistThumb } from "./PlaylistThumb";
 import { NewPlaylistDialog } from "./QuickActions";
 import { GenerateGenresDialog, PlaylistGenresDialog } from "./GenreDialogs";
+import { GenreTagEditor, saveGenreTags, type SavedGenres } from "./GenreTagEditor";
 
 // One song as it appears in one place (Liked Songs or an editable playlist).
 // Versions of the same song (see groupSongs) share a songId, so a single in
@@ -38,7 +39,13 @@ interface SongRow {
 // What the genre dropdown shows: stored genres (subgenres + mood), plus the
 // AI's reasoning when it was generated in this session.
 interface SongGenres {
+  // own, then broader.
   subgenres: string[];
+  // The song's own tags and the broader genres they roll up into.
+  own: string[];
+  broader: string[];
+  // The user changed the tags by hand.
+  edited: boolean;
   moodVibe: string;
   rationale?: string;
 }
@@ -253,49 +260,95 @@ function CoverageBar({
 }
 
 // A song's genre info as a column in its row: subgenres and mood, with
-// the AI's reasoning on hover, and a way to generate or regenerate it.
+// the AI's reasoning on hover, and ways to edit the tags or generate or
+// regenerate them.
 function GenreCell({
   genres,
   state,
   onGenerate,
+  onSaveTags,
 }: {
   genres: SongGenres | undefined;
   // "loading" while generating, an error message if that failed.
   state: "loading" | { error: string } | undefined;
   onGenerate: (force: boolean) => void;
+  onSaveTags: (tags: string[]) => Promise<void>;
 }) {
+  const [editing, setEditing] = useState(false);
   const loading = state === "loading";
   const error = state && state !== "loading" ? state.error : null;
   return (
     <div className="w-64 flex-shrink-0" onClick={(e) => e.stopPropagation()}>
-      {genres ? (
+      {genres && editing ? (
+        <GenreTagEditor
+          genres={genres}
+          size="sm"
+          onSave={async (tags) => {
+            await onSaveTags(tags);
+            setEditing(false);
+          }}
+          onCancel={() => setEditing(false)}
+        />
+      ) : genres ? (
         <div
           title={[genres.moodVibe, genres.rationale].filter(Boolean).join("\n\n") || undefined}
           className="flex items-start gap-1"
         >
           <div className="min-w-0 flex-1">
             <div className="flex max-h-[2.5rem] flex-wrap gap-1 overflow-hidden">
-              {genres.subgenres.map((genre) => (
+              {genres.own.map((genre) => (
                 <span key={genre} className="rounded-full bg-green-600/20 px-1.5 py-px text-[11px] text-green-400">
+                  {genre}
+                </span>
+              ))}
+              {genres.broader.map((genre) => (
+                <span
+                  key={genre}
+                  className="rounded-full border border-green-600/30 px-1.5 text-[11px] text-green-400/70"
+                >
                   {genre}
                 </span>
               ))}
               {genres.subgenres.length === 0 && <span className="text-[11px] text-neutral-500">No subgenres listed.</span>}
             </div>
-            {genres.moodVibe && <div className="mt-0.5 truncate text-[11px] text-neutral-500">{genres.moodVibe}</div>}
+            {(genres.moodVibe || genres.edited) && (
+              <div className="mt-0.5 truncate text-[11px] text-neutral-500">
+                {genres.edited && <span title="You changed these tags by hand">edited{genres.moodVibe && " · "}</span>}
+                {genres.moodVibe}
+              </div>
+            )}
           </div>
-          <button
-            type="button"
-            onClick={() => onGenerate(true)}
-            disabled={loading}
-            title="Not right? Generate fresh genre info for this song."
-            aria-label="Regenerate genre info"
-            className={`flex-shrink-0 text-xs text-neutral-500 hover:text-green-400 disabled:opacity-50 ${
-              loading ? "" : "opacity-0 focus:opacity-100 group-hover:opacity-100"
+          <div
+            className={`flex flex-shrink-0 flex-col items-center ${
+              loading ? "" : "opacity-0 focus-within:opacity-100 group-hover:opacity-100"
             }`}
           >
-            {loading ? "…" : "↻"}
-          </button>
+            <button
+              type="button"
+              onClick={() => setEditing(true)}
+              disabled={loading}
+              title="Change, remove, or add tags"
+              aria-label="Edit tags"
+              className="text-xs text-neutral-500 hover:text-green-400 disabled:opacity-50"
+            >
+              ✎
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                if (genres.edited && !confirm("Regenerating replaces the tags you edited with the AI's. Go ahead?")) {
+                  return;
+                }
+                onGenerate(true);
+              }}
+              disabled={loading}
+              title="Not right? Generate fresh genre info for this song."
+              aria-label="Regenerate genre info"
+              className="text-xs text-neutral-500 hover:text-green-400 disabled:opacity-50"
+            >
+              {loading ? "…" : "↻"}
+            </button>
+          </div>
         </div>
       ) : (
         <button
@@ -577,18 +630,31 @@ export function LostTracksView({ tabs }: { tabs: ReactNode }) {
     return versions;
   }, [songOf]);
 
-  const genresFor = useCallback(
-    (row: SongRow): SongGenres | undefined => {
-      const own = genres[trackIdOf(row.uri)];
-      if (own) return own;
+  // The track ID a row's genre info is stored under: its own version's,
+  // or failing that another version's that has some.
+  const genreTrackIdFor = useCallback(
+    (row: SongRow): string => {
+      const own = trackIdOf(row.uri);
+      if (genres[own]) return own;
       for (const uri of songVersions.get(row.songId) ?? []) {
-        const other = genres[trackIdOf(uri)];
-        if (other) return other;
+        if (genres[trackIdOf(uri)]) return trackIdOf(uri);
       }
-      return undefined;
+      return own;
     },
     [genres, songVersions]
   );
+
+  const genresFor = useCallback((row: SongRow): SongGenres | undefined => genres[genreTrackIdFor(row)], [
+    genres,
+    genreTrackIdFor,
+  ]);
+
+  // Keeps the mood and reasoning already shown; only the tags change.
+  const saveTags = async (row: SongRow, tags: string[]) => {
+    const trackId = genreTrackIdFor(row);
+    const saved: SavedGenres = await saveGenreTags(trackId, tags);
+    setGenres((prev) => ({ ...prev, [trackId]: { ...prev[trackId], ...saved } }));
+  };
 
   // Picks up genres generated in bulk so the genre column shows them.
   const reloadGenres = () => {
@@ -1510,6 +1576,7 @@ export function LostTracksView({ tabs }: { tabs: ReactNode }) {
                           genres={genresFor(row)}
                           state={genreStatus[row.songId]}
                           onGenerate={(force) => generateGenres(row, force)}
+                          onSaveTags={(tags) => saveTags(row, tags)}
                         />
                       )}
                       <span className="w-24 flex-shrink-0 text-right text-xs text-neutral-500">{formatAddedAt(row.addedAt)}</span>

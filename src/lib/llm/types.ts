@@ -25,3 +25,11 @@ export interface TrackSummary {
   subgenres: string[];
   rationale: string;
 }
+
+// A summary as the app shows it: subgenres are the stored tags (own, then
+// the broader genres they belong to), which the user may have edited.
+export interface ShownSummary extends TrackSummary {
+  own: string[];
+  broader: string[];
+  edited: boolean;
+}

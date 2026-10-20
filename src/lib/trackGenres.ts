@@ -16,26 +16,35 @@ export interface TrackGenres {
   moodVibe: string;
   model: string;
   updatedAt: number;
+  // The user changed the tags by hand.
+  edited: boolean;
 }
 
 
 function readGenres(trackId: string): TrackGenres | undefined {
-  const row = sql("SELECT mood_vibe, model, updated_at FROM track_genres WHERE track_id = ?").get(trackId) as
-    | { mood_vibe: string; model: string; updated_at: number }
+  const row = sql("SELECT mood_vibe, model, updated_at, edited FROM track_genres WHERE track_id = ?").get(trackId) as
+    | { mood_vibe: string; model: string; updated_at: number; edited: number }
     | undefined;
   if (!row) return undefined;
   const tags = sql("SELECT genre FROM track_genre_tags WHERE track_id = ? ORDER BY position").all(trackId) as {
     genre: string;
   }[];
-  return { subgenres: tags.map((t) => t.genre), moodVibe: row.mood_vibe, model: row.model, updatedAt: row.updated_at };
+  return {
+    subgenres: tags.map((t) => t.genre),
+    moodVibe: row.mood_vibe,
+    model: row.model,
+    updatedAt: row.updated_at,
+    edited: row.edited === 1,
+  };
 }
 
 function writeGenres(trackId: string, genres: TrackGenres) {
   sql(
-    `INSERT INTO track_genres (track_id, mood_vibe, model, updated_at) VALUES (?, ?, ?, ?)
+    `INSERT INTO track_genres (track_id, mood_vibe, model, updated_at, edited) VALUES (?, ?, ?, ?, ?)
      ON CONFLICT (track_id) DO UPDATE SET
-       mood_vibe = excluded.mood_vibe, model = excluded.model, updated_at = excluded.updated_at`
-  ).run(trackId, genres.moodVibe, genres.model, genres.updatedAt);
+       mood_vibe = excluded.mood_vibe, model = excluded.model, updated_at = excluded.updated_at,
+       edited = excluded.edited`
+  ).run(trackId, genres.moodVibe, genres.model, genres.updatedAt, genres.edited ? 1 : 0);
   sql("DELETE FROM track_genre_tags WHERE track_id = ?").run(trackId);
   const insert = sql("INSERT INTO track_genre_tags (track_id, position, genre) VALUES (?, ?, ?)");
   genres.subgenres.forEach((genre, position) => insert.run(trackId, position, genre));
@@ -207,7 +216,7 @@ function ensureBackfilled() {
     const legacy = readJson<Record<string, { value: TrackGenres }>>("track-genres.json");
     if (legacy) {
       for (const [trackId, { value }] of Object.entries(legacy)) {
-        if (Array.isArray(value?.subgenres)) writeGenres(trackId, value);
+        if (Array.isArray(value?.subgenres)) writeGenres(trackId, { ...value, edited: false });
       }
       return;
     }
@@ -222,6 +231,7 @@ function ensureBackfilled() {
         moodVibe: summary.moodVibe ?? "",
         model: `${provider}:${rest.slice(0, -1).join(":")}`,
         updatedAt: Date.now(),
+        edited: false,
       });
     }
   });
@@ -275,20 +285,74 @@ export function listTracksWithGenres(): string[] {
   return rows.map((row) => row.track_id);
 }
 
-export async function saveTrackGenres(trackId: string, summary: TrackSummary, model: string): Promise<void> {
+/**
+ * Saves the AI's genres for a track. Tags the user has edited are kept
+ * unless overwriteEdits (an explicit regenerate) says to replace them.
+ * Returns whether the AI's genres were saved.
+ */
+export async function saveTrackGenres(
+  trackId: string,
+  summary: TrackSummary,
+  model: string,
+  overwriteEdits = false
+): Promise<boolean> {
   ensureBackfilled();
   const subgenres = summary.subgenres.map(normalizeGenre).filter(Boolean);
   const existing = readGenres(trackId);
+  if (existing?.edited && !overwriteEdits) return false;
   // Skip the write (and the genre index rebuild) when nothing changed —
   // this runs on every summary request, cached ones included.
   if (
     existing &&
+    !existing.edited &&
     existing.model === model &&
     existing.moodVibe === summary.moodVibe &&
     existing.subgenres.join("|") === subgenres.join("|")
   ) {
-    return;
+    return true;
   }
-  transaction(() => writeGenres(trackId, { subgenres, moodVibe: summary.moodVibe, model, updatedAt: Date.now() }));
+  transaction(() =>
+    writeGenres(trackId, { subgenres, moodVibe: summary.moodVibe, model, updatedAt: Date.now(), edited: false })
+  );
   genreIndex = null;
+  return true;
+}
+
+/**
+ * Replaces a track's tags with the user's own list (duplicates and
+ * spelling variants of one genre dropped). The mood and model stay as the
+ * AI left them; the AI won't overwrite these tags unless regenerated.
+ */
+export async function setTrackGenresByUser(
+  trackId: string,
+  tags: string[]
+): Promise<{ own: string[]; broader: string[] }> {
+  ensureBackfilled();
+  const seen = new Set<string>();
+  const subgenres = tags
+    .map(normalizeGenre)
+    .filter((genre) => genre && !seen.has(genreKey(genre)) && seen.add(genreKey(genre)));
+  if (subgenres.length === 0) throw new Error("A song needs at least one tag.");
+  const existing = readGenres(trackId);
+  transaction(() =>
+    writeGenres(trackId, {
+      subgenres,
+      moodVibe: existing?.moodVibe ?? "",
+      model: existing?.model ?? "user",
+      updatedAt: Date.now(),
+      edited: true,
+    })
+  );
+  genreIndex = null;
+  return describeGenres(subgenres);
+}
+
+/** A track's stored tags, own and broader kept apart, or undefined if none. */
+export async function getStoredGenres(
+  trackId: string
+): Promise<(TrackGenres & { own: string[]; broader: string[] }) | undefined> {
+  ensureBackfilled();
+  const entry = readGenres(trackId);
+  if (!entry || entry.subgenres.length === 0) return undefined;
+  return { ...entry, ...(await describeGenres(entry.subgenres)) };
 }

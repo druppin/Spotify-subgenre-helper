@@ -3,13 +3,21 @@ import { getValidAccessToken } from "@/lib/spotify/auth";
 import { SpotifyClient, SpotifyApiError } from "@/lib/spotify/client";
 import { buildTrackContext, hasGenreEvidence, type SummaryStep } from "@/lib/context";
 import { summarizeTrack, SUMMARY_PROMPT_VERSION } from "@/lib/llm/summarize";
-import type { TrackContext, TrackSummary } from "@/lib/llm/types";
+import type { ShownSummary, TrackContext, TrackSummary } from "@/lib/llm/types";
 import { getCache } from "@/lib/cache";
 import { spotifyErrorResponse } from "@/lib/spotify/routeError";
-import { canonicalizeGenres, saveTrackGenres } from "@/lib/trackGenres";
+import { describeGenres, getStoredGenres, saveTrackGenres } from "@/lib/trackGenres";
 import { getLlmConfig } from "@/lib/settings";
 
 const summaryCache = getCache<TrackSummary>("track-summary");
+
+// The summary as shown: the stored tags (the user's, if they edited them)
+// in the same spellings they're read back with elsewhere.
+async function shownSummary(id: string, summary: TrackSummary): Promise<ShownSummary> {
+  const stored = await getStoredGenres(id);
+  const { own, broader } = stored ?? (await describeGenres(summary.subgenres));
+  return { ...summary, subgenres: [...own, ...broader], own, broader, edited: stored?.edited ?? false };
+}
 
 /**
  * One song's genre summary, as the summary route returns it. onStep hears
@@ -58,8 +66,7 @@ export async function summarizeTrackById(
     if (cached && cached.subgenres.length > 0) {
       await saveTrackGenres(id, cached, modelLabel);
       onStep?.("ai");
-      const summary = { ...cached, subgenres: await canonicalizeGenres(cached.subgenres) };
-      return NextResponse.json({ summary, context, cached: true });
+      return NextResponse.json({ summary: await shownSummary(id, cached), context, cached: true });
     }
   }
 
@@ -84,10 +91,9 @@ export async function summarizeTrackById(
       });
     }
     await summaryCache.set(cacheKey, summary);
-    await saveTrackGenres(id, summary, modelLabel);
-    // Shown with the same spellings the stored genres are read back with.
-    const shown = { ...summary, subgenres: await canonicalizeGenres(summary.subgenres) };
-    return NextResponse.json({ summary: shown, context, cached: false });
+    // Regenerating replaces tags the user edited; otherwise they're kept.
+    await saveTrackGenres(id, summary, modelLabel, forceRegenerate);
+    return NextResponse.json({ summary: await shownSummary(id, summary), context, cached: false });
   } catch (err) {
     console.error("track summary (LLM) failed:", err);
     if (err instanceof SpotifyApiError) {

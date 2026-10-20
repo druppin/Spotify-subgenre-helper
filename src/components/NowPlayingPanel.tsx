@@ -2,9 +2,10 @@
 
 import { useEffect, useRef, useState } from "react";
 import type { SpotifyTrack } from "@/lib/spotify/client";
-import type { TrackContext, TrackSummary } from "@/lib/llm/types";
+import type { ShownSummary, TrackContext } from "@/lib/llm/types";
 import { usePlayer } from "./PlayerProvider";
 import { TrackDataPanel } from "./TrackDataPanel";
+import { GenreTagEditor, saveGenreTags } from "./GenreTagEditor";
 import { fetchWithTimeout } from "@/lib/fetchWithTimeout";
 
 interface Props {
@@ -25,7 +26,7 @@ function formatMs(ms: number): string {
 type FetchState =
   | { status: "loading" }
   | { status: "error"; message: string }
-  | { status: "ready"; context: TrackContext; summary: TrackSummary | null; summaryError: string | null };
+  | { status: "ready"; context: TrackContext; summary: ShownSummary | null; summaryError: string | null };
 
 // Owns the actual fetch. Remounted (via a `key` that includes a retry
 // nonce) whenever the track changes OR the user clicks retry/regenerate, so
@@ -42,6 +43,7 @@ function TrackData({
   onRefresh: (force: boolean) => void;
 }) {
   const [state, setState] = useState<FetchState>({ status: "loading" });
+  const [editing, setEditing] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -91,6 +93,14 @@ function TrackData({
     );
   }
 
+  const saveTags = async (tags: string[]) => {
+    const saved = await saveGenreTags(trackId, tags);
+    setState((prev) =>
+      prev.status === "ready" && prev.summary ? { ...prev, summary: { ...prev.summary, ...saved } } : prev
+    );
+    setEditing(false);
+  };
+
   return (
     <div className="space-y-3">
       <TrackDataPanel context={state.context} />
@@ -100,25 +110,62 @@ function TrackData({
           <div className="space-y-2">
             <div className="flex items-start justify-between gap-2">
               <p className="text-sm font-medium text-neutral-200">{state.summary.moodVibe}</p>
-              <button
-                onClick={() => onRefresh(true)}
-                title="Not right? Generate a fresh AI summary for this track."
-                className="flex-shrink-0 text-xs text-neutral-500 hover:text-green-400"
-              >
-                ↻ Regenerate
-              </button>
-            </div>
-            <div className="flex flex-wrap gap-1">
-              {state.summary.subgenres.map((genre) => (
-                <span
-                  key={genre}
-                  className="rounded-full bg-green-600/20 px-2 py-0.5 text-xs text-green-400"
+              <div className="flex flex-shrink-0 gap-3">
+                {!editing && (
+                  <button
+                    onClick={() => setEditing(true)}
+                    title="Change, remove, or add tags"
+                    className="text-xs text-neutral-500 hover:text-green-400"
+                  >
+                    ✎ Edit tags
+                  </button>
+                )}
+                <button
+                  onClick={() => {
+                    if (
+                      state.summary?.edited &&
+                      !confirm("Regenerating replaces the tags you edited with the AI's. Go ahead?")
+                    ) {
+                      return;
+                    }
+                    onRefresh(true);
+                  }}
+                  title="Not right? Generate a fresh AI summary for this track."
+                  className="text-xs text-neutral-500 hover:text-green-400"
                 >
-                  {genre}
-                </span>
-              ))}
+                  ↻ Regenerate
+                </button>
+              </div>
             </div>
-            <p className="text-xs text-neutral-500">{state.summary.rationale}</p>
+            {editing ? (
+              <GenreTagEditor genres={state.summary} onSave={saveTags} onCancel={() => setEditing(false)} />
+            ) : (
+              <div className="flex flex-wrap items-center gap-1">
+                {state.summary.own.map((genre) => (
+                  <span key={genre} className="rounded-full bg-green-600/20 px-2 py-0.5 text-xs text-green-400">
+                    {genre}
+                  </span>
+                ))}
+                {state.summary.broader.map((genre) => (
+                  <span
+                    key={genre}
+                    title="A broader genre the tags belong to"
+                    className="rounded-full border border-green-600/30 px-2 py-0.5 text-xs text-green-400/70"
+                  >
+                    {genre}
+                  </span>
+                ))}
+                {state.summary.edited && (
+                  <span className="text-[11px] text-neutral-500" title="You changed these tags by hand">
+                    edited
+                  </span>
+                )}
+              </div>
+            )}
+            <p className="text-xs text-neutral-500">
+              {state.summary.edited && <span className="text-neutral-600">The AI&apos;s original reasoning: </span>}
+              {state.summary.rationale}
+            </p>
           </div>
         )}
         {state.summaryError && (
@@ -130,6 +177,7 @@ function TrackData({
           </div>
         )}
       </div>
+
     </div>
   );
 }
