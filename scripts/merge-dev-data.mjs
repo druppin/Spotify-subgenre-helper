@@ -2,8 +2,7 @@
 // Adds the dev library (.cache/, what npm run dev uses) to the desktop app's
 // data folder, keeping the two separate afterwards. Anything the desktop
 // folder already has wins; dev only fills in the rest.
-//   npm run merge-dev-data               into the npm run desktop folder
-//   npm run merge-dev-data -- --installed  into the installed app's folder
+//   npm run merge-dev-data               into the desktop app's folder
 //   npm run merge-dev-data -- <from> <to>  between any two data folders
 //
 // Songs and genres are added when the desktop copy doesn't have them. A
@@ -22,24 +21,23 @@ function fail(message) {
   process.exit(1);
 }
 
-// Electron's userData folder: named after package.json's name when run from
-// a checkout, and after productName (electron-builder.yml) when installed.
-function desktopDataDir(installed) {
-  const name = installed ? "Spotify Subgenre Assistant" : "spotify-subgenre-helper";
+// Electron's userData folder, named after package.json's name. That's the
+// same for npm run desktop and an installed copy: electron-builder's
+// productName only names the installer and window, not this folder.
+function desktopDataDir() {
   const base =
     process.platform === "win32"
       ? process.env.APPDATA
       : process.platform === "darwin"
         ? path.join(os.homedir(), "Library", "Application Support")
         : process.env.XDG_CONFIG_HOME || path.join(os.homedir(), ".config");
-  return path.join(base, name, "data");
+  return path.join(base, "spotify-subgenre-helper", "data");
 }
 
 const args = process.argv.slice(2);
-const installed = args.includes("--installed");
 const paths = args.filter((a) => !a.startsWith("--"));
 const devDir = paths[0] ?? path.join(process.cwd(), ".cache");
-const deskDir = paths[1] ?? desktopDataDir(installed);
+const deskDir = paths[1] ?? desktopDataDir();
 
 for (const dir of [devDir, deskDir]) {
   if (!existsSync(path.join(dir, "library.db"))) {

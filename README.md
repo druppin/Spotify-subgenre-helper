@@ -122,8 +122,9 @@ The desktop app and `npm run dev` keep separate data folders, so dev runs can
 be used for testing without touching the desktop library. To copy the dev
 library into the desktop app (songs, playlists and genres it doesn't have yet;
 nothing it has is overwritten), close both and run
-`npm run merge-dev-data` (add `-- --installed` for an installed copy). The
-desktop folder is backed up first.
+`npm run merge-dev-data`. It works for an installed copy and
+`npm run desktop` alike, since they share one data folder. The desktop
+folder is backed up first.
 
 ## Setup
 
