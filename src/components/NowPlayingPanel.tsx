@@ -5,7 +5,7 @@ import type { SpotifyTrack } from "@/lib/spotify/client";
 import type { ShownSummary, TrackContext } from "@/lib/llm/types";
 import { usePlayer } from "./PlayerProvider";
 import { TrackDataPanel } from "./TrackDataPanel";
-import { GenreTagEditor, saveGenreTags } from "./GenreTagEditor";
+import { confidenceColor, GenreChips, GenreTagEditor, saveGenreTags } from "./GenreTagEditor";
 import { TrackChat } from "./TrackChat";
 import { fetchWithTimeout } from "@/lib/fetchWithTimeout";
 
@@ -15,6 +15,8 @@ interface Props {
   onNext: () => void;
   canGoPrevious: boolean;
   canGoNext: boolean;
+  // Hears the song's tag confidence once its tags load, are scored, or are edited.
+  onConfidenceChange?: (trackId: string, confidence: number | null) => void;
 }
 
 function formatMs(ms: number): string {
@@ -38,10 +40,12 @@ function TrackData({
   trackId,
   force,
   onRefresh,
+  onConfidenceChange,
 }: {
   trackId: string;
   force: boolean;
   onRefresh: (force: boolean) => void;
+  onConfidenceChange?: (trackId: string, confidence: number | null) => void;
 }) {
   const [state, setState] = useState<FetchState>({ status: "loading" });
   const [editing, setEditing] = useState(false);
@@ -64,11 +68,12 @@ function TrackData({
           setState({ status: "error", message: body.error ?? "Failed to load track data" });
           return;
         }
+        if (body.summary) onConfidenceChange?.(trackId, body.summary.songConfidence);
         setState({
           status: "ready",
           context: body.context,
           summary: body.summary ?? null,
-          summaryError: body.summaryError ?? null,
+          summaryError: body.summaryError ?? body.scoreError ?? null,
         });
       })
       .catch((err) => {
@@ -77,7 +82,7 @@ function TrackData({
     return () => {
       cancelled = true;
     };
-  }, [trackId, force]);
+  }, [trackId, force, onConfidenceChange]);
 
   if (state.status === "loading") {
     return <p className="text-sm text-neutral-500">Loading track data…</p>;
@@ -96,6 +101,7 @@ function TrackData({
 
   const saveTags = async (tags: string[]) => {
     const saved = await saveGenreTags(trackId, tags);
+    onConfidenceChange?.(trackId, saved.songConfidence);
     setState((prev) =>
       prev.status === "ready" && prev.summary ? { ...prev, summary: { ...prev.summary, ...saved } } : prev
     );
@@ -142,20 +148,15 @@ function TrackData({
               <GenreTagEditor genres={state.summary} onSave={saveTags} onCancel={() => setEditing(false)} />
             ) : (
               <div className="flex flex-wrap items-center gap-1">
-                {state.summary.own.map((genre) => (
-                  <span key={genre} className="rounded-full bg-green-600/20 px-2 py-0.5 text-xs text-green-400">
-                    {genre}
-                  </span>
-                ))}
-                {state.summary.broader.map((genre) => (
+                <GenreChips genres={state.summary} />
+                {state.summary.songConfidence !== null && (
                   <span
-                    key={genre}
-                    title="A broader genre the tags belong to"
-                    className="rounded-full border border-green-600/30 px-2 py-0.5 text-xs text-green-400/70"
+                    className={`text-[11px] ${confidenceColor(state.summary.songConfidence)}`}
+                    title="The average of the AI's confidence in its tags"
                   >
-                    {genre}
+                    {state.summary.songConfidence}% overall
                   </span>
-                ))}
+                )}
                 {state.summary.edited && (
                   <span className="text-[11px] text-neutral-500" title="You changed these tags by hand">
                     edited
@@ -184,7 +185,14 @@ function TrackData({
   );
 }
 
-export function NowPlayingPanel({ track, onPrevious, onNext, canGoPrevious, canGoNext }: Props) {
+export function NowPlayingPanel({
+  track,
+  onPrevious,
+  onNext,
+  canGoPrevious,
+  canGoNext,
+  onConfidenceChange,
+}: Props) {
   const { ready, isPaused, position, duration, volume, playbackError, togglePlay, seek, setVolume } =
     usePlayer();
   const [retryNonce, setRetryNonce] = useState(0);
@@ -299,7 +307,13 @@ export function NowPlayingPanel({ track, onPrevious, onNext, canGoPrevious, canG
       )}
 
       <div className="w-full max-w-md rounded-lg bg-neutral-900 p-4 text-left">
-        <TrackData key={retryNonce} trackId={track.id} force={forceNextFetch} onRefresh={refresh} />
+        <TrackData
+          key={retryNonce}
+          trackId={track.id}
+          force={forceNextFetch}
+          onRefresh={refresh}
+          onConfidenceChange={onConfidenceChange}
+        />
       </div>
     </div>
   );

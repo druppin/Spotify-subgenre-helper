@@ -9,8 +9,8 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     return NextResponse.json({ error: "tags must be an array of strings" }, { status: 400 });
   }
   try {
-    const { own, broader } = await setTrackGenresByUser(id, tags);
-    return NextResponse.json({ own, broader, subgenres: [...own, ...broader], edited: true });
+    const stored = await setTrackGenresByUser(id, tags);
+    return NextResponse.json({ ...stored, subgenres: [...stored.own, ...stored.broader] });
   } catch (err) {
     return NextResponse.json({ error: err instanceof Error ? err.message : String(err) }, { status: 400 });
   }

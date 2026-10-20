@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getValidAccessToken } from "@/lib/spotify/auth";
 import { SpotifyClient } from "@/lib/spotify/client";
 import { spotifyErrorResponse } from "@/lib/spotify/routeError";
-import { getTrackGenres } from "@/lib/trackGenres";
+import { getTrackGenreDetails } from "@/lib/trackGenres";
 import { getLikedSongs, getPlaylistTracksCached } from "@/lib/playlistIndex";
 import { LIKED_SONGS_ID } from "@/lib/library";
 import type { PlaylistGenreTrack } from "@/lib/playlistGenres";
@@ -24,12 +24,14 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
     const tracks = cached
       .filter((t) => t.uri.startsWith("spotify:track:"))
       .map((t) => ({ ...t, id: t.uri.slice("spotify:track:".length) }));
-    const genres = await getTrackGenres([...new Set(tracks.map((t) => t.id))]);
+    const genres = await getTrackGenreDetails([...new Set(tracks.map((t) => t.id))]);
     const result: PlaylistGenreTrack[] = tracks.map((t) => ({
       id: t.id,
       name: t.name,
       artists: t.artists,
-      subgenres: genres[t.id]?.subgenres ?? null,
+      subgenres: genres[t.id] ? [...genres[t.id].own, ...genres[t.id].broader] : null,
+      confidence: genres[t.id]?.songConfidence ?? null,
+      unscored: genres[t.id]?.unscored ?? false,
     }));
     return NextResponse.json({ tracks: result });
   } catch (err) {

@@ -4,6 +4,10 @@ export interface PlaylistGenreTrack {
   artists: string[];
   // null when no genre info has been generated for this track yet.
   subgenres: string[] | null;
+  // The song's average tag confidence (0-100), null if none are scored.
+  confidence: number | null;
+  // Has tags the AI hasn't scored yet.
+  unscored: boolean;
 }
 
 export async function fetchPlaylistGenres(playlistId: string): Promise<PlaylistGenreTrack[]> {

@@ -33,8 +33,14 @@ things up. If artistGenres, Last.fm tags, MusicBrainz genres, and audio features
 plainly in the rationale and keep the guess clearly hedged rather than presenting a confident-
 sounding but ungrounded story.
 
+For each subgenre, give a confidence from 0 to 100: how likely a knowledgeable listener would
+agree the label fits this track. Base it on how strong and consistent the evidence is — several
+sources agreeing (MusicBrainz votes, Last.fm tags, matching audio features) means high; a guess from
+the artist's general style, or from thin or conflicting data, means low. Use the whole range; don't
+give every tag the same number.
+
 Respond with ONLY a JSON object of this exact shape, no markdown fences:
-{"moodVibe": string, "subgenres": string[], "rationale": string}`;
+{"moodVibe": string, "subgenres": [{"genre": string, "confidence": number}], "rationale": string}`;
 
 // Derived from the prompt text itself so editing SYSTEM_PROMPT automatically
 // invalidates cached summaries (see the cache key in the summary route)
@@ -48,6 +54,15 @@ function buildUserPrompt(context: TrackContext): string {
   return JSON.stringify(context, null, 2);
 }
 
+/** A 0-100 score from a model's number (or a 0-1 fraction), or undefined if it isn't one. */
+export function parseConfidence(value: unknown): number | undefined {
+  const n = typeof value === "string" ? Number(value.replace("%", "")) : value;
+  if (typeof n !== "number" || !Number.isFinite(n)) return undefined;
+  // Some models answer 0.8 for 80 despite being asked for 0-100.
+  const scaled = n > 0 && n <= 1 && !Number.isInteger(n) ? n * 100 : n;
+  return Math.round(Math.min(Math.max(scaled, 0), 100));
+}
+
 function parseSummary(raw: string): TrackSummary {
   const cleaned = raw.trim().replace(/^```json\s*/i, "").replace(/```\s*$/, "");
   const parsed = JSON.parse(cleaned);
@@ -58,10 +73,22 @@ function parseSummary(raw: string): TrackSummary {
   ) {
     throw new Error(`LLM response did not match expected shape: ${raw}`);
   }
+  // Each subgenre is {genre, confidence}; a bare string (a model ignoring
+  // the shape) is taken as a tag with no score.
+  const subgenres: string[] = [];
+  const confidence: Record<string, number> = {};
+  for (const item of parsed.subgenres) {
+    const genre = typeof item === "string" ? item : item?.genre;
+    if (typeof genre !== "string") throw new Error(`LLM response did not match expected shape: ${raw}`);
+    subgenres.push(genre);
+    const score = typeof item === "string" ? undefined : parseConfidence(item.confidence);
+    if (score !== undefined) confidence[genre] = score;
+  }
   return {
     moodVibe: parsed.moodVibe,
-    subgenres: parsed.subgenres,
+    subgenres,
     rationale: parsed.rationale,
+    confidence,
   };
 }
 

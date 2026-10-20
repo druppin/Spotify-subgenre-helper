@@ -78,6 +78,11 @@ CREATE TABLE IF NOT EXISTS track_genre_tags (
   track_id TEXT NOT NULL REFERENCES track_genres(track_id) ON DELETE CASCADE,
   position INTEGER NOT NULL,
   genre TEXT NOT NULL,
+  -- How sure the AI is of the tag, 0-100. Null until it's been scored, and
+  -- for tags the user added.
+  confidence INTEGER,
+  -- 1 for a tag the user added; the AI doesn't score these.
+  by_user INTEGER NOT NULL DEFAULT 0,
   PRIMARY KEY (track_id, position)
 );
 CREATE INDEX IF NOT EXISTS track_genre_tags_genre ON track_genre_tags(genre);
@@ -128,12 +133,14 @@ LEFT JOIN tracks t ON t.id = g.track_id;
 const ADDED_COLUMNS: { table: string; column: string; declaration: string }[] = [
   { table: "tracks", column: "base_title", declaration: "TEXT" },
   { table: "track_genres", column: "edited", declaration: "INTEGER NOT NULL DEFAULT 0" },
+  { table: "track_genre_tags", column: "confidence", declaration: "INTEGER" },
+  { table: "track_genre_tags", column: "by_user", declaration: "INTEGER NOT NULL DEFAULT 0" },
 ];
 // Indexes on added columns, created once the columns exist.
 const LATE_INDEXES = "CREATE INDEX IF NOT EXISTS tracks_base_title ON tracks(base_title);";
 // Bumped whenever the schema changes, so a dev server's open connection
 // picks the change up without a restart.
-const SCHEMA_VERSION = 3;
+const SCHEMA_VERSION = 4;
 
 interface DbState {
   db: DatabaseSync;

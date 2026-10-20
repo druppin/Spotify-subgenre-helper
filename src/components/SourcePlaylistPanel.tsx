@@ -1,6 +1,9 @@
 "use client";
 
 import type { SpotifyPlaylistTrackItem } from "@/lib/spotify/client";
+import { confidenceColor } from "./GenreTagEditor";
+
+export type SourceSort = "playlist" | "least-confident" | "most-confident";
 
 interface Props {
   tracks: SpotifyPlaylistTrackItem[];
@@ -9,6 +12,10 @@ interface Props {
   error?: string | null;
   pendingRemovalUri?: string | null;
   otherPlaylistCounts: Map<string, number>;
+  // Average tag confidence per track ID; null or missing when not scored.
+  confidences: Record<string, number | null>;
+  sort: SourceSort;
+  onSortChange: (sort: SourceSort) => void;
 }
 
 export function SourcePlaylistPanel({
@@ -18,12 +25,26 @@ export function SourcePlaylistPanel({
   error,
   pendingRemovalUri,
   otherPlaylistCounts,
+  confidences,
+  sort,
+  onSortChange,
 }: Props) {
   return (
     <div className="flex h-full flex-col overflow-hidden">
-      <h2 className="mb-2 px-3 pt-3 text-sm font-semibold uppercase tracking-wide text-neutral-400">
-        Source playlist
-      </h2>
+      <div className="mb-2 flex items-center justify-between gap-2 px-3 pt-3">
+        <h2 className="text-sm font-semibold uppercase tracking-wide text-neutral-400">Source playlist</h2>
+        <select
+          value={sort}
+          onChange={(e) => onSortChange(e.target.value as SourceSort)}
+          aria-label="Order of the source playlist"
+          title="Songs with no confidence score go last"
+          className="min-w-0 rounded border border-neutral-700 bg-neutral-900 px-1 py-0.5 text-xs text-neutral-300"
+        >
+          <option value="playlist">Playlist order</option>
+          <option value="least-confident">Least confident first</option>
+          <option value="most-confident">Most confident first</option>
+        </select>
+      </div>
       {error && (
         <p className="mx-3 mb-2 rounded-md bg-red-900/30 px-2 py-1.5 text-xs text-red-400">
           {error}
@@ -34,6 +55,7 @@ export function SourcePlaylistPanel({
           if (!item.track) return null;
           const isCurrent = index === currentIndex;
           const inOtherPlaylists = otherPlaylistCounts.get(item.track.uri) ?? 0;
+          const confidence = confidences[item.track.id] ?? null;
           return (
             <li key={`${item.track.id}-${index}`}>
               <button
@@ -65,6 +87,14 @@ export function SourcePlaylistPanel({
                     </div>
                   )}
                 </div>
+                {confidence !== null && (
+                  <span
+                    className={`flex-shrink-0 text-[10px] tabular-nums ${confidenceColor(confidence)}`}
+                    title="How confident the AI is in this song's tags, on average"
+                  >
+                    {confidence}%
+                  </span>
+                )}
                 {inOtherPlaylists > 0 && (
                   <span
                     className="flex-shrink-0 rounded-full bg-green-600/20 px-1.5 py-0.5 text-[10px] font-medium text-green-400"

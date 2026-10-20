@@ -176,7 +176,13 @@ type RunMessage =
   | {
       id: string;
       status: number;
-      body: { summary?: { subgenres: string[] }; summaryError?: string; error?: string; songSpecific?: boolean };
+      body: {
+        summary?: { subgenres: string[]; songConfidence: number | null };
+        summaryError?: string;
+        scoreError?: string;
+        error?: string;
+        songSpecific?: boolean;
+      };
     }
   | { done: true };
 
@@ -270,6 +276,14 @@ export function GenerateGenresDialog({
     return list;
   })();
 
+  // Songs with tags from before confidence scores, which the AI can score
+  // without changing the tags.
+  const unscored = (() => {
+    if (loaded.status !== "ready") return [];
+    const seen = new Set<string>();
+    return loaded.tracks.filter((t) => t.subgenres && t.unscored && !seen.has(t.id) && seen.add(t.id));
+  })();
+
   const clampedBatch = Math.min(Math.max(Math.round(batchSize) || 1, 1), MAX_BATCH);
   const clampedConcurrency = Math.min(Math.max(Math.round(concurrency) || 1, 1), maxConcurrency);
 
@@ -330,13 +344,20 @@ export function GenerateGenresDialog({
           const { id, status, body } = message;
           finish(
             id,
-            status < 400 && body.summary
-              ? { id, name, ok: true, detail: body.summary.subgenres.join(", ") }
+            status < 400 && body.summary && !body.scoreError
+              ? {
+                  id,
+                  name,
+                  ok: true,
+                  detail:
+                    body.summary.subgenres.join(", ") +
+                    (body.summary.songConfidence !== null ? ` (${body.summary.songConfidence}% sure)` : ""),
+                }
               : {
                   id,
                   name,
                   ok: false,
-                  detail: body.summaryError ?? body.error ?? `HTTP ${status}`,
+                  detail: body.scoreError ?? body.summaryError ?? body.error ?? `HTTP ${status}`,
                   songSpecific: body.songSpecific === true,
                 }
           );
@@ -384,10 +405,12 @@ export function GenerateGenresDialog({
               {missing.length === 0
                 ? "Every song in this playlist already has genre info."
                 : `${missing.length} of ${loaded.tracks.length} songs have no genre info. Each one analyzed is one AI request.`}
+              {unscored.length > 0 &&
+                ` ${unscored.length} ${unscored.length === 1 ? "song has" : "songs have"} tags without confidence scores; scoring keeps their tags and is one smaller AI request each.`}
             </p>
           )}
 
-          {missing.length > 0 && !running && (
+          {(missing.length > 0 || unscored.length > 0) && !running && (
             <div className="flex flex-wrap items-center gap-2">
               <label className="flex items-center gap-2 text-sm">
                 Analyze the next
@@ -417,27 +440,59 @@ export function GenerateGenresDialog({
                   allows one request a second (roughly 12–15 songs a minute).
                 </p>
               )}
-              <button
-                onClick={() => {
-                  const queue = missing.slice(0, clampedBatch);
-                  if (
-                    queue.length > CONFIRM_BATCH_OVER &&
-                    !window.confirm(`Analyze ${queue.length} songs? That's ${queue.length} AI requests.`)
-                  ) {
-                    return;
-                  }
-                  run(queue);
-                }}
-                className="rounded-md bg-green-600 px-3 py-1 text-sm font-semibold text-white"
-              >
-                Analyze {Math.min(clampedBatch, missing.length)}
-              </button>
-              <button
-                onClick={analyzeAll}
-                className="rounded-md border border-neutral-700 px-3 py-1 text-sm text-neutral-200 hover:border-amber-500 hover:text-amber-300"
-              >
-                Analyze all {missing.length}
-              </button>
+              {missing.length > 0 && (
+                <>
+                  <button
+                    onClick={() => {
+                      const queue = missing.slice(0, clampedBatch);
+                      if (
+                        queue.length > CONFIRM_BATCH_OVER &&
+                        !window.confirm(`Analyze ${queue.length} songs? That's ${queue.length} AI requests.`)
+                      ) {
+                        return;
+                      }
+                      run(queue);
+                    }}
+                    className="rounded-md bg-green-600 px-3 py-1 text-sm font-semibold text-white"
+                  >
+                    Analyze {Math.min(clampedBatch, missing.length)}
+                  </button>
+                  <button
+                    onClick={analyzeAll}
+                    className="rounded-md border border-neutral-700 px-3 py-1 text-sm text-neutral-200 hover:border-amber-500 hover:text-amber-300"
+                  >
+                    Analyze all {missing.length}
+                  </button>
+                </>
+              )}
+              {unscored.length > 0 && (
+                <>
+                  <button
+                    onClick={() => {
+                      const queue = unscored.slice(0, clampedBatch);
+                      if (
+                        queue.length > CONFIRM_BATCH_OVER &&
+                        !window.confirm(`Score ${queue.length} songs? That's ${queue.length} AI requests.`)
+                      ) {
+                        return;
+                      }
+                      run(queue);
+                    }}
+                    className="rounded-md bg-green-600 px-3 py-1 text-sm font-semibold text-white"
+                  >
+                    Score {Math.min(clampedBatch, unscored.length)}
+                  </button>
+                  <button
+                    onClick={() => {
+                      if (!window.confirm(`Score all ${unscored.length} songs? That's ${unscored.length} AI requests.`)) return;
+                      run(unscored);
+                    }}
+                    className="rounded-md border border-neutral-700 px-3 py-1 text-sm text-neutral-200 hover:border-amber-500 hover:text-amber-300"
+                  >
+                    Score all {unscored.length}
+                  </button>
+                </>
+              )}
               <label className="flex basis-full items-start gap-2 text-xs text-neutral-400">
                 <input
                   type="checkbox"

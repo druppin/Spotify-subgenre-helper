@@ -3,20 +3,56 @@ import { getValidAccessToken } from "@/lib/spotify/auth";
 import { SpotifyClient, SpotifyApiError } from "@/lib/spotify/client";
 import { buildTrackContext, hasGenreEvidence, type SummaryStep } from "@/lib/context";
 import { summarizeTrack, SUMMARY_PROMPT_VERSION } from "@/lib/llm/summarize";
-import type { ShownSummary, TrackContext, TrackSummary } from "@/lib/llm/types";
+import { scoreTags } from "@/lib/llm/scoreTags";
+import type { LlmConfig, ShownSummary, TrackContext, TrackSummary } from "@/lib/llm/types";
 import { getCache } from "@/lib/cache";
 import { spotifyErrorResponse } from "@/lib/spotify/routeError";
-import { describeGenres, getStoredGenres, saveTrackGenres } from "@/lib/trackGenres";
+import { aiTagsOf, getStoredGenres, saveTagScores, saveTrackGenres } from "@/lib/trackGenres";
 import { getLlmConfig } from "@/lib/settings";
 
 const summaryCache = getCache<TrackSummary>("track-summary");
 
 // The summary as shown: the stored tags (the user's, if they edited them)
-// in the same spellings they're read back with elsewhere.
+// in the same spellings they're read back with elsewhere, with their scores.
 async function shownSummary(id: string, summary: TrackSummary): Promise<ShownSummary> {
   const stored = await getStoredGenres(id);
-  const { own, broader } = stored ?? (await describeGenres(summary.subgenres));
-  return { ...summary, subgenres: [...own, ...broader], own, broader, edited: stored?.edited ?? false };
+  const { moodVibe, rationale } = summary;
+  if (!stored) {
+    return {
+      moodVibe,
+      rationale,
+      subgenres: summary.subgenres,
+      own: summary.subgenres,
+      broader: [],
+      edited: false,
+      confidence: {},
+      userTags: [],
+      songConfidence: null,
+    };
+  }
+  const { own, broader, edited, confidence, userTags, songConfidence } = stored;
+  return {
+    moodVibe,
+    rationale,
+    subgenres: [...own, ...broader],
+    own,
+    broader,
+    edited,
+    confidence,
+    userTags,
+    songConfidence,
+  };
+}
+
+/**
+ * The AI's original answer for a song: from the model now in use with the
+ * current prompt if there is one, otherwise from any earlier model or prompt.
+ */
+export async function findAnySummary(trackId: string, config: LlmConfig): Promise<TrackSummary | null> {
+  const current = await summaryCache.get(`${trackId}:${config.provider}:${config.model}:${SUMMARY_PROMPT_VERSION}`);
+  if (current) return current;
+  const any = (await summaryCache.entries()).find(([key, value]) => key.startsWith(`${trackId}:`) && value.subgenres.length > 0);
+  return any?.[1] ?? null;
 }
 
 /**
@@ -63,10 +99,32 @@ export async function summarizeTrackById(
     const cached = await summaryCache.get(cacheKey);
     // An answer with no subgenres (usually from an empty lookup) is no
     // answer; ask again rather than serving it.
-    if (cached && cached.subgenres.length > 0) {
-      await saveTrackGenres(id, cached, modelLabel);
+    const usable = cached && cached.subgenres.length > 0 ? cached : null;
+    if (usable) await saveTrackGenres(id, usable, modelLabel);
+    // Tags already saved (from an earlier prompt or model, or edited) are
+    // kept as they are, only given scores if they have none; regenerating
+    // is what replaces them.
+    const stored = await getStoredGenres(id);
+    if (usable || stored) {
+      let scoreError: string | null = null;
+      // Scores from no data at all would mean nothing; try again later.
+      if (stored?.unscored && !(lookupFailed && !hasGenreEvidence(context))) {
+        try {
+          saveTagScores(id, await scoreTags(context, aiTagsOf(id), llmConfig));
+        } catch (err) {
+          console.error("scoring tags failed:", err);
+          scoreError = err instanceof Error ? err.message : String(err);
+        }
+      }
       onStep?.("ai");
-      return NextResponse.json({ summary: await shownSummary(id, cached), context, cached: true });
+      const summary = usable ??
+        (await findAnySummary(id, llmConfig)) ?? { moodVibe: stored!.moodVibe, subgenres: stored!.subgenres, rationale: "" };
+      return NextResponse.json({
+        summary: await shownSummary(id, summary),
+        context,
+        cached: true,
+        ...(scoreError && { scoreError: `Couldn't score the tags: ${scoreError}` }),
+      });
     }
   }
 

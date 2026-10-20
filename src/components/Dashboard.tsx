@@ -3,12 +3,64 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { SpotifyPlaylist, SpotifyPlaylistTrackItem } from "@/lib/spotify/client";
 import { usePlayer } from "./PlayerProvider";
-import { SourcePlaylistPanel } from "./SourcePlaylistPanel";
+import { SourcePlaylistPanel, type SourceSort } from "./SourcePlaylistPanel";
 import { NowPlayingPanel } from "./NowPlayingPanel";
 import { DestinationPlaylistsPanel } from "./DestinationPlaylistsPanel";
 import { PlaylistPicker } from "./PlaylistPicker";
 import { QuickActions } from "./QuickActions";
 import { loadLastSession, saveLastSession, type Setup } from "@/lib/setups";
+
+const SOURCE_SORT_STORAGE_KEY = "sorter.sourceSort";
+
+function loadSourceSort(): SourceSort {
+  try {
+    const saved = localStorage.getItem(SOURCE_SORT_STORAGE_KEY);
+    if (saved === "least-confident" || saved === "most-confident") return saved;
+  } catch {
+    // Storage unavailable — playlist order it is.
+  }
+  return "playlist";
+}
+
+// Each song's average tag confidence (null when its tags aren't scored),
+// for the songs that have genre info.
+async function fetchConfidences(trackIds: string[]): Promise<Record<string, number | null>> {
+  const res = await fetch("/api/track-genres", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ ids: trackIds }),
+  });
+  const body = await res.json();
+  if (!res.ok) throw new Error(body.error ?? `HTTP ${res.status}`);
+  return Object.fromEntries(
+    Object.entries(body.genres as Record<string, { songConfidence: number | null }>).map(([id, g]) => [
+      id,
+      g.songConfidence,
+    ])
+  );
+}
+
+// The tracks in `sort` order; playlistOrder is how the playlist itself has
+// them. Songs with no score go last, in playlist order.
+function sortTracks(
+  tracks: SpotifyPlaylistTrackItem[],
+  sort: SourceSort,
+  confidences: Record<string, number | null>,
+  playlistOrder: SpotifyPlaylistTrackItem[]
+): SpotifyPlaylistTrackItem[] {
+  const position = new Map(playlistOrder.map((item, i) => [item, i]));
+  const byPlaylist = (a: SpotifyPlaylistTrackItem, b: SpotifyPlaylistTrackItem) =>
+    (position.get(a) ?? 0) - (position.get(b) ?? 0);
+  if (sort === "playlist") return [...tracks].sort(byPlaylist);
+  const direction = sort === "least-confident" ? 1 : -1;
+  const score = (item: SpotifyPlaylistTrackItem) => (item.track ? (confidences[item.track.id] ?? null) : null);
+  return [...tracks].sort((a, b) => {
+    const x = score(a);
+    const y = score(b);
+    if (x === null || y === null) return (x === null ? 1 : 0) - (y === null ? 1 : 0) || byPlaylist(a, b);
+    return (x - y) * direction || byPlaylist(a, b);
+  });
+}
 
 // The subgenre sorting view. Rendered inside AppShell, which provides the
 // player and the tab bar shown in this view's header.
@@ -35,6 +87,13 @@ export function Dashboard({ tabs }: { tabs: ReactNode }) {
   const [playlistIndexStatus, setPlaylistIndexStatus] = useState<"loading" | "ready" | "error">("loading");
   // Bumped after genres are generated so expanded playlist genre lists reload.
   const [genresVersion, setGenresVersion] = useState(0);
+  const [sourceSort, setSourceSort] = useState<SourceSort>(loadSourceSort);
+  // Read by the playlist load without making the sort a reason to reload.
+  const sourceSortRef = useRef(sourceSort);
+  // Average tag confidence per source track ID.
+  const [confidences, setConfidences] = useState<Record<string, number | null>>({});
+  // The source playlist's own order, to go back to from a confidence sort.
+  const playlistOrderRef = useRef<SpotifyPlaylistTrackItem[]>([]);
 
   const { ready, playTrack, onTrackEnd } = usePlayer();
 
@@ -119,7 +178,18 @@ export function Dashboard({ tabs }: { tabs: ReactNode }) {
           setSourceTracksError(body.error ?? "Failed to load this playlist's tracks.");
           return;
         }
-        const items: SpotifyPlaylistTrackItem[] = body.items ?? [];
+        const loadedItems: SpotifyPlaylistTrackItem[] = body.items ?? [];
+        playlistOrderRef.current = loadedItems;
+        // Scores come from the app's own database; without them the
+        // playlist still loads, just in its own order.
+        const ids = [...new Set(loadedItems.flatMap((item) => (item.track ? [item.track.id] : [])))];
+        const scores = await fetchConfidences(ids).catch((err) => {
+          console.error("Failed to load tag confidence:", err);
+          return {};
+        });
+        if (cancelled) return;
+        setConfidences(scores);
+        const items = sortTracks(loadedItems, sourceSortRef.current, scores, loadedItems);
         let index = 0;
         const resume = resumeRef.current;
         resumeRef.current = null;
@@ -140,6 +210,36 @@ export function Dashboard({ tabs }: { tabs: ReactNode }) {
   }, [sourcePlaylistId]);
 
   const currentTrack = sourceTracks[currentIndex]?.track ?? null;
+
+  // Re-sorts right away, staying on the same song.
+  const changeSourceSort = (sort: SourceSort) => {
+    setSourceSort(sort);
+    sourceSortRef.current = sort;
+    try {
+      localStorage.setItem(SOURCE_SORT_STORAGE_KEY, sort);
+    } catch {
+      // Not remembering the sort is fine.
+    }
+    const sorted = sortTracks(sourceTracks, sort, confidences, playlistOrderRef.current);
+    const current = sourceTracks[currentIndex];
+    setSourceTracks(sorted);
+    setCurrentIndex(Math.max(sorted.indexOf(current), 0));
+  };
+
+  // Keeps a song's score current after it's scored or its tags are edited.
+  // The list isn't re-sorted, so songs don't jump around while sorting.
+  const handleConfidenceChange = useCallback((trackId: string, confidence: number | null) => {
+    setConfidences((prev) => (prev[trackId] === confidence ? prev : { ...prev, [trackId]: confidence }));
+  }, []);
+
+  // Picks up scores from bulk generation.
+  useEffect(() => {
+    if (genresVersion === 0) return;
+    const ids = [...new Set(playlistOrderRef.current.flatMap((item) => (item.track ? [item.track.id] : [])))];
+    fetchConfidences(ids)
+      .then(setConfidences)
+      .catch((err) => console.error("Failed to reload tag confidence:", err));
+  }, [genresVersion]);
 
   useEffect(() => {
     // Until the restored playlist's tracks arrive there's no current track —
@@ -392,6 +492,9 @@ export function Dashboard({ tabs }: { tabs: ReactNode }) {
             error={sourceTracksError}
             pendingRemovalUri={pendingRemovalUri}
             otherPlaylistCounts={otherPlaylistCounts}
+            confidences={confidences}
+            sort={sourceSort}
+            onSortChange={changeSourceSort}
           />
         </div>
 
@@ -415,6 +518,7 @@ export function Dashboard({ tabs }: { tabs: ReactNode }) {
               onNext={goNext}
               canGoPrevious={currentIndex > 0}
               canGoNext={currentIndex < sourceTracks.length - 1 || pendingRemovalUri !== null}
+              onConfidenceChange={handleConfidenceChange}
             />
           </div>
         </div>

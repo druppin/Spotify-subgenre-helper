@@ -1,12 +1,11 @@
 import { sql } from "@/lib/db";
-import { getCache } from "@/lib/cache";
 import { buildTrackContext } from "@/lib/context";
 import { answerTrackQuestion } from "@/lib/llm/chat";
 import type { ChatMessage } from "@/lib/llm/providers";
-import { SUMMARY_PROMPT_VERSION } from "@/lib/llm/summarize";
-import type { LlmConfig, TrackSummary } from "@/lib/llm/types";
+import type { LlmConfig } from "@/lib/llm/types";
 import type { SpotifyClient } from "@/lib/spotify/client";
 import { getStoredGenres } from "@/lib/trackGenres";
+import { findAnySummary } from "@/lib/trackSummary";
 
 /*
  * Follow-up questions about a song, kept per Spotify track ID in the
@@ -39,16 +38,6 @@ function addMessage(trackId: string, role: ChatMessage["role"], content: string)
   );
 }
 
-// The AI's original answer for the song: from the model now in use if it
-// has one, otherwise from whichever model answered before.
-async function findSummary(trackId: string, config: LlmConfig): Promise<TrackSummary | null> {
-  const cache = getCache<TrackSummary>("track-summary");
-  const current = await cache.get(`${trackId}:${config.provider}:${config.model}:${SUMMARY_PROMPT_VERSION}`);
-  if (current) return current;
-  const any = (await cache.entries()).find(([key]) => key.startsWith(`${trackId}:`));
-  return any?.[1] ?? null;
-}
-
 /**
  * Asks the AI `question` about the song, with the earlier conversation,
  * and saves both. The question is only saved once an answer comes back,
@@ -62,7 +51,7 @@ export async function askAboutTrack(
 ): Promise<StoredChatMessage[]> {
   const [{ context }, summary, tags] = await Promise.all([
     buildTrackContext(trackId, spotify),
-    findSummary(trackId, config),
+    findAnySummary(trackId, config),
     getStoredGenres(trackId),
   ]);
   const history: ChatMessage[] = getTrackChat(trackId).map(({ role, content }) => ({ role, content }));

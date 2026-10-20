@@ -17,7 +17,8 @@ import { PlaylistPicker } from "./PlaylistPicker";
 import { PlaylistThumb } from "./PlaylistThumb";
 import { NewPlaylistDialog } from "./QuickActions";
 import { GenerateGenresDialog, PlaylistGenresDialog } from "./GenreDialogs";
-import { GenreTagEditor, saveGenreTags, type SavedGenres } from "./GenreTagEditor";
+import { GenreChips, GenreTagEditor, saveGenreTags, type SavedGenres } from "./GenreTagEditor";
+import type { StoredTags } from "@/lib/llm/types";
 
 // One song as it appears in one place (Liked Songs or an editable playlist).
 // Versions of the same song (see groupSongs) share a songId, so a single in
@@ -38,14 +39,9 @@ interface SongRow {
 
 // What the genre dropdown shows: stored genres (subgenres + mood), plus the
 // AI's reasoning when it was generated in this session.
-interface SongGenres {
+interface SongGenres extends StoredTags {
   // own, then broader.
   subgenres: string[];
-  // The song's own tags and the broader genres they roll up into.
-  own: string[];
-  broader: string[];
-  // The user changed the tags by hand.
-  edited: boolean;
   moodVibe: string;
   rationale?: string;
 }
@@ -57,7 +53,7 @@ function trackIdOf(uri: string): string {
 // "lost": songs with exactly one counted home. "homes": every song in one
 // chosen place, with everywhere else it lives.
 type Mode = "lost" | "homes";
-type SortKey = "oldest" | "newest" | "artist" | "title" | "fewest";
+type SortKey = "oldest" | "newest" | "artist" | "title" | "fewest" | "least-confident" | "most-confident";
 
 const IGNORED_STORAGE_KEY = "lostTracks.ignoredPlaceIds";
 const DESTINATION_STORAGE_KEY = "lostTracks.destinationId";
@@ -296,19 +292,7 @@ function GenreCell({
         >
           <div className="min-w-0 flex-1">
             <div className="flex max-h-[2.5rem] flex-wrap gap-1 overflow-hidden">
-              {genres.own.map((genre) => (
-                <span key={genre} className="rounded-full bg-green-600/20 px-1.5 py-px text-[11px] text-green-400">
-                  {genre}
-                </span>
-              ))}
-              {genres.broader.map((genre) => (
-                <span
-                  key={genre}
-                  className="rounded-full border border-green-600/30 px-1.5 text-[11px] text-green-400/70"
-                >
-                  {genre}
-                </span>
-              ))}
+              <GenreChips genres={genres} size="sm" />
               {genres.subgenres.length === 0 && <span className="text-[11px] text-neutral-500">No subgenres listed.</span>}
             </div>
             {(genres.moodVibe || genres.edited) && (
@@ -814,6 +798,13 @@ export function LostTracksView({ tabs }: { tabs: ReactNode }) {
             r.details.artists.some((a) => a.toLowerCase().includes(normalized))
         )
       : candidates;
+    const confidenceOf = (row: SongRow) => genresFor(row)?.songConfidence ?? null;
+    const byConfidence = (a: SongRow, b: SongRow, direction: 1 | -1) => {
+      const x = confidenceOf(a);
+      const y = confidenceOf(b);
+      if (x === null || y === null) return (x === null ? 1 : 0) - (y === null ? 1 : 0) || a.addedAt.localeCompare(b.addedAt);
+      return (x - y) * direction || a.addedAt.localeCompare(b.addedAt);
+    };
     const byArtist = (a: SongRow, b: SongRow) =>
       (a.details.artists[0] ?? "").localeCompare(b.details.artists[0] ?? "") || a.details.name.localeCompare(b.details.name);
     const compare: Record<SortKey, (a: SongRow, b: SongRow) => number> = {
@@ -822,6 +813,9 @@ export function LostTracksView({ tabs }: { tabs: ReactNode }) {
       artist: byArtist,
       title: (a, b) => a.details.name.localeCompare(b.details.name),
       fewest: (a, b) => a.countedOtherHomes - b.countedOtherHomes || a.addedAt.localeCompare(b.addedAt),
+      // Songs with no score (no genre info, or not scored yet) go last.
+      "least-confident": (a, b) => byConfidence(a, b, 1),
+      "most-confident": (a, b) => byConfidence(a, b, -1),
     };
     filtered.sort(compare[sort]);
     return {
@@ -829,7 +823,7 @@ export function LostTracksView({ tabs }: { tabs: ReactNode }) {
       hiddenRows: filtered.filter((r) => hiddenIds.has(r.songId)),
       hiddenTotal: hiddenIds.size,
     };
-  }, [mode, lostSongs, songHomes, selectedPlaceId, rowFor, query, sort, hiddenReason]);
+  }, [mode, lostSongs, songHomes, selectedPlaceId, rowFor, query, sort, hiddenReason, genresFor]);
 
   const saveHideRules = (placeId: string, ruleIds: string[]) => {
     const next = { ...hideRules };
@@ -1398,6 +1392,8 @@ export function LostTracksView({ tabs }: { tabs: ReactNode }) {
                 <option value="artist">Artist</option>
                 <option value="title">Title</option>
                 {mode === "homes" && <option value="fewest">Fewest other homes</option>}
+                <option value="least-confident">Least confident tags first</option>
+                <option value="most-confident">Most confident tags first</option>
               </select>
               <button
                 type="button"
