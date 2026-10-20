@@ -4,12 +4,14 @@ import { useEffect, useRef, useState } from "react";
 import { PlayerProvider } from "./PlayerProvider";
 import { Dashboard } from "./Dashboard";
 import { LostTracksView } from "./LostTracksView";
+import { FlowsView } from "./FlowsView";
 import { SettingsDialog } from "./SettingsDialog";
 import type { OrganizeStats } from "@/lib/organizeLog";
 
 const TABS = [
   { id: "subgenres", label: "Subgenre sorter" },
   { id: "lost", label: "My library" },
+  { id: "flows", label: "Flows" },
 ] as const;
 type TabId = (typeof TABS)[number]["id"];
 
@@ -148,6 +150,11 @@ export function AppShell() {
       {visited.has("lost") && (
         <div className={activeTab === "lost" ? "contents" : "hidden"}>
           <LostTracksView tabs={tabs} />
+        </div>
+      )}
+      {visited.has("flows") && (
+        <div className={activeTab === "flows" ? "contents" : "hidden"}>
+          <FlowsView tabs={tabs} />
         </div>
       )}
     </PlayerProvider>

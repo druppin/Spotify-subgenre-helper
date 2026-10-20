@@ -101,6 +101,34 @@ CREATE TABLE IF NOT EXISTS track_chat_messages (
 );
 CREATE INDEX IF NOT EXISTS track_chat_messages_track ON track_chat_messages(track_id, id);
 
+-- Flows: playlists (and Liked Songs) wired into one target playlist, which
+-- running the flow tops up with their songs (see flows.ts).
+CREATE TABLE IF NOT EXISTS flows (
+  id INTEGER PRIMARY KEY,
+  name TEXT NOT NULL,
+  -- The playlist songs are added to; null until one is picked.
+  target_id TEXT,
+  created_at INTEGER NOT NULL,
+  last_run_at INTEGER,
+  last_run_added INTEGER
+);
+
+-- One wire per source: which place feeds the flow, and its filters. With
+-- no filters set, every song passes.
+CREATE TABLE IF NOT EXISTS flow_sources (
+  flow_id INTEGER NOT NULL REFERENCES flows(id) ON DELETE CASCADE,
+  source_id TEXT NOT NULL,
+  position INTEGER NOT NULL,
+  -- JSON arrays: genre families and exact genres a song must have one of.
+  families TEXT NOT NULL DEFAULT '[]',
+  genres TEXT NOT NULL DEFAULT '[]',
+  -- Minimum average tag confidence (0-100), or null for none.
+  min_confidence INTEGER,
+  -- Whether songs with no tags pass when filters are set.
+  include_untagged INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (flow_id, source_id)
+);
+
 -- One-time imports already done (see once).
 CREATE TABLE IF NOT EXISTS done_once (key TEXT PRIMARY KEY);
 
@@ -146,7 +174,7 @@ const ADDED_COLUMNS: { table: string; column: string; declaration: string }[] = 
 const LATE_INDEXES = "CREATE INDEX IF NOT EXISTS tracks_base_title ON tracks(base_title);";
 // Bumped whenever the schema changes, so a dev server's open connection
 // picks the change up without a restart.
-const SCHEMA_VERSION = 5;
+const SCHEMA_VERSION = 6;
 
 interface DbState {
   db: DatabaseSync;
