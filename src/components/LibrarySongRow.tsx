@@ -91,8 +91,9 @@ function GenreCell({
     if (!el) return;
     const count = () => {
       // Off-screen rows skip layout (see the row's content-visibility);
-      // measuring them would force it. Their size changes once they're
-      // scrolled into view, which calls this again.
+      // measuring them would force it. They're counted on coming back
+      // into view instead, since the folded line keeps its size even when
+      // the tags changed meanwhile.
       if (!el.checkVisibility({ contentVisibilityAuto: true })) return;
       const items = [...el.children] as HTMLElement[];
       const firstTop = items[0]?.offsetTop ?? 0;
@@ -101,7 +102,12 @@ function GenreCell({
     count();
     const observer = new ResizeObserver(count);
     observer.observe(el);
-    return () => observer.disconnect();
+    const row = el.closest("li");
+    row?.addEventListener("contentvisibilityautostatechange", count);
+    return () => {
+      observer.disconnect();
+      row?.removeEventListener("contentvisibilityautostatechange", count);
+    };
   }, [genres, editing]);
   const loading = state === "loading";
   const error = state && state !== "loading" ? state.error : null;
