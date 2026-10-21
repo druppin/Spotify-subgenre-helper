@@ -1,6 +1,15 @@
 "use client";
 
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import {
+  useCallback,
+  useDeferredValue,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import type { SpotifyPlaylist } from "@/lib/spotify/client";
 import {
   LIKED_SONGS_ID,
@@ -8,7 +17,6 @@ import {
   type LibraryCoverage,
   type LibraryFetchMode,
   type LibraryResponse,
-  type LibraryTrackDetails,
 } from "@/lib/library";
 import type { ScanProgressResponse } from "@/app/api/library/progress/route";
 import { groupSongs } from "@/lib/songIdentity";
@@ -21,36 +29,10 @@ import { VersionsDialog } from "./VersionsDialog";
 import type { VersionChange } from "@/lib/versions";
 import { NewPlaylistDialog } from "./QuickActions";
 import { GenerateGenresDialog, PlaylistGenresDialog } from "./GenreDialogs";
-import { CloseIcon, HeartIcon, PauseIcon, PencilIcon, PlayIcon, RefreshIcon } from "./Icons";
-import { GenreChips, GenreTagEditor, saveGenreTags, type SavedGenres } from "./GenreTagEditor";
-import type { StoredTags } from "@/lib/llm/types";
+import { CloseIcon, HeartIcon } from "./Icons";
+import { saveGenreTags, type SavedGenres } from "./GenreTagEditor";
+import { LibrarySongRow, type SongGenres, type SongRow, type SongRowActions } from "./LibrarySongRow";
 import { familyMark, type GenreFamily } from "@/lib/genreFamily";
-
-// One song as it appears in one place (Liked Songs or an editable playlist).
-// Versions of the same song (see groupSongs) share a songId, so a single in
-// one playlist and its album version in another count as one song in two.
-interface SongRow {
-  songId: string;
-  // The version of the song that's in placeId.
-  uri: string;
-  details: LibraryTrackDetails;
-  placeId: string;
-  addedAt: string;
-  // Every other place the song (any version) is in, counted or not.
-  otherPlaceIds: string[];
-  // How many of otherPlaceIds count as homes (aren't ignored).
-  countedOtherHomes: number;
-  versions: number;
-}
-
-// What the genre dropdown shows: stored genres (subgenres + mood), plus the
-// AI's reasoning when it was generated in this session.
-interface SongGenres extends StoredTags {
-  // own, then broader.
-  subgenres: string[];
-  moodVibe: string;
-  rationale?: string;
-}
 
 function trackIdOf(uri: string): string {
   return uri.split(":")[2] ?? uri;
@@ -70,9 +52,6 @@ const SHOW_GENRES_STORAGE_KEY = "lostTracks.showGenres";
 // Groups of versions the user said are different on purpose, each as its
 // sorted URIs joined by "|". A group that gains a version is flagged again.
 const KEPT_APART_STORAGE_KEY = "lostTracks.keptApartVersions";
-// Other homes shown as chips in a song's row before the rest fold into "+N",
-// so a song in many playlists doesn't make its row taller.
-const MAX_PLACE_CHIPS = 3;
 
 function loadJson<T>(key: string, fallback: T): T {
   try {
@@ -89,13 +68,6 @@ function saveJson(key: string, value: unknown) {
   } catch {
     // Not remembering this is fine.
   }
-}
-
-function formatAddedAt(addedAt: string): string {
-  const date = new Date(addedAt);
-  // Very old playlist entries come back with a 1970 placeholder date.
-  if (Number.isNaN(date.getTime()) || date.getFullYear() < 2000) return "—";
-  return date.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
 }
 
 function ProgressLine({ label, done, total }: { label: string; done: number; total: number | null }) {
@@ -274,237 +246,6 @@ function CoverageBar({
   );
 }
 
-// A song's genre info as a column in its row: subgenres and mood, with
-// the AI's reasoning on hover, and ways to edit the tags or generate or
-// regenerate them.
-// What a song with no tags starts from in the tag editor.
-const NO_GENRES: SongGenres = {
-  own: [],
-  broader: [],
-  subgenres: [],
-  edited: false,
-  confidence: {},
-  userTags: [],
-  songConfidence: null,
-  moodVibe: "",
-};
-
-function GenreCell({
-  genres,
-  state,
-  expandAll,
-  onGenerate,
-  onSaveTags,
-}: {
-  genres: SongGenres | undefined;
-  // The list's "expand all genres" switch; each row can still be flipped.
-  expandAll: boolean;
-  // "loading" while generating, an error message if that failed.
-  state: "loading" | { error: string } | undefined;
-  onGenerate: (force: boolean) => void;
-  onSaveTags: (tags: string[]) => Promise<void>;
-}) {
-  const [editing, setEditing] = useState(false);
-  // Tags show on one line; the ones that don't fit are counted and can be
-  // expanded into view.
-  const [expanded, setExpanded] = useState(expandAll);
-  // Follows the switch whenever it's flipped (React's "adjust state when a
-  // prop changes" pattern).
-  const [lastExpandAll, setLastExpandAll] = useState(expandAll);
-  if (expandAll !== lastExpandAll) {
-    setLastExpandAll(expandAll);
-    setExpanded(expandAll);
-  }
-  const [hiddenCount, setHiddenCount] = useState(0);
-  const chipsRef = useRef<HTMLDivElement>(null);
-  useLayoutEffect(() => {
-    const el = chipsRef.current;
-    if (!el) return;
-    const count = () => {
-      const items = [...el.children] as HTMLElement[];
-      const firstTop = items[0]?.offsetTop ?? 0;
-      setHiddenCount(items.filter((item) => item.offsetTop > firstTop).length);
-    };
-    count();
-    const observer = new ResizeObserver(count);
-    observer.observe(el);
-    return () => observer.disconnect();
-  }, [genres, editing]);
-  const loading = state === "loading";
-  const error = state && state !== "loading" ? state.error : null;
-  return (
-    <div className="w-64 flex-shrink-0" onClick={(e) => e.stopPropagation()}>
-      {editing ? (
-        <GenreTagEditor
-          genres={genres ?? NO_GENRES}
-          size="sm"
-          onSave={async (tags) => {
-            await onSaveTags(tags);
-            setEditing(false);
-          }}
-          onCancel={() => setEditing(false)}
-        />
-      ) : genres ? (
-        <div
-          title={
-            [genres.edited && "Tags edited by you", genres.moodVibe, genres.rationale].filter(Boolean).join("\n\n") ||
-            undefined
-          }
-          className="flex items-center gap-1"
-        >
-          <div className="min-w-0 flex-1">
-            <div
-              ref={chipsRef}
-              className={`flex flex-wrap gap-1 ${expanded ? "" : "max-h-[1.25rem] overflow-hidden"}`}
-            >
-              <GenreChips genres={genres} size="sm" />
-              {genres.subgenres.length === 0 && <span className="text-[11px] text-muted">No subgenres listed.</span>}
-            </div>
-            {/* Counted open or folded: tags past the first line. */}
-            {hiddenCount > 0 && (
-              <button
-                type="button"
-                onClick={() => setExpanded((open) => !open)}
-                aria-expanded={expanded}
-                className="text-[11px] text-muted underline-offset-2 hover:text-ink hover:underline"
-              >
-                {expanded ? "Show less" : `+${hiddenCount} more`}
-              </button>
-            )}
-          </div>
-          <div
-            className={`flex flex-shrink-0 items-center gap-1 ${
-              loading ? "" : "opacity-0 focus-within:opacity-100 group-hover:opacity-100"
-            }`}
-          >
-            <button
-              type="button"
-              onClick={() => setEditing(true)}
-              disabled={loading}
-              title="Change, remove, or add tags"
-              aria-label="Edit tags"
-              className="flex h-6 w-6 items-center justify-center rounded text-muted hover:bg-raised hover:text-ink disabled:opacity-50"
-            >
-              <PencilIcon size={14} />
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                if (genres.edited && !confirm("Regenerating replaces the tags you edited with the AI's. Go ahead?")) {
-                  return;
-                }
-                onGenerate(true);
-              }}
-              disabled={loading}
-              title="Not right? Generate fresh genre info for this song."
-              aria-label="Regenerate genre info"
-              className="flex h-6 w-6 items-center justify-center rounded text-muted hover:bg-raised hover:text-ink disabled:opacity-50"
-            >
-              <RefreshIcon size={14} className={loading ? "animate-spin motion-reduce:animate-none" : undefined} />
-            </button>
-          </div>
-        </div>
-      ) : (
-        <div className="flex items-center gap-1.5">
-          <button
-            type="button"
-            onClick={() => onGenerate(false)}
-            disabled={loading}
-            className="rounded-md border border-line px-2 py-0.5 text-[11px] text-muted hover:border-ink-2 hover:bg-raised hover:text-ink disabled:opacity-50"
-          >
-            {loading ? "Generating…" : "Generate genre info"}
-          </button>
-          {!loading && (
-            <button
-              type="button"
-              onClick={() => setEditing(true)}
-              title="Tag this song yourself"
-              className="rounded-md border border-line px-2 py-0.5 text-[11px] text-muted hover:border-ink-2 hover:bg-raised hover:text-ink"
-            >
-              Add tags
-            </button>
-          )}
-        </div>
-      )}
-      {error && (
-        <div className="mt-0.5 truncate text-[11px] text-danger" title={error}>
-          {error}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function PlaceChip({
-  name,
-  ignored,
-  onClick,
-  onRemove,
-}: {
-  name: string;
-  ignored: boolean;
-  onClick: () => void;
-  // Omitted where removing isn't possible (Liked Songs).
-  onRemove?: () => void;
-}) {
-  // Removing takes a second click on the armed chip, so a stray click on
-  // the × can't take a song out of a playlist.
-  const [armed, setArmed] = useState(false);
-  if (armed && onRemove) {
-    return (
-      <button
-        type="button"
-        onClick={(e) => {
-          e.stopPropagation();
-          setArmed(false);
-          onRemove();
-        }}
-        onMouseLeave={() => setArmed(false)}
-        onBlur={() => setArmed(false)}
-        title={`Remove this song from ${name}`}
-        className="max-w-[180px] truncate rounded-full border border-danger bg-danger/20 px-2 py-0.5 text-[11px] text-danger"
-      >
-        Remove from {name}?
-      </button>
-    );
-  }
-  return (
-    <span
-      className={`flex min-w-0 max-w-[180px] flex-shrink items-center rounded-full border text-[11px] ${
-        ignored
-          ? "border-line text-faint"
-          : "border-line-strong text-ink-2 hover:border-ink-2"
-      }`}
-    >
-      <button
-        type="button"
-        onClick={(e) => {
-          e.stopPropagation();
-          onClick();
-        }}
-        title={ignored ? `${name} (not counted as a home)` : `Show ${name}`}
-        className={`truncate py-0.5 ${onRemove ? "pl-2 pr-1" : "px-2"} ${ignored ? "line-through" : "hover:text-ink"}`}
-      >
-        {name}
-      </button>
-      {onRemove && (
-        <button
-          type="button"
-          onClick={(e) => {
-            e.stopPropagation();
-            setArmed(true);
-          }}
-          aria-label={`Remove from ${name}`}
-          title={`Remove from ${name}`}
-          className="rounded-full pr-1.5 text-muted hover:text-danger"
-        >
-          <CloseIcon size={12} />
-        </button>
-      )}
-    </span>
-  );
-}
-
 export function LostTracksView({ tabs }: { tabs: ReactNode }) {
   const [playlists, setPlaylists] = useState<SpotifyPlaylist[]>([]);
   const [trackDetails, setTrackDetails] = useState<LibraryResponse["tracks"]>({});
@@ -529,6 +270,10 @@ export function LostTracksView({ tabs }: { tabs: ReactNode }) {
   const [selectedPlaceId, setSelectedPlaceId] = useState<string | null>(null);
   const [placeQuery, setPlaceQuery] = useState("");
   const [query, setQuery] = useState("");
+  // The lists filter by these, so a keystroke shows in the box right away
+  // and filtering thousands of songs happens in the background.
+  const deferredPlaceQuery = useDeferredValue(placeQuery);
+  const deferredQuery = useDeferredValue(query);
   const [sort, setSort] = useState<SortKey>("oldest");
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const lastToggledIndexRef = useRef<number | null>(null);
@@ -859,7 +604,7 @@ export function LostTracksView({ tabs }: { tabs: ReactNode }) {
   }, [mode, lostSongs, songHomes]);
 
   const placeList = useMemo(() => {
-    const normalized = placeQuery.trim().toLowerCase();
+    const normalized = deferredPlaceQuery.trim().toLowerCase();
     return Object.keys(places)
       .map((id) => ({ id, name: placeName(id), count: placeCounts.get(id) ?? 0, ignored: ignoredIds.has(id) }))
       .filter((p) => !normalized || p.name.toLowerCase().includes(normalized))
@@ -870,7 +615,7 @@ export function LostTracksView({ tabs }: { tabs: ReactNode }) {
           b.count - a.count ||
           a.name.localeCompare(b.name)
       );
-  }, [places, placeName, placeCounts, ignoredIds, placeQuery]);
+  }, [places, placeName, placeCounts, ignoredIds, deferredPlaceQuery]);
 
   // Homes mode always shows one playlist; open on the first once the
   // library has loaded rather than an empty list.
@@ -895,9 +640,10 @@ export function LostTracksView({ tabs }: { tabs: ReactNode }) {
     [hiddenSets, songVersions, songHomes, hideRules]
   );
 
-  // rows: what can be selected and acted on. hiddenRows: the homes view's
-  // hidden songs, listed after them. hiddenTotal ignores the text filter.
-  const { rows, hiddenRows, hiddenTotal } = useMemo(() => {
+  // Every song the view could list, before the text filter, and which of
+  // them are hidden. Kept apart from filtering so a search reuses these
+  // same row objects and rows still listed don't re-render.
+  const { candidates, hiddenIds } = useMemo(() => {
     let candidates: SongRow[];
     if (mode === "lost") {
       candidates = selectedPlaceId ? lostSongs.filter((r) => r.placeId === selectedPlaceId) : lostSongs;
@@ -914,14 +660,21 @@ export function LostTracksView({ tabs }: { tabs: ReactNode }) {
         ? candidates.filter((r) => hiddenReason(r.songId, selectedPlaceId)).map((r) => r.songId)
         : []
     );
-    const normalized = query.trim().toLowerCase();
+    return { candidates, hiddenIds };
+  }, [mode, lostSongs, songHomes, selectedPlaceId, rowFor, hiddenReason]);
+
+  // rows: what can be selected and acted on. hiddenRows: the homes view's
+  // hidden songs, listed after them. hiddenTotal ignores the text filter.
+  const { rows, hiddenRows, hiddenTotal } = useMemo(() => {
+    const normalized = deferredQuery.trim().toLowerCase();
+    // A copy either way: sorting in place would reorder the memoized lists.
     const filtered = normalized
       ? candidates.filter(
           (r) =>
             r.details.name.toLowerCase().includes(normalized) ||
             r.details.artists.some((a) => a.toLowerCase().includes(normalized))
         )
-      : candidates;
+      : [...candidates];
     const confidenceOf = (row: SongRow) => genresFor(row)?.songConfidence ?? null;
     const byConfidence = (a: SongRow, b: SongRow, direction: 1 | -1) => {
       const x = confidenceOf(a);
@@ -947,7 +700,7 @@ export function LostTracksView({ tabs }: { tabs: ReactNode }) {
       hiddenRows: filtered.filter((r) => hiddenIds.has(r.songId)),
       hiddenTotal: hiddenIds.size,
     };
-  }, [mode, lostSongs, songHomes, selectedPlaceId, rowFor, query, sort, hiddenReason, genresFor]);
+  }, [candidates, hiddenIds, deferredQuery, sort, genresFor]);
 
   const saveHideRules = (placeId: string, ruleIds: string[]) => {
     const next = { ...hideRules };
@@ -1070,8 +823,9 @@ export function LostTracksView({ tabs }: { tabs: ReactNode }) {
     if (mode === "lost" && selectedPlaceId === id) setSelectedPlaceId(null);
   };
 
-  const toggleSelected = (index: number, shiftKey: boolean) => {
-    const uri = rows[index].uri;
+  const toggleSelected = (uri: string, shiftKey: boolean) => {
+    const index = rows.findIndex((r) => r.uri === uri);
+    if (index === -1) return;
     const select = !selected.has(uri);
     const anchor = lastToggledIndexRef.current;
     // Shift-click applies the same check state to the whole range.
@@ -1265,6 +1019,27 @@ export function LostTracksView({ tabs }: { tabs: ReactNode }) {
   };
 
   const currentDetails = currentUri ? trackDetails[currentUri] : undefined;
+
+  // Rows call back through this ref (see SongRowActions), refreshed after
+  // every render so each call sees the latest state.
+  const rowActions = useRef<SongRowActions>(null!);
+  useLayoutEffect(() => {
+    rowActions.current = {
+      play: (uri) => {
+        if (ready) playTrack(uri).catch((err) => console.error(err));
+      },
+      toggleSelected,
+      openInfo: (uri) => setInfoUri(uri),
+      openVersions: (songId) => setVersionsSongId(songId),
+      showPlace: (placeId) => setSelectedPlaceId(placeId),
+      removeFromPlace: (songId, placeId) => removeSongsFromPlace([songId], placeId),
+      togglePlaces: togglePlacesExpanded,
+      hide: (row) => selectedPlaceId && hideRows([row], selectedPlaceId),
+      unhide: (row) => selectedPlaceId && unhideRow(row, selectedPlaceId),
+      generateGenres,
+      saveTags,
+    };
+  });
   // Liked Songs can be added to (liking the songs) once it's been read.
   const destinationPlaylists = [
     ...(places[LIKED_SONGS_ID] ? [LIKED_SONGS_PICKER_ENTRY] : []),
@@ -1745,167 +1520,28 @@ export function LostTracksView({ tabs }: { tabs: ReactNode }) {
             <ul className="min-h-0 flex-1 overflow-y-auto">
               {[...rows, ...hiddenRows].map((row, index) => {
                 const hidden = index >= rows.length;
-                const reason = hidden && selectedPlaceId ? hiddenReason(row.songId, selectedPlaceId) : null;
-                const isCurrent = row.uri === currentUri;
                 return (
-                  <li key={row.songId}>
-                    {hidden && index === rows.length && (
-                      <div className="mt-2 border-t border-line px-4 pb-1 pt-2 text-xs font-semibold text-muted">
-                        Hidden ({hiddenRows.length})
-                      </div>
-                    )}
-                    <div
-                      onClick={() => ready && playTrack(row.uri).catch((err) => console.error(err))}
-                      title={ready ? "Click to play" : "Player is still connecting…"}
-                      className={`group flex cursor-pointer items-center gap-3 px-4 py-1 text-sm ${
-                        isCurrent
-                          ? "bg-raised text-ink"
-                          : hidden
-                            ? "text-ink-2 opacity-40 hover:opacity-70"
-                            : selected.has(row.uri)
-                              ? "bg-raised text-ink hover:bg-line"
-                              : "text-ink-2 hover:bg-panel"
-                      }`}
-                    >
-                      <input
-                        type="checkbox"
-                        checked={!hidden && selected.has(row.uri)}
-                        disabled={hidden}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          if (!hidden) toggleSelected(index, e.shiftKey);
-                        }}
-                        onChange={() => {}}
-                        aria-label={hidden ? `${row.details.name} is hidden` : `Select ${row.details.name}`}
-                        className="accent-band disabled:cursor-not-allowed"
-                      />
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setInfoUri(row.uri);
-                        }}
-                        title="Open the song's genres, AI notes and chat"
-                        aria-label={`Open ${row.details.name}'s genres and AI notes`}
-                        className="flex-shrink-0 rounded hover:ring-2 hover:ring-line-strong"
-                      >
-                        {row.details.image ? (
-                          // eslint-disable-next-line @next/next/no-img-element
-                          <img src={row.details.image} alt="" loading="lazy" className="h-8 w-8 rounded object-cover" />
-                        ) : (
-                          <div className="h-8 w-8 rounded bg-raised" />
-                        )}
-                      </button>
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-center gap-1.5">
-                          <span className="truncate font-medium">
-                            {isCurrent && (
-                              <span className="mr-1.5 inline-flex align-[-2px]">
-                                {isPaused ? <PauseIcon size={13} /> : <PlayIcon size={13} />}
-                              </span>
-                            )}
-                            {row.details.name}
-                          </span>
-                          {row.versions > 1 && !keptApart.has(versionGroupKey(row.songId)) && (
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setVersionsSongId(row.songId);
-                              }}
-                              className="flex-shrink-0 rounded bg-raised px-1 text-[11px] text-muted hover:bg-line hover:text-ink"
-                              title="Released more than once (e.g. single and album); counted as one song. Click to compare them."
-                            >
-                              {row.versions} versions
-                            </button>
-                          )}
-                        </div>
-                        <div className="truncate text-xs text-muted">{row.details.artists.join(", ")}</div>
-                      </div>
-                      {mode === "lost" && !selectedPlaceId && (
-                        <span className="hidden max-w-[200px] truncate text-xs text-muted md:block">
-                          {placeName(row.placeId)}
-                        </span>
-                      )}
-                      {mode === "homes" && (
-                        <div
-                          className={`hidden max-w-[45%] items-center justify-end gap-1 md:flex ${
-                            placesExpanded(row.songId) ? "flex-wrap py-1" : "flex-nowrap overflow-hidden"
-                          }`}
-                        >
-                          {row.countedOtherHomes === 0 && (
-                            <span className="flex-shrink-0 rounded-full bg-warn/20 px-2 py-0.5 text-[11px] text-warn">
-                              Only here
-                            </span>
-                          )}
-                          {(placesExpanded(row.songId) ? row.otherPlaceIds : row.otherPlaceIds.slice(0, MAX_PLACE_CHIPS)).map((id) => (
-                            <PlaceChip
-                              key={id}
-                              name={placeName(id)}
-                              ignored={ignoredIds.has(id)}
-                              onClick={() => setSelectedPlaceId(id)}
-                              onRemove={id === LIKED_SONGS_ID ? undefined : () => removeSongsFromPlace([row.songId], id)}
-                            />
-                          ))}
-                          {row.otherPlaceIds.length > MAX_PLACE_CHIPS && (
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                togglePlacesExpanded(row.songId);
-                              }}
-                              aria-expanded={placesExpanded(row.songId)}
-                              className="flex-shrink-0 rounded-full border border-line px-2 py-0.5 text-[11px] text-muted hover:border-ink-2 hover:text-ink"
-                              title={
-                                placesExpanded(row.songId)
-                                  ? "Fold these back"
-                                  : `Also in ${row.otherPlaceIds.slice(MAX_PLACE_CHIPS).map(placeName).join(", ")}`
-                              }
-                            >
-                              {placesExpanded(row.songId) ? "Show less" : `+${row.otherPlaceIds.length - MAX_PLACE_CHIPS}`}
-                            </button>
-                          )}
-                        </div>
-                      )}
-                      {hidden && reason && reason.alsoIn.length > 0 && (
-                        <span className="max-w-[200px] flex-shrink-0 truncate text-[11px] text-muted">
-                          also in {reason.alsoIn.map(placeName).join(", ")}
-                        </span>
-                      )}
-                      {mode === "homes" && selectedPlaceId && (!hidden || reason?.manual) && (
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            if (hidden) unhideRow(row, selectedPlaceId);
-                            else hideRows([row], selectedPlaceId);
-                          }}
-                          title={
-                            hidden
-                              ? "Show this song normally again"
-                              : "Move to the bottom of this playlist's list, greyed out and unselectable"
-                          }
-                          className={`flex-shrink-0 rounded border px-1.5 py-0.5 text-[11px] ${
-                            hidden
-                              ? "border-line-strong text-ink hover:border-muted"
-                              : "border-line text-muted opacity-0 hover:border-line-strong hover:text-ink focus:opacity-100 group-hover:opacity-100"
-                          }`}
-                        >
-                          {hidden ? "Unhide" : "Hide"}
-                        </button>
-                      )}
-                      {showGenres && (
-                        <GenreCell
-                          genres={genresFor(row)}
-                          expandAll={genresExpandAll}
-                          state={genreStatus[row.songId]}
-                          onGenerate={(force) => generateGenres(row, force)}
-                          onSaveTags={(tags) => saveTags(row, tags)}
-                        />
-                      )}
-                      <span className="w-24 flex-shrink-0 text-right text-xs text-muted">{formatAddedAt(row.addedAt)}</span>
-                    </div>
-                  </li>
+                  <LibrarySongRow
+                    key={row.songId}
+                    row={row}
+                    hidden={hidden}
+                    hiddenHeaderCount={hidden && index === rows.length ? hiddenRows.length : undefined}
+                    hiddenReason={hiddenReason}
+                    current={row.uri === currentUri ? (isPaused ? "paused" : "playing") : null}
+                    selected={selected.has(row.uri)}
+                    ready={ready}
+                    mode={mode}
+                    selectedPlaceId={selectedPlaceId}
+                    showVersions={row.versions > 1 && !keptApart.has(versionGroupKey(row.songId))}
+                    placesExpanded={placesExpanded(row.songId)}
+                    placeName={placeName}
+                    ignoredIds={ignoredIds}
+                    showGenres={showGenres}
+                    genres={genresFor(row)}
+                    genreState={genreStatus[row.songId]}
+                    genresExpandAll={genresExpandAll}
+                    actions={rowActions}
+                  />
                 );
               })}
               {rows.length === 0 && (
