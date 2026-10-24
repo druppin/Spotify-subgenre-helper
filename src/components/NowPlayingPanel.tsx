@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import type { SpotifyTrack } from "@/lib/spotify/client";
 import type { ShownSummary, TrackContext } from "@/lib/llm/types";
+import type { ReleaseInfo } from "@/lib/releaseInfo";
 import { usePlayer } from "./PlayerProvider";
 import { TrackDataPanel } from "./TrackDataPanel";
 import { ConfidenceMeter, GenreChips, GenreTagEditor, saveGenreTags, type SavedGenres } from "./GenreTagEditor";
@@ -22,6 +23,8 @@ interface Props {
   // Shown for a song that may not be the one playing (My library's song
   // view): Play starts this song, and the seek bar only works once it has.
   ownPlayback?: boolean;
+  // Shown when there's no song.
+  emptyText?: string;
 }
 
 type FetchState =
@@ -217,6 +220,45 @@ function TrackData({
   );
 }
 
+// The year the song first came out (MusicBrainz, looked up once per song),
+// showing the Spotify release's year until then or when it's unknown.
+function ReleaseYear({ uri, albumDate }: { uri: string; albumDate: string }) {
+  const [original, setOriginal] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/versions/info", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ uris: [uri] }),
+    })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((body: { info: Record<string, ReleaseInfo> } | null) => {
+        const date = body?.info[uri]?.originalDate;
+        if (!cancelled && date) setOriginal(date);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [uri]);
+
+  const year = (original ?? albumDate).slice(0, 4);
+  const releaseYear = albumDate.slice(0, 4);
+  if (!year) return null;
+  return (
+    <>
+      {" · "}
+      <span title={original ? "When the song first came out (from MusicBrainz)" : "Year of this Spotify release"}>
+        {year}
+      </span>
+      {original && releaseYear && releaseYear !== year && (
+        <span className="text-faint"> (this release {releaseYear})</span>
+      )}
+    </>
+  );
+}
+
 export function NowPlayingPanel({
   track,
   onPrevious,
@@ -225,6 +267,7 @@ export function NowPlayingPanel({
   canGoNext,
   onConfidenceChange,
   ownPlayback = false,
+  emptyText = "Pick a source playlist to start sorting.",
 }: Props) {
   const { ready, isPaused, currentUri, volume, playbackError, togglePlay, playTrack, setVolume } = usePlayer();
   const [retryNonce, setRetryNonce] = useState(0);
@@ -238,7 +281,7 @@ export function NowPlayingPanel({
   if (!track) {
     return (
       <div className="flex h-full items-center justify-center text-muted">
-        Pick a source playlist to start sorting.
+        {emptyText}
       </div>
     );
   }
@@ -259,7 +302,10 @@ export function NowPlayingPanel({
       )}
       <div>
         <h1 className="font-narrow text-4xl font-bold leading-tight">{track.name}</h1>
-        <p className="mt-0.5 text-[15px] text-muted">{track.artists.map((a) => a.name).join(", ")}</p>
+        <p className="mt-0.5 text-[15px] text-muted">
+          {track.artists.map((a) => a.name).join(", ")}
+          <ReleaseYear uri={track.uri} albumDate={track.album.release_date} />
+        </p>
       </div>
 
       <div className="w-full max-w-xl space-y-1.5">

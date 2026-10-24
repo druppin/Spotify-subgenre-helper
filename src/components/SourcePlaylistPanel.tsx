@@ -17,6 +17,9 @@ interface Props {
   confidences: Record<string, number | null>;
   sort: SourceSort;
   onSortChange: (sort: SourceSort) => void;
+  // A playlist the app can't read the songs of: it plays instead, and the
+  // list holds the songs heard so far.
+  listening?: boolean;
 }
 
 export function SourcePlaylistPanel({
@@ -29,26 +32,35 @@ export function SourcePlaylistPanel({
   confidences,
   sort,
   onSortChange,
+  listening = false,
 }: Props) {
   const scored = tracks.filter((item) => item.track && (confidences[item.track.id] ?? null) !== null).length;
 
   return (
     <div className="flex h-full flex-col overflow-hidden">
       <div className="mb-2 flex items-center justify-between gap-2 px-3 pt-3">
-        <h2 className="font-narrow text-base font-bold">Source playlist</h2>
-        <select
-          value={sort}
-          onChange={(e) => onSortChange(e.target.value as SourceSort)}
-          aria-label="Order of the source playlist"
-          title="Songs with no confidence score go last"
-          className="min-w-0 rounded-md border border-line-strong bg-panel px-1.5 py-1 text-xs text-ink"
-        >
-          <option value="playlist">Playlist order</option>
-          <option value="least-confident">Least confident first</option>
-          <option value="most-confident">Most confident first</option>
-        </select>
+        <h2 className="font-narrow text-base font-bold">{listening ? "Heard so far" : "Source playlist"}</h2>
+        {!listening && (
+          <select
+            value={sort}
+            onChange={(e) => onSortChange(e.target.value as SourceSort)}
+            aria-label="Order of the source playlist"
+            title="Songs with no confidence score go last"
+            className="min-w-0 rounded-md border border-line-strong bg-panel px-1.5 py-1 text-xs text-ink"
+          >
+            <option value="playlist">Playlist order</option>
+            <option value="least-confident">Least confident first</option>
+            <option value="most-confident">Most confident first</option>
+          </select>
+        )}
       </div>
-      {sort !== "playlist" && tracks.length > 0 && scored < tracks.length && (
+      {listening && (
+        <p className="mx-3 mb-2 text-[11px] text-muted">
+          Spotify doesn&apos;t let apps see the songs in playlists you don&apos;t own, so this one plays the way it
+          would in Spotify. Each song collects here as it plays; file the ones you like with Add.
+        </p>
+      )}
+      {!listening && sort !== "playlist" && tracks.length > 0 && scored < tracks.length && (
         <p className="mx-3 mb-2 text-[11px] text-muted">
           {scored === 0 ? "No songs here have" : `Only ${scored} of ${tracks.length} songs have`} confidence scores
           yet, so the rest stay in playlist order at the end. Score them with the Generate genres button, or by opening each
@@ -109,7 +121,9 @@ export function SourcePlaylistPanel({
           );
         })}
         {tracks.length === 0 && !error && (
-          <li className="px-3 py-2 text-sm text-muted">No tracks in this playlist.</li>
+          <li className="px-3 py-2 text-sm text-muted">
+            {listening ? "Starting the playlist…" : "No tracks in this playlist."}
+          </li>
         )}
       </ul>
     </div>

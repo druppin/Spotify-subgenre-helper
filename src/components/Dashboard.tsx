@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { SpotifyPlaylist, SpotifyPlaylistTrackItem } from "@/lib/spotify/client";
-import { usePlayer } from "./PlayerProvider";
+import { usePlayer, type SpotifyPlayerTrack } from "./PlayerProvider";
 import { SourcePlaylistPanel, type SourceSort } from "./SourcePlaylistPanel";
 import { NowPlayingPanel } from "./NowPlayingPanel";
 import { DestinationPlaylistsPanel } from "./DestinationPlaylistsPanel";
@@ -62,6 +62,27 @@ function sortTracks(
   });
 }
 
+// A song as the player reports it, in the shape the sorter's lists use.
+function toTrackItem(track: SpotifyPlayerTrack & { id: string }): SpotifyPlaylistTrackItem {
+  return {
+    added_at: "",
+    track: {
+      id: track.id,
+      uri: track.uri,
+      name: track.name,
+      artists: track.artists.map((a) => ({ id: "", name: a.name })),
+      album: {
+        id: "",
+        name: track.album.name,
+        images: track.album.images.map((i) => ({ url: i.url, width: null, height: null })),
+        release_date: "",
+      },
+      duration_ms: track.duration_ms,
+      explicit: false,
+    },
+  };
+}
+
 // The subgenre sorting view. Rendered inside AppShell, which provides the
 // player and the tab bar shown in this view's header.
 export function Dashboard({ tabs }: { tabs: ReactNode }) {
@@ -69,6 +90,7 @@ export function Dashboard({ tabs }: { tabs: ReactNode }) {
   // reading localStorage in the initializer can't cause a hydration mismatch.
   const [initialSession] = useState(loadLastSession);
   const [playlists, setPlaylists] = useState<SpotifyPlaylist[]>([]);
+  const [playlistsLoaded, setPlaylistsLoaded] = useState(false);
   const [sourcePlaylistId, setSourcePlaylistId] = useState<string | null>(initialSession.sourcePlaylistId);
   const [sourceTracks, setSourceTracks] = useState<SpotifyPlaylistTrackItem[]>([]);
   const [sourceTracksError, setSourceTracksError] = useState<string | null>(null);
@@ -95,7 +117,37 @@ export function Dashboard({ tabs }: { tabs: ReactNode }) {
   // The source playlist's own order, to go back to from a confidence sort.
   const playlistOrderRef = useRef<SpotifyPlaylistTrackItem[]>([]);
 
-  const { ready, playTrack, onTrackEnd } = usePlayer();
+  const { ready, playTrack, onTrackEnd, playContext, skip, currentTrack: playerTrack, contextUri, playbackError } =
+    usePlayer();
+  // Listen mode: Spotify won't let the app read the songs of a playlist the
+  // user doesn't own, so the sorter plays it and follows whatever plays.
+  // sourceTracks then holds the songs heard so far.
+  const isListenPlaylist = useCallback(
+    (playlistId: string | null) => playlists.find((p) => p.id === playlistId)?.canModify === false,
+    [playlists]
+  );
+  const listening = isListenPlaylist(sourcePlaylistId);
+  const listenContext = sourcePlaylistId ? `spotify:playlist:${sourcePlaylistId}` : null;
+  const [heardUri, setHeardUri] = useState<string | null>(null);
+  // Spotify doesn't always say what it's playing from; only a song from
+  // somewhere else is left out.
+  const fromListenContext = contextUri === null || contextUri === listenContext;
+  if (listening && playerTrack?.id && fromListenContext && playerTrack.uri !== heardUri) {
+    setHeardUri(playerTrack.uri);
+    const found = sourceTracks.findIndex((item) => item.track?.uri === playerTrack.uri);
+    if (found >= 0) {
+      setCurrentIndex(found);
+    } else {
+      setSourceTracks([...sourceTracks, toTrackItem({ ...playerTrack, id: playerTrack.id })]);
+      setCurrentIndex(sourceTracks.length);
+    }
+  }
+
+  useEffect(() => {
+    if (listening && ready && listenContext) {
+      playContext(listenContext).catch((err) => console.error(err));
+    }
+  }, [listening, ready, listenContext, playContext]);
 
   useEffect(() => {
     // Cached membership for every playlist, refreshing only the starred
@@ -160,11 +212,13 @@ export function Dashboard({ tabs }: { tabs: ReactNode }) {
   useEffect(() => {
     fetch("/api/playlists")
       .then((res) => res.json())
-      .then((body) => setPlaylists(body.playlists ?? []));
+      .then((body) => setPlaylists(body.playlists ?? []))
+      .finally(() => setPlaylistsLoaded(true));
   }, []);
 
   useEffect(() => {
-    if (!sourcePlaylistId) return;
+    // Waits for the playlist list, which says whether this one is readable.
+    if (!sourcePlaylistId || !playlistsLoaded || listening) return;
     // Ignore a response for a playlist the user has already moved off of
     // (and the effect double-run in dev, which would otherwise consume the
     // resume point on the discarded fetch).
@@ -207,7 +261,7 @@ export function Dashboard({ tabs }: { tabs: ReactNode }) {
     return () => {
       cancelled = true;
     };
-  }, [sourcePlaylistId]);
+  }, [sourcePlaylistId, playlistsLoaded, listening]);
 
   const currentTrack = sourceTracks[currentIndex]?.track ?? null;
 
@@ -278,11 +332,11 @@ export function Dashboard({ tabs }: { tabs: ReactNode }) {
   // Waits for the player to be ready: a restored session loads its source
   // playlist's tracks before the Web Playback SDK has connected.
   useEffect(() => {
-    if (currentTrack && ready) {
+    if (currentTrack && ready && !listening) {
       console.debug("[skip] current track effect → playTrack", currentTrack.uri, currentTrack.name);
       playTrack(currentTrack.uri).catch((err) => console.error(err));
     }
-  }, [currentTrack, ready, playTrack]);
+  }, [currentTrack, ready, listening, playTrack]);
 
   const togglePin = useCallback((playlistId: string) => {
     setPinnedIds((prev) =>
@@ -322,6 +376,10 @@ export function Dashboard({ tabs }: { tabs: ReactNode }) {
   );
 
   const goNext = useCallback(() => {
+    if (listening) {
+      skip("next");
+      return;
+    }
     const hadPending = pendingRemovalUri !== null;
     const tracks = flushPendingRemoval(sourceTracks, sourcePlaylistId);
     setSourceTracks(tracks);
@@ -339,7 +397,7 @@ export function Dashboard({ tabs }: { tabs: ReactNode }) {
       toUri: tracks[nextIndex]?.track?.uri,
     });
     setCurrentIndex(nextIndex);
-  }, [sourceTracks, sourcePlaylistId, currentIndex, pendingRemovalUri, flushPendingRemoval]);
+  }, [listening, skip, sourceTracks, sourcePlaylistId, currentIndex, pendingRemovalUri, flushPendingRemoval]);
 
   useEffect(() => {
     onTrackEnd((uri) => {
@@ -349,22 +407,32 @@ export function Dashboard({ tabs }: { tabs: ReactNode }) {
   }, [onTrackEnd, currentTrack, goNext]);
 
   const goPrevious = useCallback(() => {
+    if (listening) {
+      skip("previous");
+      return;
+    }
     const tracks = flushPendingRemoval(sourceTracks, sourcePlaylistId);
     setSourceTracks(tracks);
     // Removing the current track never shifts indices before it.
     setCurrentIndex(Math.max(Math.min(currentIndex - 1, tracks.length - 1), 0));
-  }, [sourceTracks, sourcePlaylistId, currentIndex, flushPendingRemoval]);
+  }, [listening, skip, sourceTracks, sourcePlaylistId, currentIndex, flushPendingRemoval]);
 
   const selectTrack = useCallback(
     (clickedIndex: number) => {
       if (clickedIndex === currentIndex) return;
+      const uri = sourceTracks[clickedIndex]?.track?.uri;
+      if (listening) {
+        if (uri && listenContext) playContext(listenContext, uri).catch((err) => console.error(err));
+        setCurrentIndex(clickedIndex);
+        return;
+      }
       const hadPending = pendingRemovalUri !== null;
       const tracks = flushPendingRemoval(sourceTracks, sourcePlaylistId);
       setSourceTracks(tracks);
       const adjusted = hadPending && clickedIndex > currentIndex ? clickedIndex - 1 : clickedIndex;
       setCurrentIndex(Math.max(Math.min(adjusted, tracks.length - 1), 0));
     },
-    [sourceTracks, sourcePlaylistId, currentIndex, pendingRemovalUri, flushPendingRemoval]
+    [listening, listenContext, playContext, sourceTracks, sourcePlaylistId, currentIndex, pendingRemovalUri, flushPendingRemoval]
   );
 
   const selectSourcePlaylist = useCallback(
@@ -372,8 +440,16 @@ export function Dashboard({ tabs }: { tabs: ReactNode }) {
       // Flush against the playlist being left, not the one being entered.
       flushPendingRemoval(sourceTracks, sourcePlaylistId);
       setSourcePlaylistId(newId);
+      if (isListenPlaylist(newId)) {
+        // Starts an empty list of songs heard.
+        setSourceTracks([]);
+        setSourceTracksError(null);
+        setCurrentIndex(0);
+        // The song already playing isn't from this playlist.
+        setHeardUri(playerTrack?.uri ?? null);
+      }
     },
-    [sourceTracks, sourcePlaylistId, flushPendingRemoval]
+    [sourceTracks, sourcePlaylistId, flushPendingRemoval, isListenPlaylist, playerTrack]
   );
 
   const loadSetup = useCallback(
@@ -405,6 +481,46 @@ export function Dashboard({ tabs }: { tabs: ReactNode }) {
     setCurrentIndex(Math.max(Math.min(currentIndex, tracks.length - 1), 0));
   }, [currentTrack, sourcePlaylistId, sourceTracks, currentIndex, setMembership, adjustTrackCount]);
 
+  // Every editable playlist the current track is in, per the cached index
+  // (plus the source, whose tracks are loaded right here).
+  const currentPlaylistIds = useMemo(() => {
+    if (!currentTrack) return [];
+    const ids = Object.keys(playlistIndex).filter((id) => playlistIndex[id].has(currentTrack.uri));
+    const sourceEditable = playlists.find((p) => p.id === sourcePlaylistId)?.canModify;
+    if (sourcePlaylistId && sourceEditable && !ids.includes(sourcePlaylistId)) ids.push(sourcePlaylistId);
+    return ids;
+  }, [currentTrack, playlistIndex, playlists, sourcePlaylistId]);
+
+  // Like "Remove from source", but from every playlist at once.
+  const removeCurrentFromAll = useCallback(() => {
+    if (!currentTrack) return;
+    const uri = currentTrack.uri;
+    setPendingRemovalUri(null);
+    for (const playlistId of currentPlaylistIds) {
+      fetch(`/api/playlists/${playlistId}/tracks`, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ trackUri: uri, source: "sorter" }),
+      })
+        .then(async (res) => {
+          if (!res.ok) throw new Error(await res.text());
+          setMembership(playlistId, uri, false);
+          if (playlistId !== sourcePlaylistId) adjustTrackCount(playlistId, -1);
+        })
+        .catch((err) => console.error(`Failed to remove track from playlist ${playlistId}:`, err));
+    }
+    if (sourcePlaylistId && currentPlaylistIds.includes(sourcePlaylistId)) {
+      const tracks = sourceTracks.filter((item) => item.track?.uri !== uri);
+      adjustTrackCount(sourcePlaylistId, tracks.length - sourceTracks.length);
+      setSourceTracks(tracks);
+      setCurrentIndex(Math.max(Math.min(currentIndex, tracks.length - 1), 0));
+    } else if (listening) {
+      skip("next");
+    } else {
+      setCurrentIndex(Math.min(currentIndex + 1, sourceTracks.length - 1));
+    }
+  }, [currentTrack, currentPlaylistIds, sourcePlaylistId, listening, skip, sourceTracks, currentIndex, setMembership, adjustTrackCount]);
+
   const handleAddToPlaylist = useCallback(
     async (destinationPlaylistId: string) => {
       if (!currentTrack) return;
@@ -422,11 +538,11 @@ export function Dashboard({ tabs }: { tabs: ReactNode }) {
       setMembership(destinationPlaylistId, currentTrack.uri, true);
       adjustTrackCount(destinationPlaylistId, 1);
 
-      if (alsoRemoveFromSource) {
+      if (alsoRemoveFromSource && !listening) {
         setPendingRemovalUri(currentTrack.uri);
       }
     },
-    [currentTrack, alsoRemoveFromSource, setMembership, adjustTrackCount]
+    [currentTrack, alsoRemoveFromSource, listening, setMembership, adjustTrackCount]
   );
 
   const handleRemoveFromPlaylist = useCallback(
@@ -489,12 +605,13 @@ export function Dashboard({ tabs }: { tabs: ReactNode }) {
             tracks={sourceTracks}
             currentIndex={currentIndex}
             onSelect={selectTrack}
-            error={sourceTracksError}
+            error={listening ? playbackError : sourceTracksError}
             pendingRemovalUri={pendingRemovalUri}
             otherPlaylistCounts={otherPlaylistCounts}
             confidences={confidences}
             sort={sourceSort}
             onSortChange={changeSourceSort}
+            listening={listening}
           />
         </div>
 
@@ -506,7 +623,9 @@ export function Dashboard({ tabs }: { tabs: ReactNode }) {
             alsoRemoveFromSource={alsoRemoveFromSource}
             onPlaylistCreated={handlePlaylistCreated}
             onLoadSetup={loadSetup}
-            onRemoveFromSource={currentTrack ? removeCurrentFromSource : null}
+            onRemoveFromSource={currentTrack && !listening ? removeCurrentFromSource : null}
+            onRemoveFromAll={currentPlaylistIds.length > 0 ? removeCurrentFromAll : null}
+            removeFromAllCount={currentPlaylistIds.length}
             currentTrackId={currentTrack?.id ?? null}
             onGenresGenerated={() => setGenresVersion((v) => v + 1)}
           />
@@ -516,9 +635,10 @@ export function Dashboard({ tabs }: { tabs: ReactNode }) {
               track={currentTrack}
               onPrevious={goPrevious}
               onNext={goNext}
-              canGoPrevious={currentIndex > 0}
-              canGoNext={currentIndex < sourceTracks.length - 1 || pendingRemovalUri !== null}
+              canGoPrevious={listening || currentIndex > 0}
+              canGoNext={listening || currentIndex < sourceTracks.length - 1 || pendingRemovalUri !== null}
               onConfidenceChange={handleConfidenceChange}
+              emptyText={listening ? "Starting the playlist…" : undefined}
             />
           </div>
         </div>

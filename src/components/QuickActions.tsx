@@ -15,6 +15,9 @@ interface Props {
   onLoadSetup: (setup: Setup) => void;
   // null when there's no current track to remove.
   onRemoveFromSource: (() => void) | null;
+  // null when the current track isn't in any of the user's playlists.
+  onRemoveFromAll: (() => void) | null;
+  removeFromAllCount: number;
   currentTrackId: string | null;
   onGenresGenerated: () => void;
 }
@@ -30,9 +33,19 @@ export function QuickActions({
   onPlaylistCreated,
   onLoadSetup,
   onRemoveFromSource,
+  onRemoveFromAll,
+  removeFromAllCount,
   currentTrackId,
   onGenresGenerated,
 }: Props) {
+  // Removing from every playlist can't be undone here, so it asks first.
+  const [confirmingAll, setConfirmingAll] = useState(false);
+  // Moving to another song drops the question.
+  const [confirmTrackId, setConfirmTrackId] = useState(currentTrackId);
+  if (confirmTrackId !== currentTrackId) {
+    setConfirmTrackId(currentTrackId);
+    setConfirmingAll(false);
+  }
   const dialogRef = useRef<HTMLDialogElement>(null);
   const setupsDialogRef = useRef<HTMLDialogElement>(null);
   // Genre overlays mount only while open, so each opening starts fresh.
@@ -70,6 +83,39 @@ export function QuickActions({
       >
         Remove from source
       </button>
+      {confirmingAll && onRemoveFromAll ? (
+        <span className="flex items-center gap-1.5 text-[13px]" role="group" aria-label="Confirm removing from all playlists">
+          <span className="text-danger">
+            Remove from {removeFromAllCount} playlist{removeFromAllCount === 1 ? "" : "s"}?
+          </span>
+          <button
+            autoFocus
+            onClick={() => {
+              setConfirmingAll(false);
+              onRemoveFromAll?.();
+            }}
+            className="rounded-md border border-danger bg-danger/15 px-3 py-1.5 font-medium text-danger hover:bg-danger/25"
+          >
+            Remove
+          </button>
+          <button onClick={() => setConfirmingAll(false)} className={BUTTON}>
+            Cancel
+          </button>
+        </span>
+      ) : (
+        <button
+          onClick={() => setConfirmingAll(true)}
+          disabled={!onRemoveFromAll}
+          title={
+            onRemoveFromAll
+              ? `Remove the current track from all ${removeFromAllCount} of your playlists it's in (not Liked Songs) and move to the next one`
+              : "The current track isn't in any of your playlists"
+          }
+          className="rounded-md border border-danger/50 px-3 py-1.5 text-[13px] font-medium text-danger hover:bg-danger/10 disabled:opacity-40 disabled:hover:bg-transparent"
+        >
+          Remove from all playlists
+        </button>
+      )}
       {genreDialog?.kind === "summary" && (
         <PlaylistGenresDialog
           playlists={readablePlaylists}

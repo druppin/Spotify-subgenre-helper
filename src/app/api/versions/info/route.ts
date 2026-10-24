@@ -3,6 +3,7 @@ import { getValidAccessToken } from "@/lib/spotify/auth";
 import { SpotifyClient } from "@/lib/spotify/client";
 import { spotifyErrorResponse } from "@/lib/spotify/routeError";
 import { getReleaseInfo } from "@/lib/releaseInfo";
+import { getTrackDetailsCached } from "@/lib/playlistIndex";
 
 // A song's versions are a handful; this keeps one request from turning
 // into minutes of MusicBrainz lookups.
@@ -16,7 +17,16 @@ export async function POST(request: NextRequest) {
   }
   try {
     const spotify = new SpotifyClient(await getValidAccessToken());
-    return NextResponse.json({ info: await getReleaseInfo(spotify, (uris as string[]).slice(0, MAX_URIS)) });
+    const wanted = (uris as string[]).slice(0, MAX_URIS);
+    // A song the library hasn't seen (the sorter's listen mode) is looked up
+    // once so it has a row; free for songs it already knows.
+    for (const uri of wanted) {
+      if (!uri.startsWith("spotify:track:")) continue;
+      await getTrackDetailsCached(spotify, uri.slice("spotify:track:".length)).catch((err) =>
+        console.error(`Couldn't look up ${uri}:`, err)
+      );
+    }
+    return NextResponse.json({ info: await getReleaseInfo(spotify, wanted) });
   } catch (err) {
     return spotifyErrorResponse(err, "POST /api/versions/info");
   }

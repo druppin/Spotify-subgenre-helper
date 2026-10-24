@@ -18,10 +18,16 @@ interface SpotifyPlayerState {
   position: number;
   duration: number;
   track_window: { current_track: SpotifyPlayerTrack };
+  context?: { uri: string | null };
 }
-interface SpotifyPlayerTrack {
+export interface SpotifyPlayerTrack {
   uri: string;
+  // null for a local file.
+  id: string | null;
   name: string;
+  artists: { name: string }[];
+  album: { name: string; images: { url: string }[] };
+  duration_ms: number;
   // Set when Spotify "relinked" the requested track to a different version
   // playable in the user's market: uri is then the substitute's, and this
   // holds the uri that was actually requested.
@@ -55,6 +61,14 @@ interface PlayerContextValue {
   volume: number;
   playbackError: string | null;
   playTrack: (uri: string) => Promise<void>;
+  // Plays a whole playlist (or other context), optionally from one of its
+  // songs. Spotify then picks what plays; currentTrack follows it.
+  playContext: (contextUri: string, offsetUri?: string) => Promise<void>;
+  skip: (direction: "next" | "previous") => Promise<void>;
+  // What the player is on right now, as Spotify reports it.
+  currentTrack: SpotifyPlayerTrack | null;
+  // The playlist (or album…) it's playing from, when Spotify says.
+  contextUri: string | null;
   togglePlay: () => Promise<void>;
   seek: (positionMs: number) => Promise<void>;
   setVolume: (volume: number) => Promise<void>;
@@ -118,7 +132,7 @@ function sleep(ms: number) {
 // the active Connect device yet), where the REST endpoints — the same ones
 // playTrack already uses reliably — just work.
 async function spotifyPlayerCommand(
-  endpoint: "play" | "pause" | "seek",
+  endpoint: "play" | "pause" | "seek" | "next" | "previous",
   deviceId: string,
   extraParams: Record<string, string> = {}
 ): Promise<void> {
@@ -129,7 +143,7 @@ async function spotifyPlayerCommand(
     try {
       const accessToken = await fetchAccessToken();
       const res = await fetchWithTimeout(`https://api.spotify.com/v1/me/player/${endpoint}?${params}`, {
-        method: "PUT",
+        method: endpoint === "next" || endpoint === "previous" ? "POST" : "PUT",
         headers: { Authorization: `Bearer ${accessToken}` },
       });
       if (res.ok || res.status === 204) return;
@@ -150,6 +164,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const [ready, setReady] = useState(false);
   const [isPaused, setIsPaused] = useState(true);
   const [currentUri, setCurrentUri] = useState<string | null>(null);
+  const [currentTrack, setCurrentTrack] = useState<SpotifyPlayerTrack | null>(null);
+  const [contextUri, setContextUri] = useState<string | null>(null);
   const [position, setPosition] = useState(0);
   const [duration, setDuration] = useState(0);
   const [volume, setVolumeState] = useState(0.8);
@@ -164,6 +180,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   // track they're actually on, and Spotify ends up playing the stale one
   // even though the UI has already moved on to the right track's info.
   const latestRequestedUriRef = useRef<string | null>(null);
+  // The latest play request of either kind; older ones are superseded.
+  const latestRequestKeyRef = useRef<string | null>(null);
   const playChainRef = useRef<Promise<void>>(Promise.resolve());
   const lastStateRef = useRef<SpotifyPlayerState | null>(null);
   const lastStateAtRef = useRef(0);
@@ -257,6 +275,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         setDuration(state.duration);
         const track = state.track_window.current_track;
         setCurrentUri(track.linked_from?.uri ?? track.uri);
+        setCurrentTrack((prev) => (prev?.uri === track.uri ? prev : track));
+        setContextUri(state.context?.uri ?? null);
       });
       player.addListener("initialization_error", (arg) => console.error("Spotify SDK init error", arg));
       player.addListener("authentication_error", (arg) => console.error("Spotify SDK auth error", arg));
@@ -285,12 +305,16 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     return () => clearInterval(interval);
   }, [isPaused, duration]);
 
-  const playTrack = useCallback((uri: string): Promise<void> => {
-    if (uri !== latestRequestedUriRef.current) bounceCorrectionsRef.current = 0;
-    latestRequestedUriRef.current = uri;
+  // Sends one "start playback" request. trackUri is the song asked for
+  // (watched for bounces and its end), or null for a context, where
+  // Spotify moving on to other songs is the point.
+  const startPlayback = useCallback((key: string, body: object, trackUri: string | null): Promise<void> => {
+    if (trackUri !== latestRequestedUriRef.current) bounceCorrectionsRef.current = 0;
+    latestRequestedUriRef.current = trackUri;
+    latestRequestKeyRef.current = key;
     requestedAtRef.current = Date.now();
     sawRequestedPlayingRef.current = false;
-    console.debug("[play] requested", uri);
+    console.debug("[play] requested", key);
     endedUriRef.current = null;
     const deviceId = deviceIdRef.current;
 
@@ -300,8 +324,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     const next = playChainRef.current.then(async () => {
       // Superseded by a newer request before this one's turn came up (the
       // user has since moved on) — no need to actually play it at all.
-      if (latestRequestedUriRef.current !== uri) {
-        console.debug("[play] superseded before sending", uri);
+      if (latestRequestKeyRef.current !== key) {
+        console.debug("[play] superseded before sending", key);
         return;
       }
       if (!deviceId) throw new Error("Player not ready yet");
@@ -314,7 +338,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       // marked with PermanentPlaybackError below and always fails immediately.
       const MAX_ATTEMPTS = 4;
       for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
-        if (latestRequestedUriRef.current !== uri) return;
+        if (latestRequestKeyRef.current !== key) return;
         const isLastAttempt = attempt === MAX_ATTEMPTS;
         try {
           const accessToken = await fetchAccessToken();
@@ -324,28 +348,28 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
               Authorization: `Bearer ${accessToken}`,
               "Content-Type": "application/json",
             },
-            body: JSON.stringify({ uris: [uri] }),
+            body: JSON.stringify(body),
           });
           if (res.ok || res.status === 204) {
-            console.debug("[play] Spotify accepted", uri, `attempt ${attempt}`);
+            console.debug("[play] Spotify accepted", key, `attempt ${attempt}`);
             return;
           }
 
-          const body = await res.text();
-          console.debug("[play] Spotify rejected", uri, res.status, body.slice(0, 200));
-          const message = `Failed to start playback: ${res.status} ${body}`;
+          const text = await res.text();
+          console.debug("[play] Spotify rejected", key, res.status, text.slice(0, 200));
+          const message = `Failed to start playback: ${res.status} ${text}`;
           // Spotify answers 403 "Restriction violated" for a moment right
           // after a track finishes (exactly when autoplay fires), and 404
           // "Device not found" right after the SDK reports ready, before
           // Connect has registered the device — both go through on retry.
           const isTransient =
             TRANSIENT_STATUS_CODES.has(res.status) ||
-            (res.status === 403 && body.includes("Restriction violated")) ||
-            (res.status === 404 && body.includes("Device not found"));
+            (res.status === 403 && text.includes("Restriction violated")) ||
+            (res.status === 404 && text.includes("Device not found"));
           throw isTransient ? new Error(message) : new PermanentPlaybackError(message);
         } catch (err) {
           if (err instanceof PermanentPlaybackError || isLastAttempt) {
-            if (latestRequestedUriRef.current === uri) {
+            if (latestRequestKeyRef.current === key) {
               const message = err instanceof Error ? err.message : String(err);
               setPlaybackError(message);
             }
@@ -362,6 +386,29 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     // this call's own caller.
     playChainRef.current = next.catch(() => {});
     return next;
+  }, []);
+
+  const playTrack = useCallback((uri: string) => startPlayback(uri, { uris: [uri] }, uri), [startPlayback]);
+
+  const playContext = useCallback(
+    (contextUri: string, offsetUri?: string) =>
+      startPlayback(
+        `${contextUri} ${offsetUri ?? ""}`,
+        offsetUri ? { context_uri: contextUri, offset: { uri: offsetUri } } : { context_uri: contextUri },
+        null
+      ),
+    [startPlayback]
+  );
+
+  const skip = useCallback(async (direction: "next" | "previous") => {
+    const deviceId = deviceIdRef.current;
+    if (!deviceId) return;
+    setPlaybackError(null);
+    try {
+      await spotifyPlayerCommand(direction, deviceId);
+    } catch (err) {
+      setPlaybackError(err instanceof Error ? err.message : String(err));
+    }
   }, []);
 
   useEffect(() => {
@@ -411,6 +458,10 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         volume,
         playbackError,
         playTrack,
+        playContext,
+        skip,
+        currentTrack,
+        contextUri,
         togglePlay,
         seek,
         setVolume,
