@@ -20,13 +20,19 @@ without ever inventing context that isn't actually in the data.
 
 ## How it works
 
-1. **Pick a source playlist** from the picker in the header.
-2. The **left panel** lists the source playlist's tracks; the current one is
-   highlighted and plays automatically via the Spotify Web Playback SDK.
+The app has three tabs: **Subgenre sorter**, **My library** and **Flows**.
+
+1. **Pick a source playlist** from the picker in the header. If it's a
+   playlist you don't own, Spotify won't let apps read its songs, so the app
+   plays it instead (listen mode) and the sorter follows what's playing.
+2. The **left panel** lists the source playlist's tracks (or, in listen mode,
+   the songs you've heard so far); the current one is highlighted and plays
+   automatically via the Spotify Web Playback SDK.
 3. The **center panel** shows transport controls (prev/play-pause/next) plus
-   the AI-generated context for the track: mood/vibe, subgenre guesses, and
-   the rationale behind them — along with the raw genres, tags, and audio
-   features it was built from.
+   the AI-generated context for the track: mood/vibe, subgenre tags with a
+   confidence score, and the rationale behind them, along with the raw
+   genres, tags, and audio features it was built from. Turn **AI off** in
+   the quick actions to skip all of this and just listen and file.
 4. The **right panel** lists your playlists as filing destinations. Pin the
    ones you use most so they stay at the top. Adding a track can optionally
    remove it from the source playlist at the same time — that removal is
@@ -36,23 +42,44 @@ without ever inventing context that isn't actually in the data.
 
 ## Features
 
-- AI-generated mood/vibe + freeform subgenre labels per track, with a
-  rationale that cites only the data it was actually given (no invented
-  backstory, no reasoning from the track title)
+- AI-generated mood/vibe + freeform subgenre tags per track, each with a
+  confidence score, and a rationale that cites only the data it was actually
+  given (no invented backstory, no reasoning from the track title)
+- Subgenres roll up into umbrella genre families, and spelling variants and
+  abbreviations (dnb, alt rock) merge with their full names
+- Edit the AI's tags, or tag untagged songs by hand
+- Chat with the AI about a song: why it picked the tags, what it knows about
+  the song or a genre. It can suggest tags, and the chat is saved per song
+- Bulk "Generate genres" for a whole playlist (up to 1000 songs), streamed
+  with per-song progress
+- Release year next to the artist, from MusicBrainz's original release date
 - Audio features (danceability, energy, valence, tempo, key, etc.) via
   [ReccoBeats](https://reccobeats.com) — a free replacement for Spotify's own
   Audio Features endpoint, which has been closed to new apps since Nov 2024
 - Optional Last.fm tags and artist bio for extra context
-- Per-track and per-context-hash caching so re-visiting a track (or re-running
-  a prompt tweak) doesn't re-hit the LLM or external APIs unnecessarily
+- Per-track and per-context-hash caching (in SQLite) so re-visiting a track
+  (or re-running a prompt tweak) doesn't re-hit the LLM or external APIs
+  unnecessarily
 - Pinnable destination playlists, with a per-track "already added here" cue
-- Bring-your-own LLM key: switch between Anthropic, OpenAI, Google, Groq, or
-  OpenRouter via a couple of env vars, no code changes
+- "Remove from all playlists" for a song you're done with (asks first; leaves
+  Liked Songs alone)
+- **My library**: every song across your playlists and Liked Songs, with
+  search, genre tools, sorting by confidence, a finder for songs that aren't
+  in any playlist, and a versions view to compare a song's releases and keep
+  one
+- **Flows**: pool several playlists into one target playlist with a single
+  button, optionally filtered by genre or minimum confidence. Runs only add
+  songs; they never remove any
+- Bring-your-own LLM key: Anthropic, OpenAI, Google, Groq, or OpenRouter,
+  entered in the app's settings
 - Full Spotify playback control (play/pause/seek/skip) via the Web Playback
   SDK, so you can actually listen before you decide
+- Light and dark themes, and a choice of how confidence is shown (percentage,
+  bars, or both)
 - A local, key-protected [library API](docs/api.md) so other programs (DJ
   software, file taggers) can look up a song's genres by ISRC or artist +
   title, or export them all
+- Desktop app with installers for Windows, macOS and Linux
 
 ## Tech stack
 
