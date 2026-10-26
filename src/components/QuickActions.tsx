@@ -20,6 +20,8 @@ interface Props {
   removeFromAllCount: number;
   currentTrackId: string | null;
   onGenresGenerated: () => void;
+  aiOff: boolean;
+  onToggleAi: () => void;
 }
 
 const BUTTON =
@@ -37,6 +39,8 @@ export function QuickActions({
   removeFromAllCount,
   currentTrackId,
   onGenresGenerated,
+  aiOff,
+  onToggleAi,
 }: Props) {
   // Removing from every playlist can't be undone here, so it asks first.
   const [confirmingAll, setConfirmingAll] = useState(false);
@@ -74,6 +78,18 @@ export function QuickActions({
       </button>
       <button onClick={() => setGenreDialog({ kind: "generate", playlistId: sourcePlaylistId })} className={BUTTON}>
         Generate genres
+      </button>
+      <button
+        onClick={onToggleAi}
+        aria-pressed={aiOff}
+        title={
+          aiOff
+            ? "AI is off: songs show just the player, for quick sorting. Click to turn it back on."
+            : "Turn off the AI summary, genre tags and chat for each song, for quick sorting"
+        }
+        className={aiOff ? `${BUTTON} border-ink-2 bg-raised` : BUTTON}
+      >
+        {aiOff ? "AI off" : "AI on"}
       </button>
       <button
         onClick={() => onRemoveFromSource?.()}

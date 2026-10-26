@@ -25,6 +25,8 @@ interface Props {
   ownPlayback?: boolean;
   // Shown when there's no song.
   emptyText?: string;
+  // Quick sorting: skip the song's lookups, AI summary and chat.
+  aiOff?: boolean;
 }
 
 type FetchState =
@@ -268,6 +270,7 @@ export function NowPlayingPanel({
   onConfidenceChange,
   ownPlayback = false,
   emptyText = "Pick a source playlist to start sorting.",
+  aiOff = false,
 }: Props) {
   const { ready, isPaused, currentUri, volume, playbackError, togglePlay, playTrack, setVolume } = usePlayer();
   const [retryNonce, setRetryNonce] = useState(0);
@@ -358,15 +361,19 @@ export function NowPlayingPanel({
         <p className="max-w-md text-xs text-danger">Playback error: {playbackError}</p>
       )}
 
-      <div className="w-full max-w-xl rounded-[10px] bg-panel px-5 py-4 text-left">
-        <TrackData
-          key={retryNonce}
-          trackId={track.id}
-          force={forceNextFetch}
-          onRefresh={refresh}
-          onConfidenceChange={onConfidenceChange}
-        />
-      </div>
+      {aiOff ? (
+        <p className="text-xs text-muted">AI is off for quick sorting. Turn it back on with the AI button above.</p>
+      ) : (
+        <div className="w-full max-w-xl rounded-[10px] bg-panel px-5 py-4 text-left">
+          <TrackData
+            key={retryNonce}
+            trackId={track.id}
+            force={forceNextFetch}
+            onRefresh={refresh}
+            onConfidenceChange={onConfidenceChange}
+          />
+        </div>
+      )}
     </div>
   );
 }

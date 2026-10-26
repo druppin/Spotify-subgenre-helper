@@ -22,6 +22,16 @@ function loadSourceSort(): SourceSort {
   return "playlist";
 }
 
+const AI_OFF_STORAGE_KEY = "sorter.aiOff";
+
+function loadAiOff(): boolean {
+  try {
+    return localStorage.getItem(AI_OFF_STORAGE_KEY) === "true";
+  } catch {
+    return false;
+  }
+}
+
 // Each song's average tag confidence (null when its tags aren't scored),
 // for the songs that have genre info.
 async function fetchConfidences(trackIds: string[]): Promise<Record<string, number | null>> {
@@ -110,6 +120,18 @@ export function Dashboard({ tabs }: { tabs: ReactNode }) {
   // Bumped after genres are generated so expanded playlist genre lists reload.
   const [genresVersion, setGenresVersion] = useState(0);
   const [sourceSort, setSourceSort] = useState<SourceSort>(loadSourceSort);
+  // Quick sorting: no AI summary, lookups or chat per song, just the player.
+  const [aiOff, setAiOff] = useState(loadAiOff);
+  const toggleAi = useCallback(() => {
+    setAiOff((off) => {
+      try {
+        localStorage.setItem(AI_OFF_STORAGE_KEY, String(!off));
+      } catch {
+        // Not remembering it is fine.
+      }
+      return !off;
+    });
+  }, []);
   // Read by the playlist load without making the sort a reason to reload.
   const sourceSortRef = useRef(sourceSort);
   // Average tag confidence per source track ID.
@@ -628,6 +650,8 @@ export function Dashboard({ tabs }: { tabs: ReactNode }) {
             removeFromAllCount={currentPlaylistIds.length}
             currentTrackId={currentTrack?.id ?? null}
             onGenresGenerated={() => setGenresVersion((v) => v + 1)}
+            aiOff={aiOff}
+            onToggleAi={toggleAi}
           />
           <div className="min-h-0 flex-1 overflow-hidden">
             <NowPlayingPanel
@@ -639,6 +663,7 @@ export function Dashboard({ tabs }: { tabs: ReactNode }) {
               canGoNext={listening || currentIndex < sourceTracks.length - 1 || pendingRemovalUri !== null}
               onConfidenceChange={handleConfidenceChange}
               emptyText={listening ? "Starting the playlist…" : undefined}
+              aiOff={aiOff}
             />
           </div>
         </div>
