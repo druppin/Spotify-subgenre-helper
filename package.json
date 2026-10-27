@@ -1,6 +1,6 @@
 {
   "name": "spotify-subgenre-helper",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "Sort Spotify songs into playlists with AI subgenre guesses",
   "private": true,
   "main": "electron/main.mjs",
