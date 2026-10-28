@@ -3,6 +3,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { SpotifyPlaylist } from "@/lib/spotify/client";
 import { fetchPlaylistGenres, type PlaylistGenreTrack } from "@/lib/playlistGenres";
+import { LIKED_SONGS_PICKER_ENTRY } from "@/lib/library";
 import { PlaylistThumb } from "./PlaylistThumb";
 import { CheckIcon, ChevronDownIcon, ChevronRightIcon, CloseIcon, StarIcon } from "./Icons";
 import { FAMILY_NAMES, familyMark, familyOf, familyTab, type GenreFamily } from "@/lib/genreFamily";
@@ -90,8 +91,8 @@ export function DestinationPlaylistsPanel({
 
   // Adding a track requires owning or collaborating on the destination
   // playlist — Spotify 403s otherwise — so followed-only playlists never
-  // belong here.
-  const modifiablePlaylists = playlists.filter((p) => p.canModify);
+  // belong here. Liked Songs always can be (adding to it likes the song).
+  const modifiablePlaylists = [LIKED_SONGS_PICKER_ENTRY, ...playlists.filter((p) => p.canModify)];
   // Pinned playlists float to the top (in whatever order they were pinned/
   // already in); everything else keeps its normal order below — all of it
   // always visible, so there's no separate hidden picker to dig through.

@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getValidAccessToken } from "@/lib/spotify/auth";
 import { SpotifyClient, toPlaylistTrackItem } from "@/lib/spotify/client";
-import { getPlaylistTracksCached, recordOwnEdit } from "@/lib/playlistIndex";
+import { getPlaylistTracksCached, recordLikedRemove, recordOwnEdit } from "@/lib/playlistIndex";
+import { LIKED_SONGS_ID } from "@/lib/library";
 import { ORGANIZE_SOURCES, recordOrganizeEvent, type OrganizeSource } from "@/lib/organizeLog";
 import { spotifyErrorResponse } from "@/lib/spotify/routeError";
 
@@ -31,8 +32,14 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
     const accessToken = await getValidAccessToken();
     const client = new SpotifyClient(accessToken);
     const uris: string[] = trackUri ? [trackUri] : trackUris;
-    const snapshotId = await client.removeTracksFromPlaylist(id, uris);
-    await recordOwnEdit(id, { removed: uris }, snapshotId);
+    // Liked Songs isn't a playlist: removing from it unlikes the songs.
+    if (id === LIKED_SONGS_ID) {
+      await client.removeFromLibrary(uris);
+      await recordLikedRemove(uris);
+    } else {
+      const snapshotId = await client.removeTracksFromPlaylist(id, uris);
+      await recordOwnEdit(id, { removed: uris }, snapshotId);
+    }
     await recordOrganizeEvent({ action: "remove", playlistId: id, uris, source: sourceOf(body) });
     return NextResponse.json({ ok: true });
   } catch (err) {
