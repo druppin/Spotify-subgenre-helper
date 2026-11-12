@@ -26,6 +26,102 @@ async function send(url: string, method: string, body?: unknown): Promise<string
   return (await res.json().catch(() => ({}))).error ?? `Failed (${res.status}).`;
 }
 
+type ChatTurn = { role: "user" | "assistant"; content: string };
+
+/** A conversation with the app's model; the selected test song's data goes along with it. Kept only on the page. */
+function LabChat({ model, track }: { model: string | null; track: { trackId: string; name: string } | null }) {
+  const [turns, setTurns] = useState<ChatTurn[]>([]);
+  const [text, setText] = useState("");
+  const [sending, setSending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const send = async () => {
+    const question = text.trim();
+    if (!question || sending) return;
+    const next = [...turns, { role: "user" as const, content: question }];
+    setTurns(next);
+    setText("");
+    setSending(true);
+    setError(null);
+    const res = await fetch("/api/lab/chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ messages: next, trackId: track?.trackId }),
+    }).catch(() => null);
+    const body = await res?.json().catch(() => ({}));
+    if (res?.ok) {
+      setTurns([...next, { role: "assistant", content: body.reply }]);
+    } else {
+      // Put the question back so it isn't lost.
+      setTurns(turns);
+      setText(question);
+      setError(!res ? "Couldn't reach the app." : (body.error ?? `Failed (${res.status}).`));
+    }
+    setSending(false);
+  };
+
+  return (
+    <section className="flex flex-col gap-2">
+      <div className="flex items-baseline gap-3">
+        <h2 className="font-narrow text-base font-bold">Chat with the model</h2>
+        <span className="text-xs text-muted">{model ?? "No AI provider set up (Settings)"}</span>
+        {turns.length > 0 && (
+          <button type="button" className="ml-auto text-xs text-muted underline hover:text-ink" onClick={() => setTurns([])}>
+            Clear
+          </button>
+        )}
+      </div>
+      <p className="text-[13px] text-muted">
+        {track
+          ? `Each message includes the saved data for ${track.name}.`
+          : "Select a test song to include its data with each message."}{" "}
+        Nothing here is saved.
+      </p>
+      {turns.length > 0 && (
+        <ol className="flex flex-col gap-2" aria-live="polite">
+          {turns.map((turn, i) => (
+            <li
+              key={i}
+              className={`whitespace-pre-wrap rounded-md px-3 py-2 text-[13px] ${
+                turn.role === "user" ? "self-end bg-raised" : "border border-line"
+              }`}
+            >
+              {turn.content}
+            </li>
+          ))}
+          {sending && <li className="text-[13px] text-muted">Thinking…</li>}
+        </ol>
+      )}
+      {error && <p className="text-[13px] text-danger">{error}</p>}
+      <form
+        className="flex items-end gap-2"
+        onSubmit={(e) => {
+          e.preventDefault();
+          void send();
+        }}
+      >
+        <textarea
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && !e.shiftKey) {
+              e.preventDefault();
+              void send();
+            }
+          }}
+          rows={2}
+          placeholder="Ask the model something (Enter sends, Shift+Enter for a new line)"
+          aria-label="Message to the model"
+          className={`${input} flex-1`}
+        />
+        <button type="submit" disabled={sending || !text.trim() || !model} className={button}>
+          Send
+        </button>
+      </form>
+    </section>
+  );
+}
+
 const button = "rounded-md border border-line-strong px-3 py-1 text-[13px] font-semibold hover:bg-raised disabled:opacity-50";
 const input =
   "rounded-md border border-line bg-ground px-2.5 py-1.5 text-[13px] outline-none placeholder:text-faint focus:border-ink-2";
@@ -134,6 +230,34 @@ export function PromptLabView({ tabs }: { tabs: ReactNode }) {
               Add songs
             </button>
           </form>
+          <button
+            type="button"
+            disabled={busy}
+            className={button}
+            title="Looks up a picked set of songs on Spotify, with notes and expected genres. Songs already in the set are left as they are."
+            onClick={async () => {
+              setBusy(true);
+              const res = await fetch("/api/lab/tracks", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ starter: true }),
+              }).catch(() => null);
+              const body = await res?.json().catch(() => ({}));
+              setError(
+                !res
+                  ? "Couldn't reach the app."
+                  : !res.ok
+                    ? (body.error ?? `Failed (${res.status}).`)
+                    : body.failed?.length
+                      ? `Couldn't find or fully look up: ${body.failed.join("; ")}`
+                      : null
+              );
+              await load();
+              setBusy(false);
+            }}
+          >
+            Add starter songs ({data.starterCount})
+          </button>
           <ul className="flex flex-col gap-1">
             {data.tracks.map((t) => (
               <li key={t.trackId}>
@@ -232,6 +356,8 @@ export function PromptLabView({ tabs }: { tabs: ReactNode }) {
               </button>
             </form>
           </section>
+
+          <LabChat model={data.model} track={selectedTrack ?? null} />
 
           <section className="flex flex-col gap-2">
             <h2 className="font-narrow text-base font-bold">Runs</h2>

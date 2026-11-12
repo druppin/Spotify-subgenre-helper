@@ -4,7 +4,8 @@ import { buildTrackContext } from "@/lib/context";
 import { getValidAccessToken } from "@/lib/spotify/auth";
 import { SpotifyClient } from "@/lib/spotify/client";
 import { spotifyErrorResponse } from "@/lib/spotify/routeError";
-import { addTrack, removeTrack, resultsForTrack, setNote, setTruth, truthHistory } from "@/lib/lab/store";
+import { addTrack, listTracks, removeTrack, resultsForTrack, setNote, setTruth, truthHistory } from "@/lib/lab/store";
+import { STARTER_SET } from "@/lib/lab/starterSet";
 
 // A Spotify track link, URI or bare id.
 const TRACK_ID = /(?:track[/:])?([A-Za-z0-9]{22})\b/;
@@ -17,11 +18,15 @@ export async function GET(request: Request) {
   return NextResponse.json({ results: resultsForTrack(id), truths: truthHistory(id) });
 }
 
-/** Body: { input: string, note?: string }. Adds each song linked in input (one per line) to the test set. */
+/**
+ * Body: { input: string, note?: string }. Adds each song linked in input (one per line) to the test set.
+ * Body: { starter: true }. Adds the starter set, with its notes and expected genres.
+ */
 export async function POST(request: Request) {
   const denied = checkDevRequest(request);
   if (denied) return denied;
-  const { input, note } = await request.json().catch(() => ({}));
+  const { input, note, starter } = await request.json().catch(() => ({}));
+  if (starter === true) return addStarterSet();
   if (typeof input !== "string") return NextResponse.json({ error: "input must be text" }, { status: 400 });
   const ids = [...new Set(input.split(/\s+/).flatMap((part) => TRACK_ID.exec(part)?.[1] ?? []))];
   if (ids.length === 0) return NextResponse.json({ error: "No Spotify track links or ids found." }, { status: 400 });
@@ -37,6 +42,33 @@ export async function POST(request: Request) {
     return NextResponse.json({ added: ids.length, failed });
   } catch (err) {
     return spotifyErrorResponse(err, "prompt lab (add songs)");
+  }
+}
+
+async function addStarterSet() {
+  try {
+    const client = new SpotifyClient(await getValidAccessToken());
+    // Songs already in the set keep their notes and expected genres.
+    const known = new Set(listTracks().map((t) => t.trackId));
+    const failed: string[] = [];
+    let added = 0;
+    for (const song of STARTER_SET) {
+      const label = `${song.artist} – ${song.title}`;
+      const id = await client.findTrackId(song.artist, song.title);
+      if (!id) {
+        failed.push(label);
+        continue;
+      }
+      if (known.has(id)) continue;
+      const { context, lookupFailed } = await buildTrackContext(id, client);
+      if (lookupFailed) failed.push(label);
+      addTrack(context, song.note);
+      setTruth(id, song.truth);
+      added++;
+    }
+    return NextResponse.json({ added, failed });
+  } catch (err) {
+    return spotifyErrorResponse(err, "prompt lab (add starter set)");
   }
 }
 

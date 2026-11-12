@@ -4,6 +4,8 @@ import { DEFAULT_SUMMARY_PROMPT, promptHash } from "@/lib/llm/summarize";
 import { running } from "@/lib/lab/runner";
 import { scoreRun, scoreTrack } from "@/lib/lab/score";
 import { allResults, listRuns, listTracks, liveSummaryPrompt } from "@/lib/lab/store";
+import { STARTER_SET } from "@/lib/lab/starterSet";
+import { getLlmConfig } from "@/lib/settings";
 
 export type LabOverview = ReturnType<typeof overview>;
 
@@ -24,7 +26,11 @@ function overview() {
     };
   });
   const live = liveSummaryPrompt();
+  const config = getLlmConfig();
   return {
+    // What runs and the chat use: the model chosen in Settings.
+    model: config ? `${config.provider}:${config.model}` : null,
+    starterCount: STARTER_SET.length,
     tracks,
     runs,
     defaultPrompt: DEFAULT_SUMMARY_PROMPT,

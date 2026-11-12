@@ -432,6 +432,17 @@ export class SpotifyClient {
     return tracks;
   }
 
+  /** The best match's id for a song, or null. Prefers a result credited to `artist`. */
+  async findTrackId(artist: string, title: string): Promise<string | null> {
+    const q = encodeURIComponent(`track:${title} artist:${artist}`);
+    const body = await this.request<{ tracks: { items: { id: string; artists: { name: string }[] }[] } }>(
+      `/search?type=track&limit=5&q=${q}`
+    );
+    const items = body.tracks.items;
+    const credited = items.find((t) => t.artists.some((a) => a.name.toLowerCase() === artist.toLowerCase()));
+    return (credited ?? items[0])?.id ?? null;
+  }
+
   async getTrackDetails(trackId: string): Promise<LibraryTrack> {
     return toLibraryTrack(await this.request<RawLibraryTrack>(`/tracks/${trackId}`), "");
   }
