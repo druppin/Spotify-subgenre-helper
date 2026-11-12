@@ -31,12 +31,9 @@ export async function POST(request: Request) {
   const config = getLlmConfig();
   if (!config) return NextResponse.json({ error: "No AI provider set up yet (Settings)." }, { status: 400 });
   if (listTracks().length === 0) return NextResponse.json({ error: "Add some songs to the test set first." }, { status: 400 });
-  let accessToken: string;
-  try {
-    accessToken = await getValidAccessToken();
-  } catch {
-    return NextResponse.json({ error: "Log in to Spotify first." }, { status: 401 });
-  }
+  // Only looking songs up needs Spotify; a run on saved data doesn't.
+  const accessToken = await getValidAccessToken().catch(() => null);
+  if (!accessToken && refresh === true) return NextResponse.json({ error: "Log in to Spotify first." }, { status: 401 });
   const label = typeof name === "string" && name.trim() ? name.trim() : `Run ${new Date().toLocaleString()}`;
   return NextResponse.json({ id: startRun(label, prompt, config, refresh === true, accessToken) });
 }

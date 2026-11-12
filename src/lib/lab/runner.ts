@@ -18,7 +18,7 @@ export const running = (holder.__labRunning ??= new Set());
  * refresh looks every song up again first (saving the data if it changed),
  * otherwise each song's last saved data is reused so only the prompt varies.
  */
-export function startRun(name: string, prompt: string, config: LlmConfig, refresh: boolean, accessToken: string): number {
+export function startRun(name: string, prompt: string, config: LlmConfig, refresh: boolean, accessToken: string | null): number {
   const trackIds = listTracks().map((t) => t.trackId);
   const runId = createRun(name, prompt, `${config.provider}:${config.model}`, refresh, trackIds.length);
   running.add(runId);
@@ -28,6 +28,7 @@ export function startRun(name: string, prompt: string, config: LlmConfig, refres
     try {
       let saved = latestContext(trackId);
       if (refresh || !saved) {
+        if (!accessToken) throw new Error("No saved data for this song; log in to Spotify to look it up.");
         const { context, lookupFailed } = await buildTrackContext(trackId, new SpotifyClient(accessToken), undefined, refresh);
         if (lookupFailed && saved) throw new Error("Looking the song up again failed; its saved data was left as it was.");
         saved = { hash: saveContext(context), context };
