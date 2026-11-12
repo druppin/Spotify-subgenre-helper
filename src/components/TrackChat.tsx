@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { fetchWithTimeout } from "@/lib/fetchWithTimeout";
 import { GenreChips, type SavedGenres } from "./GenreTagEditor";
 import { CheckIcon } from "./Icons";
+import { Markdown } from "./Markdown";
 
 interface Message {
   id: number;
@@ -206,13 +207,14 @@ export function TrackChat({
 function ChatBubble({ role, content }: { role: Message["role"]; content: string }) {
   return (
     <div
-      className={`whitespace-pre-wrap px-3 py-2 text-[13px] leading-relaxed ${
+      className={`px-3 py-2 text-[13px] leading-relaxed ${
         role === "user"
-          ? "ml-10 rounded-[10px_10px_3px_10px] bg-raised text-ink"
-          : "mr-10 rounded-[10px_10px_10px_3px] bg-ground text-ink-2"
+          ? "ml-10 whitespace-pre-wrap rounded-[10px_10px_3px_10px] bg-raised text-ink"
+          : "mr-10 min-w-0 rounded-[10px_10px_10px_3px] bg-ground text-ink-2"
       }`}
     >
-      {content}
+      {/* Your own messages stay as typed; the AI's answers are Markdown. */}
+      {role === "user" ? content : <Markdown text={content} />}
     </div>
   );
 }

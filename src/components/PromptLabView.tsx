@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState, type ReactNode } from "react";
 import type { LabOverview } from "@/app/api/lab/route";
+import { Markdown } from "./Markdown";
 import { CompareRuns, pct, SongHistory } from "./PromptLabCompare";
 
 /*
@@ -82,11 +83,11 @@ function LabChat({ model, track }: { model: string | null; track: { trackId: str
           {turns.map((turn, i) => (
             <li
               key={i}
-              className={`whitespace-pre-wrap rounded-md px-3 py-2 text-[13px] ${
-                turn.role === "user" ? "self-end bg-raised" : "border border-line"
+              className={`rounded-md px-3 py-2 text-[13px] ${
+                turn.role === "user" ? "self-end whitespace-pre-wrap bg-raised" : "min-w-0 border border-line"
               }`}
             >
-              {turn.content}
+              {turn.role === "user" ? turn.content : <Markdown text={turn.content} />}
             </li>
           ))}
           {sending && <li className="text-[13px] text-muted">Thinking…</li>}
