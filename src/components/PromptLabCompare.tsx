@@ -8,6 +8,7 @@ import { diffLines, scoreTrack, type Truth } from "@/lib/lab/score";
 import { PauseIcon, PlayIcon } from "./Icons";
 import { usePlayer } from "./PlayerProvider";
 import { SeekBar } from "./SeekBar";
+import { TrackDataPanel } from "./TrackDataPanel";
 
 /*
  * The prompt lab's two read-outs: up to six runs side by side (prompt
@@ -230,7 +231,11 @@ export function SongHistory({
   onSaved: () => void;
   onRemove: () => void;
 }) {
-  const [history, setHistory] = useState<{ results: LabResult[]; truths: (Truth & { setAt: number })[] } | null>(null);
+  const [history, setHistory] = useState<{
+    results: LabResult[];
+    truths: (Truth & { setAt: number })[];
+    context: TrackContext | null;
+  } | null>(null);
   const [note, setNote] = useState(track.note);
   const [required, setRequired] = useState(track.truth?.required.join(", ") ?? "");
   const [acceptable, setAcceptable] = useState(track.truth?.acceptable.join(", ") ?? "");
@@ -342,6 +347,29 @@ export function SongHistory({
           </ul>
         </details>
       )}
+
+      <section>
+        <h3 className="mb-2 font-narrow text-sm font-bold">Song data</h3>
+        {!history ? (
+          <p className="text-[13px] text-muted">Loading…</p>
+        ) : history.context ? (
+          <>
+            <p className="mb-2 text-xs text-muted">
+              {[history.context.albumName, history.context.releaseDate].filter(Boolean).join(" · ")}
+              {" · "}what the AI is given for this song
+            </p>
+            <TrackDataPanel context={history.context} />
+            <details className="mt-2 text-[13px]">
+              <summary className="cursor-pointer text-muted">Exactly as sent</summary>
+              <pre className="mt-1 max-h-96 overflow-auto rounded-md border border-line bg-ground p-2 text-xs leading-5">
+                {JSON.stringify(history.context, null, 2)}
+              </pre>
+            </details>
+          </>
+        ) : (
+          <p className="text-[13px] text-muted">No data saved for this song yet.</p>
+        )}
+      </section>
 
       <section>
         <h3 className="mb-2 font-narrow text-sm font-bold">Every run</h3>

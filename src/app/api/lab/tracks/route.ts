@@ -4,18 +4,22 @@ import { buildTrackContext } from "@/lib/context";
 import { getValidAccessToken } from "@/lib/spotify/auth";
 import { SpotifyClient } from "@/lib/spotify/client";
 import { spotifyErrorResponse } from "@/lib/spotify/routeError";
-import { addTrack, listTracks, removeTrack, resultsForTrack, setNote, setTruth, truthHistory } from "@/lib/lab/store";
+import { addTrack, latestContext, listTracks, removeTrack, resultsForTrack, setNote, setTruth, truthHistory } from "@/lib/lab/store";
 import { STARTER_SET } from "@/lib/lab/starterSet";
 
 // A Spotify track link, URI or bare id.
 const TRACK_ID = /(?:track[/:])?([A-Za-z0-9]{22})\b/;
 
-/** ?id= : one song's answers in every run, and its truth history. */
+/** ?id= : one song's answers in every run, its truth history, and the latest data saved for it. */
 export async function GET(request: Request) {
   const denied = checkDevRequest(request);
   if (denied) return denied;
   const id = new URL(request.url).searchParams.get("id") ?? "";
-  return NextResponse.json({ results: resultsForTrack(id), truths: truthHistory(id) });
+  return NextResponse.json({
+    results: resultsForTrack(id),
+    truths: truthHistory(id),
+    context: latestContext(id)?.context ?? null,
+  });
 }
 
 /**
