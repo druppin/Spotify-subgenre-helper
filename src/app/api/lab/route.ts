@@ -31,6 +31,7 @@ function overview() {
     // What runs and the chat use: the model chosen in Settings.
     model: config ? `${config.provider}:${config.model}` : null,
     starterCount: STARTER_SET.length,
+    starterLabels: STARTER_SET.map((s) => `${s.artist} – ${s.title}`),
     tracks,
     runs,
     defaultPrompt: DEFAULT_SUMMARY_PROMPT,

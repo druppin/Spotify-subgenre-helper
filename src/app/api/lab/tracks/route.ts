@@ -20,13 +20,18 @@ export async function GET(request: Request) {
 
 /**
  * Body: { input: string, note?: string }. Adds each song linked in input (one per line) to the test set.
- * Body: { starter: true }. Adds the starter set, with its notes and expected genres.
+ * Body: { starter: n }. Adds song n of the starter set, with its note and expected genres.
  */
 export async function POST(request: Request) {
   const denied = checkDevRequest(request);
   if (denied) return denied;
   const { input, note, starter } = await request.json().catch(() => ({}));
-  if (starter === true) return addStarterSet();
+  if (starter !== undefined) {
+    if (!Number.isInteger(starter) || !STARTER_SET[starter]) {
+      return NextResponse.json({ error: "starter must be a starter-set index" }, { status: 400 });
+    }
+    return addStarterSong(starter);
+  }
   if (typeof input !== "string") return NextResponse.json({ error: "input must be text" }, { status: 400 });
   const ids = [...new Set(input.split(/\s+/).flatMap((part) => TRACK_ID.exec(part)?.[1] ?? []))];
   if (ids.length === 0) return NextResponse.json({ error: "No Spotify track links or ids found." }, { status: 400 });
@@ -45,30 +50,22 @@ export async function POST(request: Request) {
   }
 }
 
-async function addStarterSet() {
+// One song per request: each lookup takes seconds (MusicBrainz allows about
+// one request a second), so the page adds them one by one and shows progress.
+async function addStarterSong(index: number) {
+  const song = STARTER_SET[index];
   try {
     const client = new SpotifyClient(await getValidAccessToken());
+    const id = await client.findTrackId(song.artist, song.title);
+    if (!id) return NextResponse.json({ status: "notFound" });
     // Songs already in the set keep their notes and expected genres.
-    const known = new Set(listTracks().map((t) => t.trackId));
-    const failed: string[] = [];
-    let added = 0;
-    for (const song of STARTER_SET) {
-      const label = `${song.artist} – ${song.title}`;
-      const id = await client.findTrackId(song.artist, song.title);
-      if (!id) {
-        failed.push(label);
-        continue;
-      }
-      if (known.has(id)) continue;
-      const { context, lookupFailed } = await buildTrackContext(id, client);
-      if (lookupFailed) failed.push(label);
-      addTrack(context, song.note);
-      setTruth(id, song.truth);
-      added++;
-    }
-    return NextResponse.json({ added, failed });
+    if (listTracks().some((t) => t.trackId === id)) return NextResponse.json({ status: "present" });
+    const { context, lookupFailed } = await buildTrackContext(id, client);
+    addTrack(context, song.note);
+    setTruth(id, song.truth);
+    return NextResponse.json({ status: "added", lookupFailed });
   } catch (err) {
-    return spotifyErrorResponse(err, "prompt lab (add starter set)");
+    return spotifyErrorResponse(err, "prompt lab (add starter song)");
   }
 }
 

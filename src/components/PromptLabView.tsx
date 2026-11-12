@@ -137,6 +137,8 @@ export function PromptLabView({ tabs }: { tabs: ReactNode }) {
   const [links, setLinks] = useState("");
   const [newNote, setNewNote] = useState("");
   const [busy, setBusy] = useState(false);
+  // Index of the starter song being added, while adding them.
+  const [starterDone, setStarterDone] = useState<number | null>(null);
   const [compareIds, setCompareIds] = useState<number[]>([]);
   const [selected, setSelected] = useState<string | null>(null);
 
@@ -237,26 +239,44 @@ export function PromptLabView({ tabs }: { tabs: ReactNode }) {
             title="Looks up a picked set of songs on Spotify, with notes and expected genres. Songs already in the set are left as they are."
             onClick={async () => {
               setBusy(true);
-              const res = await fetch("/api/lab/tracks", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ starter: true }),
-              }).catch(() => null);
-              const body = await res?.json().catch(() => ({}));
-              setError(
-                !res
-                  ? "Couldn't reach the app."
-                  : !res.ok
-                    ? (body.error ?? `Failed (${res.status}).`)
-                    : body.failed?.length
-                      ? `Couldn't find or fully look up: ${body.failed.join("; ")}`
-                      : null
-              );
+              setError(null);
+              const notFound: string[] = [];
+              const partial: string[] = [];
+              for (let i = 0; i < data.starterCount; i++) {
+                setStarterDone(i);
+                const res = await fetch("/api/lab/tracks", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ starter: i }),
+                }).catch(() => null);
+                const body = await res?.json().catch(() => ({}));
+                if (!res?.ok) {
+                  // Usually not logged in or offline: the rest would fail the same way.
+                  setError(!res ? "Couldn't reach the app." : (body.error ?? `Failed (${res.status}).`));
+                  break;
+                }
+                if (body.status === "notFound") notFound.push(data.starterLabels[i]);
+                if (body.lookupFailed) partial.push(data.starterLabels[i]);
+                if (body.status === "added") await load();
+              }
+              setStarterDone(null);
+              if (notFound.length || partial.length) {
+                setError(
+                  [
+                    notFound.length && `Not found on Spotify: ${notFound.join("; ")}.`,
+                    partial.length && `Added with some lookups failed (tick "Look songs up again first" on a run): ${partial.join("; ")}.`,
+                  ]
+                    .filter(Boolean)
+                    .join(" ")
+                );
+              }
               await load();
               setBusy(false);
             }}
           >
-            Add starter songs ({data.starterCount})
+            {starterDone === null
+              ? `Add starter songs (${data.starterCount})`
+              : `Adding starter songs… ${starterDone + 1}/${data.starterCount}`}
           </button>
           <ul className="flex flex-col gap-1">
             {data.tracks.map((t) => (
