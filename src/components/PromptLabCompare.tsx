@@ -5,6 +5,9 @@ import type { LabOverview } from "@/app/api/lab/route";
 import type { LabResult } from "@/lib/lab/store";
 import type { TrackContext } from "@/lib/llm/types";
 import { diffLines, scoreTrack, type Truth } from "@/lib/lab/score";
+import { PauseIcon, PlayIcon } from "./Icons";
+import { usePlayer } from "./PlayerProvider";
+import { SeekBar } from "./SeekBar";
 
 /*
  * The prompt lab's two read-outs: up to six runs side by side (prompt
@@ -232,6 +235,7 @@ export function SongHistory({
   const [acceptable, setAcceptable] = useState(track.truth?.acceptable.join(", ") ?? "");
   const [openData, setOpenData] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const { ready, currentUri, isPaused, playbackError, playTrack, togglePlay } = usePlayer();
 
   useEffect(() => {
     let cancelled = false;
@@ -265,14 +269,30 @@ export function SongHistory({
   const inputClass =
     "w-full rounded-md border border-line bg-ground px-2.5 py-1.5 text-[13px] outline-none placeholder:text-faint focus:border-ink-2";
 
+  const uri = `spotify:track:${track.trackId}`;
+  const playing = currentUri === uri;
+
   return (
     <div className="flex flex-col gap-4">
-      <div>
-        <h3 className="font-narrow text-base font-bold">{track.name}</h3>
-        <p className="text-[13px] text-muted">
-          {track.artists.join(", ")} ·{" "}
-          {track.dataCapturedAt ? `data saved ${new Date(track.dataCapturedAt).toLocaleString()}` : "no data saved"}
-        </p>
+      <div className="flex items-center gap-3">
+        <button
+          type="button"
+          onClick={() => (playing ? togglePlay() : void playTrack(uri))}
+          disabled={!ready}
+          aria-label={playing && !isPaused ? `Pause ${track.name}` : `Play ${track.name}`}
+          className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full border border-line-strong hover:bg-raised disabled:opacity-40"
+        >
+          {playing && !isPaused ? <PauseIcon size={15} /> : <PlayIcon size={15} />}
+        </button>
+        <div className="min-w-0 flex-1">
+          <h3 className="font-narrow text-base font-bold">{track.name}</h3>
+          <p className="text-[13px] text-muted">
+            {track.artists.join(", ")} ·{" "}
+            {track.dataCapturedAt ? `data saved ${new Date(track.dataCapturedAt).toLocaleString()}` : "no data saved"}
+          </p>
+          {playing && <SeekBar className="mt-1 max-w-md" />}
+          {playing && playbackError && <p className="text-[13px] text-danger">{playbackError}</p>}
+        </div>
       </div>
 
       <form
