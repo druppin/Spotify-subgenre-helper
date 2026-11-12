@@ -1,15 +1,17 @@
 import { getAudioFeatures } from "@/lib/reccobeats";
 import { getCache } from "@/lib/cache";
-import { getArtistInfo, getTrackTags } from "@/lib/lastfm";
-import { getMusicBrainzInfo } from "@/lib/musicbrainz";
+import { clashes, type LastfmArtistCheck } from "@/lib/artistCheck";
+import { getArtistInfo, getTrackTags, type LastfmArtistInfo } from "@/lib/lastfm";
+import { artistIdFor, getMusicBrainzInfo } from "@/lib/musicbrainz";
 import type { SpotifyClient } from "@/lib/spotify/client";
 import type { TrackContext } from "@/lib/llm/types";
 import { getTrackDetailsCached } from "@/lib/playlistIndex";
 
 // Bump the namespace whenever TrackContext gains a field, so contexts cached
 // before it existed get rebuilt instead of served without it. (v4 also
-// dropped contexts saved empty because a lookup had failed.)
-const contextCache = getCache<TrackContext>("track-context-v4");
+// dropped contexts saved empty because a lookup had failed; v5 checks
+// Last.fm's artist against MusicBrainz, and adds lastfmArtistCheck.)
+const contextCache = getCache<TrackContext>("track-context-v5");
 
 // The sources a context is built from, reported as each one finishes so a
 // caller can show per-song progress.
@@ -54,14 +56,26 @@ export async function buildTrackContext(
   const onFailure = () => {
     failed = true;
   };
-  const [[lastfmTrack, lastfmArtist], audioFeaturesByTrack, musicbrainz] = await Promise.all([
+  const [[lastfmTrack, lastfmByName], audioFeaturesByTrack, { credits, ...musicbrainz }] = await Promise.all([
     reported(
       "lastfm",
-      Promise.all([getTrackTags(primaryArtistName, track.name, onFailure), getArtistInfo(primaryArtistName, onFailure)])
+      Promise.all([
+        getTrackTags(primaryArtistName, track.name, onFailure),
+        getArtistInfo(primaryArtistName, onFailure),
+      ])
     ),
     reported("audio", getAudioFeatures([trackId], onFailure)),
     reported("musicbrainz", getMusicBrainzInfo(primaryArtistName, track.name, onFailure, refresh)),
   ]);
+  const { lastfmArtist, lastfmArtistCheck } = checkLastfmArtist(
+    lastfmByName,
+    artistIdFor(credits, primaryArtistName),
+    [
+      ...lastfmTrack,
+      ...[...musicbrainz.recordingTags, ...musicbrainz.releaseGroupGenres].map((v) => v.name),
+      ...musicbrainz.artistGenres.flatMap((a) => a.genres.map((v) => v.name)),
+    ]
+  );
 
   const context: TrackContext = {
     trackId,
@@ -76,6 +90,7 @@ export async function buildTrackContext(
     lastfmTrackTags: lastfmTrack,
     lastfmArtistTags: lastfmArtist.tags,
     lastfmArtistBio: lastfmArtist.bioSummary,
+    lastfmArtistCheck,
     musicbrainz,
     audioFeatures: audioFeaturesByTrack[trackId] ?? null,
   };
@@ -86,6 +101,34 @@ export async function buildTrackContext(
   }
   await contextCache.set(trackId, context);
   return { context, lookupFailed: false };
+}
+
+const NO_ARTIST_INFO = { tags: [], bioSummary: null };
+
+/**
+ * Last.fm's artist, checked against the artist MusicBrainz credits on the
+ * matched recording (Last.fm finds artists by name, so it can return someone
+ * else with the same name). A mismatch is left out rather than looked up
+ * again by MusicBrainz id: Last.fm's pages are keyed by name, so that lands
+ * on the same page. A matching id isn't enough on its own either: Last.fm
+ * merges same-named artists onto one page (its "Rova" has the drum and bass
+ * producer's id and a jazz quartet's tags), so tags that clash with every
+ * other genre the song has are left out as well.
+ */
+function checkLastfmArtist(
+  byName: (LastfmArtistInfo & { mbid: string | null }) | null,
+  musicbrainzArtistId: string | null,
+  songGenres: string[]
+): { lastfmArtist: LastfmArtistInfo; lastfmArtistCheck: LastfmArtistCheck } {
+  if (!byName) return { lastfmArtist: NO_ARTIST_INFO, lastfmArtistCheck: "unconfirmed" };
+  if (musicbrainzArtistId && byName.mbid && byName.mbid !== musicbrainzArtistId) {
+    return { lastfmArtist: NO_ARTIST_INFO, lastfmArtistCheck: "removed: different artist" };
+  }
+  if (clashes(byName.tags, songGenres)) {
+    return { lastfmArtist: NO_ARTIST_INFO, lastfmArtistCheck: "removed: clashes with this song's genres" };
+  }
+  const confirmed = Boolean(musicbrainzArtistId && byName.mbid === musicbrainzArtistId);
+  return { lastfmArtist: byName, lastfmArtistCheck: confirmed ? "confirmed" : "unconfirmed" };
 }
 
 // Whether a context has anything to base genres on beyond the song's own

@@ -16,6 +16,9 @@ export interface TrackContext {
   lastfmTrackTags: string[];
   lastfmArtistTags: string[];
   lastfmArtistBio: string | null;
+  // How far the Last.fm artist was checked against MusicBrainz (see artistCheck.ts).
+  // Missing on contexts saved before the check existed.
+  lastfmArtistCheck?: import("@/lib/artistCheck").LastfmArtistCheck;
   musicbrainz: import("@/lib/musicbrainz").MusicBrainzInfo;
   audioFeatures: import("@/lib/reccobeats").AudioFeatures | null;
 }

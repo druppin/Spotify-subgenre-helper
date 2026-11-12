@@ -139,6 +139,15 @@ interface SearchRecording {
   releases?: { "release-group"?: { id: string } }[];
 }
 
+// The artists credited on the matched recording, for checking other sources'
+// artist lookups against. Kept out of MusicBrainzInfo, which the AI is sent.
+export type ArtistCredit = { name: string; id: string };
+
+/** The MusicBrainz id of the credited artist with this name, if any. */
+export function artistIdFor(credits: ArtistCredit[], name: string): string | null {
+  return credits.find((c) => foldTitle(c.name) === foldTitle(name))?.id ?? null;
+}
+
 /**
  * MusicBrainz genre votes for a song. Artist and album lookups come from a
  * month-long cache when they can; fresh pulls the latest from MusicBrainz.
@@ -148,8 +157,8 @@ export async function getMusicBrainzInfo(
   trackName: string,
   onFailure?: () => void,
   fresh = false
-): Promise<MusicBrainzInfo> {
-  if (!artist || !trackName) return EMPTY;
+): Promise<MusicBrainzInfo & { credits: ArtistCredit[] }> {
+  if (!artist || !trackName) return { ...EMPTY, credits: [] };
 
   let matches: SearchRecording[] = [];
   for (const title of candidateTitles(trackName)) {
@@ -161,7 +170,7 @@ export async function getMusicBrainzInfo(
     matches = (search?.recordings ?? []).filter((r) => r.score >= MIN_MATCH_SCORE);
     if (matches.length > 0) break;
   }
-  if (matches.length === 0) return EMPTY;
+  if (matches.length === 0) return { ...EMPTY, credits: [] };
 
   // The same song is often entered as several recordings (single, album,
   // compilation...) with votes scattered across them — pool them.
@@ -198,6 +207,11 @@ export async function getMusicBrainzInfo(
     recordingTags: mergeVotes(matches.map((m) => toVotes(m.tags))),
     releaseGroupGenres: toVotes(releaseGroup?.genres),
     artistGenres,
+    // Both the name as credited and the artist's own, either of which Spotify may use.
+    credits: credits.flatMap((c) => [
+      { name: c.name, id: c.artist.id },
+      { name: c.artist.name, id: c.artist.id },
+    ]),
   };
 }
 

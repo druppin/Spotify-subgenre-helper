@@ -58,13 +58,21 @@ export async function getTrackTags(artist: string, track: string, onFailure?: ()
   return body?.toptags?.tag?.map((t) => t.name) ?? [];
 }
 
-export async function getArtistInfo(artist: string, onFailure?: () => void): Promise<LastfmArtistInfo> {
+/**
+ * An artist by name, with their MusicBrainz id when Last.fm knows it; null
+ * when Last.fm doesn't have them (or the lookup failed).
+ */
+export async function getArtistInfo(
+  artist: string,
+  onFailure?: () => void
+): Promise<(LastfmArtistInfo & { mbid: string | null }) | null> {
   const body = await call<{
-    artist?: { tags?: { tag?: { name: string }[] }; bio?: { summary?: string } };
+    artist?: { mbid?: string; tags?: { tag?: { name: string }[] }; bio?: { summary?: string } };
   }>({ method: "artist.getInfo", artist }, onFailure);
+  if (!body?.artist) return null;
 
-  const tags = body?.artist?.tags?.tag?.map((t) => t.name) ?? [];
-  const rawSummary = body?.artist?.bio?.summary;
+  const tags = body.artist.tags?.tag?.map((t) => t.name) ?? [];
+  const rawSummary = body.artist.bio?.summary;
   const bioSummary = rawSummary ? stripHtml(rawSummary) : null;
-  return { tags, bioSummary };
+  return { tags, bioSummary, mbid: body.artist.mbid || null };
 }
