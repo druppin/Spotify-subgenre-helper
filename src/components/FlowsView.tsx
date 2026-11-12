@@ -5,7 +5,7 @@ import type { SpotifyPlaylist } from "@/lib/spotify/client";
 import { LIKED_SONGS_ID, LIKED_SONGS_PICKER_ENTRY } from "@/lib/library";
 import { FAMILY_NAMES, familyMark, familyTab, type GenreFamily } from "@/lib/genreFamily";
 import { PlaylistPicker } from "./PlaylistPicker";
-import { NewPlaylistDialog } from "./QuickActions";
+import { NewPlaylistDialog, usePlaylistCreated } from "./QuickActions";
 import { CloseIcon } from "./Icons";
 
 /*
@@ -170,6 +170,7 @@ export function FlowsView({ tabs }: { tabs: ReactNode }) {
   const [flows, setFlows] = useState<Flow[] | null>(null);
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [playlists, setPlaylists] = useState<SpotifyPlaylist[]>([]);
+  usePlaylistCreated(setPlaylists);
   const [families, setFamilies] = useState<Record<string, { top: string[]; family: GenreFamily }>>({});
   const [preview, setPreview] = useState<Preview | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -677,7 +678,6 @@ export function FlowsView({ tabs }: { tabs: ReactNode }) {
         dialogRef={newPlaylistRef}
         showStar={false}
         onCreated={(playlist) => {
-          setPlaylists((prev) => [playlist, ...prev]);
           void save({ targetId: playlist.id });
         }}
       />

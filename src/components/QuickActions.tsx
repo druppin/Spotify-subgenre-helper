@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import type { SpotifyPlaylist } from "@/lib/spotify/client";
 import type { Setup } from "@/lib/setups";
 import { SetupsDialog } from "./SetupsDialog";
@@ -163,6 +163,20 @@ export function QuickActions({
   );
 }
 
+export const PLAYLIST_CREATED_EVENT = "playlist-created";
+
+/** Adds playlists created anywhere in the app to `setPlaylists`'s list. */
+export function usePlaylistCreated(setPlaylists: (update: (prev: SpotifyPlaylist[]) => SpotifyPlaylist[]) => void) {
+  useEffect(() => {
+    const onCreated = (e: Event) => {
+      const playlist = (e as CustomEvent<SpotifyPlaylist>).detail;
+      setPlaylists((prev) => (prev.some((p) => p.id === playlist.id) ? prev : [playlist, ...prev]));
+    };
+    window.addEventListener(PLAYLIST_CREATED_EVENT, onCreated);
+    return () => window.removeEventListener(PLAYLIST_CREATED_EVENT, onCreated);
+  }, [setPlaylists]);
+}
+
 export function NewPlaylistDialog({
   dialogRef,
   onCreated,
@@ -209,6 +223,8 @@ export function NewPlaylistDialog({
         return;
       }
       onCreated(body.playlist, star);
+      // Every tab stays mounted, so each one's playlist list hears about it.
+      window.dispatchEvent(new CustomEvent<SpotifyPlaylist>(PLAYLIST_CREATED_EVENT, { detail: body.playlist }));
       close();
     } catch (err) {
       setError(String(err));

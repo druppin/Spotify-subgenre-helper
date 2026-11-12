@@ -7,7 +7,7 @@ import { SourcePlaylistPanel, type SourceSort } from "./SourcePlaylistPanel";
 import { NowPlayingPanel } from "./NowPlayingPanel";
 import { DestinationPlaylistsPanel } from "./DestinationPlaylistsPanel";
 import { PlaylistPicker } from "./PlaylistPicker";
-import { QuickActions } from "./QuickActions";
+import { QuickActions, usePlaylistCreated } from "./QuickActions";
 import { loadLastSession, saveLastSession, type Setup } from "@/lib/setups";
 
 const SOURCE_SORT_STORAGE_KEY = "sorter.sourceSort";
@@ -366,8 +366,8 @@ export function Dashboard({ tabs }: { tabs: ReactNode }) {
     );
   }, []);
 
+  usePlaylistCreated(setPlaylists);
   const handlePlaylistCreated = useCallback((playlist: SpotifyPlaylist, star: boolean) => {
-    setPlaylists((prev) => [playlist, ...prev]);
     setPlaylistIndex((prev) => ({ ...prev, [playlist.id]: new Set() }));
     if (star) setPinnedIds((prev) => [...prev, playlist.id]);
   }, []);
