@@ -393,7 +393,7 @@ export function PromptLabView({ tabs }: { tabs: ReactNode }) {
                       <th className="p-1.5">Model · prompt</th>
                       <th className="p-1.5">Status</th>
                       <th className="p-1.5" title="Balance of precision and recall">F1</th>
-                      <th className="p-1.5" title="Share of named tags that were expected or acceptable">Precision</th>
+                      <th className="p-1.5" title="Share of named tags that were expected, acceptable, or a narrower/broader version of one (≈)">Precision</th>
                       <th className="p-1.5" title="Share of expected genres that were named">Recall</th>
                       <th className="p-1.5" title="Songs whose main genre family matched">Family</th>
                       <th className="p-1.5" title="Average confidence on right / wrong tags">Conf. ✓/✗</th>

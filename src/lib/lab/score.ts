@@ -1,4 +1,4 @@
-import { genreKey, normalizeGenre } from "../genreKey.ts";
+import { genreKey, genreWords, normalizeGenre } from "../genreKey.ts";
 import { dominantFamily } from "../genreFamily.ts";
 
 /*
@@ -16,7 +16,9 @@ export interface Truth {
   acceptable: string[];
 }
 
-export type Verdict = "hit" | "ok" | "wrong";
+// hit: a required genre. ok: an acceptable one. close: a narrower or broader
+// version of either, which counts as right but doesn't fill a required slot.
+export type Verdict = "hit" | "ok" | "close" | "wrong";
 
 export interface TrackScore {
   tags: { tag: string; confidence: number | null; verdict: Verdict }[];
@@ -30,16 +32,35 @@ export interface TrackScore {
 
 const key = (genre: string) => genreKey(normalizeGenre(genre));
 const alternatives = (entry: string) => entry.split("|").map(key).filter(Boolean);
+const entryGenres = (entry: string) => entry.split("|").map(normalizeGenre).filter(Boolean);
+
+// One genre is a narrower or broader version of the other when all the
+// shorter one's words are in the longer one: "ambient dubstep" and
+// "dubstep", "garage" and "future garage". Whole words, so "dub" isn't
+// related to "dubstep" or "rap" to "trap".
+function related(a: string, b: string): boolean {
+  const [x, y] = [genreWords(a), genreWords(b)];
+  const [shorter, longer] = x.length <= y.length ? [x, new Set(y)] : [y, new Set(x)];
+  return shorter.length > 0 && shorter.every((w) => longer.has(w));
+}
 
 export function scoreTrack(tags: string[], confidence: Record<string, number>, truth: Truth): TrackScore {
   const required = truth.required.map(alternatives).filter((alts) => alts.length > 0);
   const acceptable = new Set(truth.acceptable.flatMap(alternatives));
+  const expected = [...truth.required, ...truth.acceptable].flatMap(entryGenres);
   const matched = new Set<number>();
   const scored = tags.map((tag) => {
     const k = key(tag);
     const i = required.findIndex((alts) => alts.includes(k));
     if (i >= 0) matched.add(i);
-    const verdict: Verdict = i >= 0 ? "hit" : acceptable.has(k) ? "ok" : "wrong";
+    const verdict: Verdict =
+      i >= 0
+        ? "hit"
+        : acceptable.has(k)
+          ? "ok"
+          : expected.some((genre) => related(normalizeGenre(tag), genre))
+            ? "close"
+            : "wrong";
     return { tag, confidence: confidence[tag] ?? null, verdict };
   });
   const firstSpellings = truth.required.map((entry) => entry.split("|")[0].trim()).filter(Boolean);
@@ -55,7 +76,7 @@ export function scoreTrack(tags: string[], confidence: Record<string, number>, t
 export interface RunScore {
   // Songs with both an answer and a truth.
   tracks: number;
-  // Share of named tags that were required or acceptable.
+  // Share of named tags that were required, acceptable, or close to either.
   precision: number | null;
   // Share of required genres that were named.
   recall: number | null;

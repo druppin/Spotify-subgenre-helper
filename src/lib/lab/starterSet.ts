@@ -25,16 +25,28 @@ export const STARTER_SET: StarterSong[] = [
     truth: { required: ["liquid drum and bass | liquid funk"], acceptable: ["drum and bass", "soul"] },
   },
   {
-    artist: "High Contrast",
-    title: "If We Ever",
-    note: "Liquid DnB with a vocal",
-    truth: { required: ["liquid drum and bass | liquid funk"], acceptable: ["drum and bass", "vocal drum and bass"] },
+    artist: "Pendulum",
+    title: "Tarantula",
+    note: "Dancefloor DnB with rock in it",
+    truth: { required: ["drum and bass | dancefloor drum and bass"], acceptable: ["electronic rock", "jump up"] },
   },
   {
-    artist: "Netsky",
-    title: "Memory Lane",
-    note: "Melodic liquid DnB",
-    truth: { required: ["liquid drum and bass | liquid funk"], acceptable: ["drum and bass"] },
+    artist: "Macky Gee",
+    title: "Tour",
+    note: "Jump up: wobbly bass, simple and bouncy",
+    truth: { required: ["jump up"], acceptable: ["drum and bass", "dancefloor drum and bass"] },
+  },
+  {
+    artist: "Ed Rush & Optical",
+    title: "Pacman",
+    note: "Techstep: the dark late-90s sound neurofunk grew from",
+    truth: { required: ["techstep"], acceptable: ["drum and bass", "neurofunk", "darkstep"] },
+  },
+  {
+    artist: "LTJ Bukem",
+    title: "Horizons",
+    note: "Atmospheric / intelligent DnB",
+    truth: { required: ["atmospheric drum and bass | intelligent drum and bass"], acceptable: ["drum and bass", "liquid drum and bass", "jungle"] },
   },
   {
     artist: "Noisia",
@@ -88,7 +100,8 @@ export const STARTER_SET: StarterSong[] = [
     artist: "Angerfist",
     title: "Raise Your Fist",
     note: "Gabber / mainstream hardcore: fast and distorted",
-    truth: { required: ["hardcore | gabber"], acceptable: ["mainstream hardcore", "hardcore techno"] },
+    // gabber first: the family check reads the first spelling, and "hardcore" alone reads as punk.
+    truth: { required: ["gabber | hardcore"], acceptable: ["mainstream hardcore", "hardcore techno"] },
   },
   {
     artist: "Aphex Twin",

@@ -24,6 +24,7 @@ const short = (hash: string | null) => (hash ? hash.slice(0, 8) : "–");
 const VERDICT_STYLE = {
   hit: { className: "text-ok", mark: "✓", label: "expected" },
   ok: { className: "text-muted", mark: "~", label: "acceptable" },
+  close: { className: "text-muted", mark: "≈", label: "a narrower or broader version of an expected genre" },
   wrong: { className: "text-danger", mark: "✗", label: "not expected" },
 } as const;
 

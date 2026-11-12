@@ -24,7 +24,16 @@ const GENRE_ALIASES: [RegExp, string][] = [
 // "synthpop" / "synth-pop") or by an alias above are one genre and share
 // a key. Expects a normalized genre.
 export function genreKey(genre: string): string {
-  let key = genre;
-  for (const [pattern, replacement] of GENRE_ALIASES) key = key.replace(pattern, replacement);
-  return key.replace(/[-\s]/g, "");
+  return aliased(genre).replace(/[-\s]/g, "");
+}
+
+/** A normalized genre's words, aliases spelled out: "post-dubstep" → post, dubstep. */
+export function genreWords(genre: string): string[] {
+  return aliased(genre).split(/[-\s]+/).filter(Boolean);
+}
+
+function aliased(genre: string): string {
+  let out = genre;
+  for (const [pattern, replacement] of GENRE_ALIASES) out = out.replace(pattern, replacement);
+  return out;
 }

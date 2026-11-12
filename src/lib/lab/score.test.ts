@@ -18,9 +18,27 @@ test("matches spellings, alternatives and acceptable tags", () => {
   assert.equal(score.familyMatch, true);
 });
 
+test("narrower or broader versions of expected genres are close, not wrong", () => {
+  // Burial "Archangel", as one run answered it.
+  const score = scoreTrack(
+    ["future garage", "ambient dubstep", "2-step garage", "post‑dubstep", "hauntology", "dub", "garage"],
+    {},
+    { required: ["future garage | uk garage"], acceptable: ["dubstep", "ambient", "2-step"] }
+  );
+  assert.deepEqual(
+    score.tags.map((t) => t.verdict),
+    ["hit", "close", "close", "close", "wrong", "wrong", "close"]
+  );
+  // Close tags don't fill a required genre.
+  const vague = scoreTrack(["drum and bass"], {}, { required: ["liquid dnb"], acceptable: [] });
+  assert.deepEqual(vague.tags.map((t) => t.verdict), ["close"]);
+  assert.equal(vague.found, 0);
+  assert.equal(scoreRun([vague]).precision, 1);
+});
+
 test("run totals", () => {
   const a = scoreTrack(["house", "techno"], { house: 80, techno: 20 }, { required: ["house"], acceptable: [] });
-  const b = scoreTrack(["metal"], { metal: 70 }, { required: ["doom metal"], acceptable: [] });
+  const b = scoreTrack(["grunge"], { grunge: 70 }, { required: ["doom metal"], acceptable: [] });
   const run = scoreRun([a, b]);
   assert.equal(run.precision, 1 / 3);
   assert.equal(run.recall, 1 / 2);
