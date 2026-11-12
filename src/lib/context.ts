@@ -1,4 +1,5 @@
 import { getAudioFeatures } from "@/lib/reccobeats";
+import { getRecordLabel } from "@/lib/deezer";
 import { getCache } from "@/lib/cache";
 import { clashes, type LastfmArtistCheck } from "@/lib/artistCheck";
 import { getArtistInfo, getTrackTags, type LastfmArtistInfo } from "@/lib/lastfm";
@@ -10,8 +11,9 @@ import { getTrackDetailsCached } from "@/lib/playlistIndex";
 // Bump the namespace whenever TrackContext gains a field, so contexts cached
 // before it existed get rebuilt instead of served without it. (v4 also
 // dropped contexts saved empty because a lookup had failed; v5 checks
-// Last.fm's artist against MusicBrainz, and adds lastfmArtistCheck.)
-const contextCache = getCache<TrackContext>("track-context-v5");
+// Last.fm's artist against MusicBrainz, and adds lastfmArtistCheck; v6 adds
+// recordLabel.)
+const contextCache = getCache<TrackContext>("track-context-v6");
 
 // The sources a context is built from, reported as each one finishes so a
 // caller can show per-song progress.
@@ -56,7 +58,7 @@ export async function buildTrackContext(
   const onFailure = () => {
     failed = true;
   };
-  const [[lastfmTrack, lastfmByName], audioFeaturesByTrack, { credits, ...musicbrainz }] = await Promise.all([
+  const [[lastfmTrack, lastfmByName], audioFeaturesByTrack, { credits, ...musicbrainz }, recordLabel] = await Promise.all([
     reported(
       "lastfm",
       Promise.all([
@@ -66,6 +68,7 @@ export async function buildTrackContext(
     ),
     reported("audio", getAudioFeatures([trackId], onFailure)),
     reported("musicbrainz", getMusicBrainzInfo(primaryArtistName, track.name, onFailure, refresh)),
+    getRecordLabel(track.isrc, onFailure),
   ]);
   const { lastfmArtist, lastfmArtistCheck } = checkLastfmArtist(
     lastfmByName,
@@ -83,6 +86,7 @@ export async function buildTrackContext(
     artistNames: track.artists,
     albumName: track.album ?? "",
     releaseDate: track.releaseDate ?? "",
+    recordLabel,
     // Spotify returns no artist genres to development-mode apps (none of the
     // first ~280 cached contexts got any), so fetching each artist just spent
     // rate limit. Kept empty so the prompt and cached contexts keep their shape.

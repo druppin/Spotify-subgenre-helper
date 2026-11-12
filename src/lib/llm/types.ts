@@ -12,6 +12,9 @@ export interface TrackContext {
   artistNames: string[];
   albumName: string;
   releaseDate: string;
+  // The label the release is on, from Deezer. Missing on contexts saved
+  // before labels were looked up; null when Deezer doesn't know it.
+  recordLabel?: string | null;
   artistGenres: string[];
   lastfmTrackTags: string[];
   lastfmArtistTags: string[];

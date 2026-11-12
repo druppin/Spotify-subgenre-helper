@@ -22,6 +22,11 @@ export function TrackDataPanel({ context }: { context: TrackContext }) {
 
   return (
     <div className="space-y-3">
+      {context.recordLabel && (
+        <p className="text-xs text-muted">
+          Label <span className="font-semibold text-ink-2">{context.recordLabel}</span>
+        </p>
+      )}
       {context.audioFeatures ? (
         <div className="grid grid-cols-4 gap-1.5">
           <Stat label="BPM" value={Math.round(context.audioFeatures.tempo).toString()} />
