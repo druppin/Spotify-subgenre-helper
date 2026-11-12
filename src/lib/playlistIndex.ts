@@ -1,4 +1,4 @@
-import { LIKED_SONGS_ID, type LibraryCoverage, type LibraryFetchMode } from "@/lib/library";
+import { ALBUM_ID_PREFIX, LIKED_SONGS_ID, type LibraryCoverage, type LibraryFetchMode } from "@/lib/library";
 import { getPlaceInfo, getPlaceTracks, getTrack, savePlace, saveTrack, updatePlaceNames, type PlaceInfo } from "@/lib/libraryStore";
 import {
   SpotifyApiError,
@@ -276,6 +276,10 @@ export async function getPlaylistIndex(
  * part of the cached library (so a later library scan can skip it).
  */
 export function getPlaylistTracksCached(spotify: SpotifyClient, playlistId: string): Promise<LibraryTrack[]> {
+  // Albums stay out of the library cache: they aren't places songs get filed.
+  if (playlistId.startsWith(ALBUM_ID_PREFIX)) {
+    return spotify.getAlbumLibraryTracks(playlistId.slice(ALBUM_ID_PREFIX.length));
+  }
   return serialized(async () => {
     const listed =
       state.listing && Date.now() - state.listing.fetchedAt < LISTING_MAX_AGE_MS

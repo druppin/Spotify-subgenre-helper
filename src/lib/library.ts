@@ -4,6 +4,9 @@ import type { SpotifyPlaylist } from "@/lib/spotify/client";
 // The place ID used for Liked Songs alongside playlist IDs.
 export const LIKED_SONGS_ID = "liked";
 
+// Saved albums are picked as sorter sources by "album:<Spotify album ID>".
+export const ALBUM_ID_PREFIX = "album:";
+
 // Lets Liked Songs be picked in a PlaylistPicker alongside real playlists.
 export const LIKED_SONGS_PICKER_ENTRY: SpotifyPlaylist = {
   id: LIKED_SONGS_ID,

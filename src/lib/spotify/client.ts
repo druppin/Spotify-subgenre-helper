@@ -1,5 +1,6 @@
 import { fetchWithTimeout } from "@/lib/fetchWithTimeout";
 import { getCache } from "@/lib/cache";
+import { ALBUM_ID_PREFIX } from "@/lib/library";
 
 const API_BASE = "https://api.spotify.com/v1";
 
@@ -381,6 +382,54 @@ export class SpotifyClient {
     }>("/me/tracks?limit=1");
     const newest = page.items[0];
     return `${page.total}:${newest?.added_at ?? ""}:${(newest?.track ?? newest?.item)?.uri ?? ""}`;
+  }
+
+  // Saved albums, shaped as read-only playlists so they can sit in a
+  // PlaylistPicker. Needs user-library-read.
+  async getSavedAlbums(): Promise<SpotifyPlaylist[]> {
+    type Page = {
+      items: {
+        album: { id: string; name: string; images: SpotifyImage[]; artists: { name: string }[]; total_tracks: number };
+      }[];
+      next: string | null;
+    };
+    const albums: SpotifyPlaylist[] = [];
+    let url: string | null = "/me/albums?limit=50";
+    while (url) {
+      const page: Page = await this.request(url);
+      for (const { album } of page.items) {
+        albums.push({
+          id: `${ALBUM_ID_PREFIX}${album.id}`,
+          name: `${album.name} – ${album.artists.map((a) => a.name).join(", ")}`,
+          images: album.images,
+          tracks: { total: album.total_tracks },
+          owner: { id: "", display_name: null },
+          collaborative: false,
+          canModify: false,
+        });
+      }
+      url = page.next ? page.next.replace(API_BASE, "") : null;
+    }
+    return albums;
+  }
+
+  // Album tracks come without album details, so those are added from the album.
+  async getAlbumLibraryTracks(albumId: string): Promise<LibraryTrack[]> {
+    type TrackPage = { items: RawLibraryTrack[]; next: string | null };
+    const album = await this.request<{
+      name: string;
+      release_date: string;
+      images: SpotifyImage[];
+      tracks: TrackPage;
+    }>(`/albums/${albumId}`);
+    const albumInfo = { name: album.name, release_date: album.release_date, images: album.images };
+    const tracks: LibraryTrack[] = [];
+    let page: TrackPage | null = album.tracks;
+    while (page) {
+      for (const raw of page.items) if (raw.uri) tracks.push(toLibraryTrack({ ...raw, album: albumInfo }, ""));
+      page = page.next ? await this.request<TrackPage>(page.next.replace(API_BASE, "")) : null;
+    }
+    return tracks;
   }
 
   async getTrackDetails(trackId: string): Promise<LibraryTrack> {

@@ -101,6 +101,9 @@ export function Dashboard({ tabs }: { tabs: ReactNode }) {
   const [initialSession] = useState(loadLastSession);
   const [playlists, setPlaylists] = useState<SpotifyPlaylist[]>([]);
   const [playlistsLoaded, setPlaylistsLoaded] = useState(false);
+  // Saved albums: sources only, so kept out of the destination list.
+  const [albums, setAlbums] = useState<SpotifyPlaylist[]>([]);
+  const sourceOptions = useMemo(() => [...playlists, ...albums], [playlists, albums]);
   const [sourcePlaylistId, setSourcePlaylistId] = useState<string | null>(initialSession.sourcePlaylistId);
   const [sourceTracks, setSourceTracks] = useState<SpotifyPlaylistTrackItem[]>([]);
   const [sourceTracksError, setSourceTracksError] = useState<string | null>(null);
@@ -149,6 +152,8 @@ export function Dashboard({ tabs }: { tabs: ReactNode }) {
     [playlists]
   );
   const listening = isListenPlaylist(sourcePlaylistId);
+  // Saved albums (and listen-mode playlists) can be sorted from, not removed from.
+  const sourceRemovable = playlists.find((p) => p.id === sourcePlaylistId)?.canModify === true;
   const listenContext = sourcePlaylistId ? `spotify:playlist:${sourcePlaylistId}` : null;
   const [heardUri, setHeardUri] = useState<string | null>(null);
   // Spotify doesn't always say what it's playing from; only a song from
@@ -236,6 +241,11 @@ export function Dashboard({ tabs }: { tabs: ReactNode }) {
       .then((res) => res.json())
       .then((body) => setPlaylists(body.playlists ?? []))
       .finally(() => setPlaylistsLoaded(true));
+    // Without albums (e.g. a failed request) the sorter still works on playlists.
+    fetch("/api/albums")
+      .then((res) => res.json())
+      .then((body) => setAlbums(body.albums ?? []))
+      .catch((err) => console.error("Failed to load saved albums:", err));
   }, []);
 
   useEffect(() => {
@@ -560,11 +570,11 @@ export function Dashboard({ tabs }: { tabs: ReactNode }) {
       setMembership(destinationPlaylistId, currentTrack.uri, true);
       adjustTrackCount(destinationPlaylistId, 1);
 
-      if (alsoRemoveFromSource && !listening) {
+      if (alsoRemoveFromSource && sourceRemovable) {
         setPendingRemovalUri(currentTrack.uri);
       }
     },
-    [currentTrack, alsoRemoveFromSource, listening, setMembership, adjustTrackCount]
+    [currentTrack, alsoRemoveFromSource, sourceRemovable, setMembership, adjustTrackCount]
   );
 
   const handleRemoveFromPlaylist = useCallback(
@@ -614,7 +624,7 @@ export function Dashboard({ tabs }: { tabs: ReactNode }) {
         {tabs}
         <div className="ml-auto">
           <PlaylistPicker
-            playlists={playlists}
+            playlists={sourceOptions}
             selectedId={sourcePlaylistId}
             onSelect={selectSourcePlaylist}
           />
@@ -645,7 +655,7 @@ export function Dashboard({ tabs }: { tabs: ReactNode }) {
             alsoRemoveFromSource={alsoRemoveFromSource}
             onPlaylistCreated={handlePlaylistCreated}
             onLoadSetup={loadSetup}
-            onRemoveFromSource={currentTrack && !listening ? removeCurrentFromSource : null}
+            onRemoveFromSource={currentTrack && sourceRemovable ? removeCurrentFromSource : null}
             onRemoveFromAll={currentPlaylistIds.length > 0 ? removeCurrentFromAll : null}
             removeFromAllCount={currentPlaylistIds.length}
             currentTrackId={currentTrack?.id ?? null}
