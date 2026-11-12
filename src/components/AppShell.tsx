@@ -6,14 +6,18 @@ import { Dashboard } from "./Dashboard";
 import { LostTracksView } from "./LostTracksView";
 import { FlowsView } from "./FlowsView";
 import { SettingsDialog } from "./SettingsDialog";
+import { PromptLabView } from "./PromptLabView";
 import type { OrganizeStats } from "@/lib/organizeLog";
 
-const TABS = [
+const ALL_TABS = [
   { id: "subgenres", label: "Subgenre sorter" },
   { id: "lost", label: "My library" },
   { id: "flows", label: "Flows" },
+  { id: "lab", label: "Prompt lab" },
 ] as const;
-type TabId = (typeof TABS)[number]["id"];
+type TabId = (typeof ALL_TABS)[number]["id"];
+// The Prompt lab is a developer tool, shown only with NEXT_PUBLIC_DEV_MODE=true.
+const TABS = ALL_TABS.filter((t) => t.id !== "lab" || process.env.NEXT_PUBLIC_DEV_MODE === "true");
 
 const TAB_STORAGE_KEY = "app.activeTab";
 
@@ -156,6 +160,11 @@ export function AppShell() {
       {visited.has("flows") && (
         <div className={activeTab === "flows" ? "contents" : "hidden"}>
           <FlowsView tabs={tabs} />
+        </div>
+      )}
+      {visited.has("lab") && (
+        <div className={activeTab === "lab" ? "contents" : "hidden"}>
+          <PromptLabView tabs={tabs} />
         </div>
       )}
     </PlayerProvider>

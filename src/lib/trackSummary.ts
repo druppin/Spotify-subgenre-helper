@@ -2,7 +2,8 @@ import { NextResponse } from "next/server";
 import { getValidAccessToken } from "@/lib/spotify/auth";
 import { SpotifyClient, SpotifyApiError } from "@/lib/spotify/client";
 import { buildTrackContext, hasGenreEvidence, type SummaryStep } from "@/lib/context";
-import { summarizeTrack, SUMMARY_PROMPT_VERSION } from "@/lib/llm/summarize";
+import { promptVersion, summarizeTrack } from "@/lib/llm/summarize";
+import { liveSummaryPrompt } from "@/lib/lab/store";
 import { scoreTags } from "@/lib/llm/scoreTags";
 import type { LlmConfig, ShownSummary, TrackContext, TrackSummary } from "@/lib/llm/types";
 import { getCache } from "@/lib/cache";
@@ -49,7 +50,9 @@ async function shownSummary(id: string, summary: TrackSummary): Promise<ShownSum
  * current prompt if there is one, otherwise from any earlier model or prompt.
  */
 export async function findAnySummary(trackId: string, config: LlmConfig): Promise<TrackSummary | null> {
-  const current = await summaryCache.get(`${trackId}:${config.provider}:${config.model}:${SUMMARY_PROMPT_VERSION}`);
+  const current = await summaryCache.get(
+    `${trackId}:${config.provider}:${config.model}:${promptVersion(liveSummaryPrompt())}`
+  );
   if (current) return current;
   const any = (await summaryCache.entries()).find(([key, value]) => key.startsWith(`${trackId}:`) && value.subgenres.length > 0);
   return any?.[1] ?? null;
@@ -99,7 +102,8 @@ export async function summarizeTrackById(
     });
   }
 
-  const cacheKey = `${id}:${llmConfig.provider}:${llmConfig.model}:${SUMMARY_PROMPT_VERSION}`;
+  const prompt = liveSummaryPrompt();
+  const cacheKey = `${id}:${llmConfig.provider}:${llmConfig.model}:${promptVersion(prompt)}`;
   const modelLabel = `${llmConfig.provider}:${llmConfig.model}`;
   if (!forceRegenerate) {
     const cached = await summaryCache.get(cacheKey);
@@ -144,7 +148,7 @@ export async function summarizeTrackById(
   }
 
   try {
-    const summary = await summarizeTrack(context, llmConfig);
+    const summary = await summarizeTrack(context, llmConfig, prompt);
     onStep?.("ai");
     if (summary.subgenres.length === 0) {
       return NextResponse.json({

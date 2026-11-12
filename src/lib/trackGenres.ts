@@ -3,6 +3,9 @@ import path from "path";
 import { once, sql, transaction } from "@/lib/db";
 import type { StoredTags, TrackSummary } from "@/lib/llm/types";
 import { DATA_DIR } from "@/lib/dataDir";
+import { genreKey, normalizeGenre } from "@/lib/genreKey";
+
+export { normalizeGenre };
 
 /**
  * The genres the AI settled on for each track, keyed by Spotify track id.
@@ -58,37 +61,6 @@ function writeGenres(trackId: string, genres: TrackGenres) {
   genres.subgenres.forEach((genre, position) =>
     insert.run(trackId, position, genre, genres.confidence[position] ?? null, genres.byUser[position] ? 1 : 0)
   );
-}
-
-// LLMs mix in non-breaking hyphens/spaces and inconsistent case, which
-// would split one genre into several when counting.
-export function normalizeGenre(genre: string): string {
-  return genre
-    .replace(/[‐-―]/g, "-")
-    .replace(/[  ]/g, " ")
-    .replace(/\s+/g, " ")
-    .trim()
-    .toLowerCase();
-}
-
-// Abbreviations and symbols that name the same thing, applied before
-// comparing (the shown spelling is still one the AI actually used).
-const GENRE_ALIASES: [RegExp, string][] = [
-  [/&/g, " and "], // drum & bass, r&b
-  [/\s'?n'?\s/g, " and "], // drum 'n' bass, rock n roll
-  [/\b(dnb|d and b)\b/g, "drum and bass"],
-  [/\brnb\b/g, "r and b"],
-  [/\balt\b/g, "alternative"], // alt rock, alt-rock
-  [/\bpsych\b/g, "psychedelic"], // psych rock, psych-pop
-];
-
-// Spellings that differ only by hyphens or spaces ("pop-punk", "pop punk",
-// "synthpop" / "synth-pop") or by an alias above are one genre and share
-// a key.
-function genreKey(genre: string): string {
-  let key = genre;
-  for (const [pattern, replacement] of GENRE_ALIASES) key = key.replace(pattern, replacement);
-  return key.replace(/[-\s]/g, "");
 }
 
 // Broad genres every narrower one ending in them also belongs to ("doom

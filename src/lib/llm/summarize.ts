@@ -2,7 +2,7 @@ import { createHash } from "crypto";
 import { callLlm } from "./providers";
 import type { LlmConfig, TrackContext, TrackSummary } from "./types";
 
-const SYSTEM_PROMPT = `You are a genre-nerd music curator helping someone sort tracks into playlists.
+export const DEFAULT_SUMMARY_PROMPT = `You are a genre-nerd music curator helping someone sort tracks into playlists.
 Given metadata, tags, and audio-feature numbers for a track, produce a short structured summary.
 Propose freeform subgenre labels as specific as you can justify from the evidence given
 (e.g. "UK house" vs "bass house" vs "tech house" vs "dubstep" vs "hardstyle" vs "uptempo" vs
@@ -42,13 +42,16 @@ give every tag the same number.
 Respond with ONLY a JSON object of this exact shape, no markdown fences:
 {"moodVibe": string, "subgenres": [{"genre": string, "confidence": number}], "rationale": string}`;
 
-// Derived from the prompt text itself so editing SYSTEM_PROMPT automatically
-// invalidates cached summaries (see the cache key in the summary route)
-// instead of silently serving stale answers from a since-changed prompt.
-export const SUMMARY_PROMPT_VERSION = createHash("sha256")
-  .update(SYSTEM_PROMPT)
-  .digest("hex")
-  .slice(0, 8);
+/** A prompt's full sha256, which the prompt lab saves prompts under. */
+export function promptHash(prompt: string): string {
+  return createHash("sha256").update(prompt).digest("hex");
+}
+
+// Part of the summary cache key, so a changed prompt gets fresh summaries
+// (see trackSummary.ts) instead of answers from the old one.
+export function promptVersion(prompt: string): string {
+  return promptHash(prompt).slice(0, 8);
+}
 
 function buildUserPrompt(context: TrackContext): string {
   return JSON.stringify(context, null, 2);
@@ -98,10 +101,11 @@ const MAX_PARSE_ATTEMPTS = 2;
 
 export async function summarizeTrack(
   context: TrackContext,
-  config: LlmConfig
+  config: LlmConfig,
+  prompt = DEFAULT_SUMMARY_PROMPT
 ): Promise<TrackSummary> {
   for (let attempt = 1; ; attempt++) {
-    const { text, host } = await callLlm(config, SYSTEM_PROMPT, buildUserPrompt(context));
+    const { text, host } = await callLlm(config, prompt, buildUserPrompt(context));
     try {
       return parseSummary(text);
     } catch (err) {

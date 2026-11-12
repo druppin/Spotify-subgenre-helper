@@ -142,6 +142,66 @@ CREATE TABLE IF NOT EXISTS api_tokens (
   last_used_at INTEGER
 );
 
+-- Prompt lab (dev mode, see lab/store.ts): a test set of songs, the
+-- answers expected for them, and runs of a summary prompt over them.
+-- Prompts and input data are saved once each, by hash.
+CREATE TABLE IF NOT EXISTS lab_prompts (
+  hash TEXT PRIMARY KEY,
+  text TEXT NOT NULL,
+  created_at INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS lab_tracks (
+  track_id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  -- JSON array of artist names
+  artists TEXT NOT NULL,
+  -- Why the song is in the set ("174 BPM liquid, not gabber").
+  note TEXT NOT NULL DEFAULT '',
+  added_at INTEGER NOT NULL
+);
+-- Every version of a song's expected genres; the newest is current. JSON
+-- arrays; an entry may list alternatives as "liquid dnb | liquid funk".
+CREATE TABLE IF NOT EXISTS lab_truths (
+  id INTEGER PRIMARY KEY,
+  track_id TEXT NOT NULL,
+  required TEXT NOT NULL,
+  acceptable TEXT NOT NULL,
+  set_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS lab_truths_track ON lab_truths(track_id, id);
+-- What the AI was given for a song (a TrackContext), as of captured_at.
+CREATE TABLE IF NOT EXISTS lab_contexts (
+  hash TEXT PRIMARY KEY,
+  track_id TEXT NOT NULL,
+  context TEXT NOT NULL,
+  captured_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS lab_contexts_track ON lab_contexts(track_id, captured_at);
+CREATE TABLE IF NOT EXISTS lab_runs (
+  id INTEGER PRIMARY KEY,
+  name TEXT NOT NULL,
+  prompt_hash TEXT NOT NULL REFERENCES lab_prompts(hash),
+  -- provider:model
+  model TEXT NOT NULL,
+  -- 1 when each song was looked up again before the run.
+  refreshed INTEGER NOT NULL,
+  total INTEGER NOT NULL,
+  created_at INTEGER NOT NULL,
+  finished_at INTEGER
+);
+CREATE TABLE IF NOT EXISTS lab_results (
+  run_id INTEGER NOT NULL REFERENCES lab_runs(id) ON DELETE CASCADE,
+  track_id TEXT NOT NULL,
+  context_hash TEXT,
+  -- JSON TrackSummary, or null when the song failed (see error).
+  summary TEXT,
+  error TEXT,
+  PRIMARY KEY (run_id, track_id)
+);
+-- Small named values; 'live_prompt' is the hash of the summary prompt the
+-- app uses in place of the built-in one.
+CREATE TABLE IF NOT EXISTS lab_state (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+
 CREATE VIEW IF NOT EXISTS place_songs AS
 SELECT p.id AS place_id, p.name AS place_name, pt.position, pt.added_at,
        t.uri, t.id, t.name,
@@ -182,7 +242,7 @@ const ADDED_COLUMNS: { table: string; column: string; declaration: string }[] = 
 const LATE_INDEXES = "CREATE INDEX IF NOT EXISTS tracks_base_title ON tracks(base_title);";
 // Bumped whenever the schema changes, so a dev server's open connection
 // picks the change up without a restart.
-const SCHEMA_VERSION = 7;
+const SCHEMA_VERSION = 8;
 
 interface DbState {
   db: DatabaseSync;
