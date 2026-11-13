@@ -10,9 +10,11 @@ import { getTrackGenreDetails, normalizeGenre, type TrackGenreDetails } from "@/
 /*
  * Flows pool playlists (and Liked Songs) into one target playlist. Each
  * source is wired in with optional filters; running a flow adds the songs
- * that pass and aren't in the target yet. It never removes anything, so
- * songs added to the target by hand stay. Stored in the library database
- * (flows, flow_sources — see db.ts).
+ * that pass and aren't in the target yet, and removes songs it added
+ * earlier that no longer pass (left a source, or a filter changed). Songs
+ * added to the target by hand, or before flows remembered what they added,
+ * are never removed. Stored in the library database (flows, flow_sources,
+ * flow_added — see db.ts).
  */
 
 export interface FlowSource {
@@ -120,6 +122,10 @@ export function updateFlow(
   const flow = getFlow(id);
   if (!flow) return undefined;
   transaction(() => {
+    // What it added to the old target is that playlist's business now.
+    if (change.targetId !== undefined && change.targetId !== flow.targetId) {
+      sql("DELETE FROM flow_added WHERE flow_id = ?").run(id);
+    }
     sql("UPDATE flows SET name = ?, target_id = ? WHERE id = ?").run(
       change.name ?? flow.name,
       change.targetId === undefined ? flow.targetId : change.targetId,
@@ -183,25 +189,35 @@ export interface FlowResult {
   sources: FlowSourceResult[];
   targetTotal: number;
   newSongs: { track: LibraryTrack; from: string }[];
+  // Songs the flow added earlier that no longer pass any source.
+  removedSongs: LibraryTrack[];
 }
 
 const isTrack = (t: LibraryTrack) => t.uri.startsWith("spotify:track:");
 const trackId = (uri: string) => uri.slice("spotify:track:".length);
 
-/** What running a flow would add, given each place's songs. */
+/** The songs a flow has added to its current target. */
+function addedBy(flowId: number): Set<string> {
+  return new Set((sql("SELECT track_uri FROM flow_added WHERE flow_id = ?").all(flowId) as { track_uri: string }[]).map((r) => r.track_uri));
+}
+
+/** What running a flow would add and remove, given each place's songs and what the flow added before. */
 export async function computeFlow(
   sources: FlowSource[],
   targetTracks: LibraryTrack[],
-  tracksOf: (sourceId: string) => LibraryTrack[]
+  tracksOf: (sourceId: string) => LibraryTrack[],
+  addedBefore: Set<string>
 ): Promise<FlowResult> {
   const inTarget = new Set(targetTracks.map((t) => t.uri));
   const lists = sources.map((s) => tracksOf(s.sourceId).filter(isTrack));
   const genres = await getTrackGenreDetails([...new Set(lists.flat().map((t) => trackId(t.uri)))]);
   const added = new Set<string>();
+  const passingAll = new Set<string>();
   const newSongs: FlowResult["newSongs"] = [];
   const results = sources.map((source, i) => {
     const tracks = lists[i];
     const passing = tracks.filter((t) => passes(source, genres[trackId(t.uri)]));
+    for (const track of passing) passingAll.add(track.uri);
     let newCount = 0;
     for (const track of passing) {
       if (inTarget.has(track.uri) || added.has(track.uri)) continue;
@@ -212,17 +228,21 @@ export async function computeFlow(
     const covers = [...new Set(tracks.map((t) => t.image).filter((c): c is string => !!c))].slice(0, 4);
     return { sourceId: source.sourceId, total: tracks.length, passing: passing.length, newCount, covers };
   });
-  return { sources: results, targetTotal: targetTracks.length, newSongs };
+  const removedSongs = [
+    ...new Map(targetTracks.filter((t) => addedBefore.has(t.uri) && !passingAll.has(t.uri)).map((t) => [t.uri, t])).values(),
+  ];
+  return { sources: results, targetTotal: targetTracks.length, newSongs, removedSongs };
 }
 
-/** What running the flow would add, from the saved library only (no Spotify requests). */
-export function previewFlow(sources: FlowSource[], targetId: string | null): Promise<FlowResult> {
-  return computeFlow(sources, targetId ? getPlaceTracks(targetId) : [], getPlaceTracks);
+/** What running the flow would do, from the saved library only (no Spotify requests). */
+export function previewFlow(flowId: number, sources: FlowSource[], targetId: string | null): Promise<FlowResult> {
+  return computeFlow(sources, targetId ? getPlaceTracks(targetId) : [], getPlaceTracks, addedBy(flowId));
 }
 
 /**
  * Runs a flow: brings each source and the target up to date with Spotify,
- * then adds the passing songs the target doesn't have. Returns what was added.
+ * adds the passing songs the target doesn't have, and removes the songs it
+ * added before that no longer pass. Returns what changed.
  */
 export async function runFlow(flow: Flow, spotify: SpotifyClient): Promise<FlowResult> {
   if (!flow.targetId) throw new Error("Pick the playlist this flow fills first.");
@@ -230,13 +250,32 @@ export async function runFlow(flow: Flow, spotify: SpotifyClient): Promise<FlowR
   const load = async (id: string) =>
     id === LIKED_SONGS_ID ? ((await getLikedSongs(spotify, "update")).tracks ?? []) : getPlaylistTracksCached(spotify, id);
   for (const id of new Set([flow.targetId, ...flow.sources.map((s) => s.sourceId)])) fresh.set(id, await load(id));
-  const result = await computeFlow(flow.sources, fresh.get(flow.targetId) ?? [], (id) => fresh.get(id) ?? []);
+  const targetTracks = fresh.get(flow.targetId) ?? [];
+  const before = addedBy(flow.id);
+  const result = await computeFlow(flow.sources, targetTracks, (id) => fresh.get(id) ?? [], before);
   const uris = result.newSongs.map((s) => s.track.uri);
   if (uris.length > 0) {
     const snapshotId = await spotify.addTracksToPlaylist(flow.targetId, uris);
     await recordOwnEdit(flow.targetId, { added: uris }, snapshotId);
     await recordOrganizeEvent({ action: "add", playlistId: flow.targetId, uris, source: "flows" });
+    transaction(() => {
+      for (const uri of uris) sql("INSERT OR IGNORE INTO flow_added (flow_id, track_uri) VALUES (?, ?)").run(flow.id, uri);
+    });
   }
+  const removed = result.removedSongs.map((t) => t.uri);
+  if (removed.length > 0) {
+    const snapshotId = await spotify.removeTracksFromPlaylist(flow.targetId, removed);
+    await recordOwnEdit(flow.targetId, { removed }, snapshotId);
+    await recordOrganizeEvent({ action: "remove", playlistId: flow.targetId, uris: removed, source: "flows" });
+  }
+  // Forget removed songs, and ones taken out of the target by hand, so they
+  // count as hand-added if someone puts them back.
+  const inTarget = new Set(targetTracks.map((t) => t.uri));
+  transaction(() => {
+    for (const uri of before) {
+      if (removed.includes(uri) || !inTarget.has(uri)) sql("DELETE FROM flow_added WHERE flow_id = ? AND track_uri = ?").run(flow.id, uri);
+    }
+  });
   sql("UPDATE flows SET last_run_at = ?, last_run_added = ? WHERE id = ?").run(Date.now(), uris.length, flow.id);
   return result;
 }

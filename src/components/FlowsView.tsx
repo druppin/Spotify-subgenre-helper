@@ -39,6 +39,9 @@ interface Preview {
   targetTotal: number;
   newTotal: number;
   newSongs: { uri: string; name: string; artists: string[]; image: string | null; from: string }[];
+  // Songs the flow added before that no longer come through.
+  removedTotal: number;
+  removedSongs: { uri: string; name: string; artists: string[]; image: string | null }[];
 }
 
 const FAMILIES: GenreFamily[] = ["house", "bass", "pop", "hiphop", "rock", "roots"];
@@ -273,12 +276,15 @@ export function FlowsView({ tabs }: { tabs: ReactNode }) {
     setRunning(true);
     setError(null);
     try {
-      const { added } = await send<{ added: number }>(`/api/flows/${flow.id}/run`, "POST");
+      const { added, removed } = await send<{ added: number; removed: number }>(`/api/flows/${flow.id}/run`, "POST");
       runDialogRef.current?.close();
+      const songs = (n: number) => `${n} song${n === 1 ? "" : "s"}`;
       setNotice(
-        added === 0
-          ? `${placeName(flow.targetId!)} already had every song.`
-          : `Added ${added} song${added === 1 ? "" : "s"} to ${placeName(flow.targetId!)}.`
+        added === 0 && removed === 0
+          ? `${placeName(flow.targetId!)} was already up to date.`
+          : [added > 0 && `Added ${songs(added)} to`, removed > 0 && `${added > 0 ? "removed" : "Removed"} ${songs(removed)} from`]
+              .filter(Boolean)
+              .join(" and ") + ` ${placeName(flow.targetId!)}.`
       );
       await loadFlows();
       await loadPreview(flow.id);
@@ -317,7 +323,7 @@ export function FlowsView({ tabs }: { tabs: ReactNode }) {
           <span className="text-[13px] text-muted">
             {flows.length === 0
               ? "No flows yet"
-              : `${flows.length} flow${flows.length === 1 ? "" : "s"}, ${flows.filter((f) => f.waiting > 0).length} with new songs waiting`}
+              : `${flows.length} flow${flows.length === 1 ? "" : "s"}, ${flows.filter((f) => f.waiting > 0).length} with changes waiting`}
           </span>
         )}
       </header>
@@ -374,7 +380,7 @@ export function FlowsView({ tabs }: { tabs: ReactNode }) {
                 {!f.targetId
                   ? "No playlist to fill yet"
                   : f.waiting > 0
-                    ? `${f.waiting} new song${f.waiting === 1 ? "" : "s"} waiting`
+                    ? `${f.waiting} change${f.waiting === 1 ? "" : "s"} waiting`
                     : f.lastRunAt
                       ? `Up to date, ran ${ago(f.lastRunAt)}`
                       : "Up to date"}
@@ -615,7 +621,13 @@ export function FlowsView({ tabs }: { tabs: ReactNode }) {
                   ? `${placeName(flow.targetId!)} already has every song these crates would add.`
                   : `${preview.newTotal} song${preview.newTotal === 1 ? "" : "s"} from ${sources.length} crate${
                       sources.length === 1 ? "" : "s"
-                    } aren't in ${placeName(flow.targetId!)} yet. Running adds them to the end. Nothing already in it is removed.`}
+                    } aren't in ${placeName(flow.targetId!)} yet. Running adds them to the end.`}{" "}
+                {preview.removedTotal === 0
+                  ? "Nothing is removed."
+                  : `${preview.removedTotal} song${preview.removedTotal === 1 ? "" : "s"} this flow added before no longer ${
+                      preview.removedTotal === 1 ? "comes" : "come"
+                    } through a crate and ${preview.removedTotal === 1 ? "is" : "are"} removed.`}{" "}
+                Songs you added yourself always stay.
               </p>
               <p className="text-xs text-muted">
                 Each crate is checked with Spotify first, so the final count can differ a little from this one.
@@ -632,24 +644,12 @@ export function FlowsView({ tabs }: { tabs: ReactNode }) {
                   </div>
                 ))}
               </div>
-              {preview.newSongs.length > 0 && (
-                <ul className="max-h-56 overflow-y-auto rounded-lg border border-line">
-                  {preview.newSongs.slice(0, 20).map((s) => (
-                    <li key={s.uri} className="flex items-center gap-2.5 border-b border-line px-3 py-1.5 last:border-b-0">
-                      {s.image ? (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img src={s.image} alt="" className="h-7 w-7 rounded-[3px] object-cover" />
-                      ) : (
-                        <span className="h-7 w-7 rounded-[3px] bg-raised" />
-                      )}
-                      <span className="min-w-0 flex-1 truncate text-[13.5px]">
-                        {s.name} <span className="text-muted">{s.artists.join(", ")}</span>
-                      </span>
-                      <span className="text-xs text-muted">from {placeName(s.from)}</span>
-                    </li>
-                  ))}
-                  {preview.newTotal > 20 && <li className="px-3 py-1.5 text-[12.5px] text-muted">and {preview.newTotal - 20} more</li>}
-                </ul>
+              <RunSongList songs={preview.newSongs} total={preview.newTotal} note={(s) => `from ${placeName(s.from)}`} />
+              {preview.removedTotal > 0 && (
+                <>
+                  <h3 className="text-[13px] font-semibold">Removed</h3>
+                  <RunSongList songs={preview.removedSongs} total={preview.removedTotal} />
+                </>
               )}
               {error && <p className="text-[13px] text-danger">{error}</p>}
               <div className="flex justify-end gap-2">
@@ -663,10 +663,17 @@ export function FlowsView({ tabs }: { tabs: ReactNode }) {
                 <button
                   type="button"
                   onClick={() => void run()}
-                  disabled={running || preview.newTotal === 0}
+                  disabled={running || (preview.newTotal === 0 && preview.removedTotal === 0)}
                   className="rounded-md bg-ink px-4 py-2 text-[13px] font-bold text-ground hover:bg-ink-2 disabled:opacity-50"
                 >
-                  {running ? "Adding…" : `Add ${preview.newTotal} song${preview.newTotal === 1 ? "" : "s"}`}
+                  {running
+                    ? "Running…"
+                    : [
+                        preview.newTotal > 0 && `Add ${preview.newTotal}`,
+                        preview.removedTotal > 0 && `${preview.newTotal > 0 ? "remove" : "Remove"} ${preview.removedTotal}`,
+                      ]
+                        .filter(Boolean)
+                        .join(", ") || "Nothing to change"}
                 </button>
               </div>
             </div>
@@ -682,6 +689,38 @@ export function FlowsView({ tabs }: { tabs: ReactNode }) {
         }}
       />
     </div>
+  );
+}
+
+/** Up to 20 of the songs a run adds or removes, with how many more there are. */
+function RunSongList<T extends { uri: string; name: string; artists: string[]; image: string | null }>({
+  songs,
+  total,
+  note,
+}: {
+  songs: T[];
+  total: number;
+  note?: (song: T) => string;
+}) {
+  if (songs.length === 0) return null;
+  return (
+    <ul className="max-h-56 overflow-y-auto rounded-lg border border-line">
+      {songs.slice(0, 20).map((s) => (
+        <li key={s.uri} className="flex items-center gap-2.5 border-b border-line px-3 py-1.5 last:border-b-0">
+          {s.image ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={s.image} alt="" className="h-7 w-7 rounded-[3px] object-cover" />
+          ) : (
+            <span className="h-7 w-7 rounded-[3px] bg-raised" />
+          )}
+          <span className="min-w-0 flex-1 truncate text-[13.5px]">
+            {s.name} <span className="text-muted">{s.artists.join(", ")}</span>
+          </span>
+          {note && <span className="text-xs text-muted">{note(s)}</span>}
+        </li>
+      ))}
+      {total > 20 && <li className="px-3 py-1.5 text-[12.5px] text-muted">and {total - 20} more</li>}
+    </ul>
   );
 }
 

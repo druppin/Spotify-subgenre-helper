@@ -4,7 +4,7 @@ import { cleanSource, getFlow, previewFlow, type FlowSource } from "@/lib/flows"
 const LISTED_SONGS = 50;
 
 /**
- * What running the flow would add, from the saved library (no Spotify
+ * What running the flow would add and remove, from the saved library (no Spotify
  * requests). Body (optional): { sources } to preview unsaved filter changes.
  */
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -13,7 +13,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   if (!flow) return NextResponse.json({ error: "No such flow." }, { status: 404 });
   const body = await request.json().catch(() => ({}));
   const sources: FlowSource[] = Array.isArray(body.sources) ? body.sources.map(cleanSource) : flow.sources;
-  const result = await previewFlow(sources, flow.targetId);
+  const result = await previewFlow(flow.id, sources, flow.targetId);
   return NextResponse.json({
     sources: result.sources,
     targetTotal: result.targetTotal,
@@ -24,6 +24,13 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       artists: track.artists,
       image: track.image,
       from,
+    })),
+    removedTotal: result.removedSongs.length,
+    removedSongs: result.removedSongs.slice(0, LISTED_SONGS).map((track) => ({
+      uri: track.uri,
+      name: track.name,
+      artists: track.artists,
+      image: track.image,
     })),
   });
 }

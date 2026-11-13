@@ -4,7 +4,7 @@ import { SpotifyClient } from "@/lib/spotify/client";
 import { spotifyErrorResponse } from "@/lib/spotify/routeError";
 import { getFlow, runFlow } from "@/lib/flows";
 
-/** Runs the flow: adds the songs its target is missing. Responds with how many, per source. */
+/** Runs the flow: adds the songs its target is missing and removes ones it added that no longer fit. */
 export async function POST(_request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const flow = getFlow(Number(id));
@@ -13,7 +13,7 @@ export async function POST(_request: NextRequest, { params }: { params: Promise<
   try {
     const client = new SpotifyClient(await getValidAccessToken());
     const result = await runFlow(flow, client);
-    return NextResponse.json({ added: result.newSongs.length, sources: result.sources });
+    return NextResponse.json({ added: result.newSongs.length, removed: result.removedSongs.length, sources: result.sources });
   } catch (err) {
     return spotifyErrorResponse(err, "POST /api/flows/[id]/run");
   }

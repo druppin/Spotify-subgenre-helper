@@ -129,6 +129,14 @@ CREATE TABLE IF NOT EXISTS flow_sources (
   PRIMARY KEY (flow_id, source_id)
 );
 
+-- Songs each flow added to its target, so a run can take out the ones
+-- that no longer come through (songs added by hand aren't listed).
+CREATE TABLE IF NOT EXISTS flow_added (
+  flow_id INTEGER NOT NULL REFERENCES flows(id) ON DELETE CASCADE,
+  track_uri TEXT NOT NULL,
+  PRIMARY KEY (flow_id, track_uri)
+);
+
 -- One-time imports already done (see once).
 CREATE TABLE IF NOT EXISTS done_once (key TEXT PRIMARY KEY);
 
@@ -242,7 +250,7 @@ const ADDED_COLUMNS: { table: string; column: string; declaration: string }[] = 
 const LATE_INDEXES = "CREATE INDEX IF NOT EXISTS tracks_base_title ON tracks(base_title);";
 // Bumped whenever the schema changes, so a dev server's open connection
 // picks the change up without a restart.
-const SCHEMA_VERSION = 8;
+const SCHEMA_VERSION = 9;
 
 interface DbState {
   db: DatabaseSync;

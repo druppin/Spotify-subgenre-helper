@@ -2,12 +2,12 @@ import { NextRequest, NextResponse } from "next/server";
 import { createFlow, listFlows, previewFlow } from "@/lib/flows";
 import { LIKED_SONGS_ID } from "@/lib/library";
 
-/** Every flow, each with how many songs running it would add (from the saved library). */
+/** Every flow, each with how many songs running it would add or remove (from the saved library). */
 export async function GET() {
   const flows = await Promise.all(
     listFlows().map(async (flow) => {
-      const preview = await previewFlow(flow.sources, flow.targetId);
-      return { ...flow, waiting: preview.newSongs.length };
+      const preview = await previewFlow(flow.id, flow.sources, flow.targetId);
+      return { ...flow, waiting: preview.newSongs.length + preview.removedSongs.length };
     })
   );
   return NextResponse.json({ flows });
