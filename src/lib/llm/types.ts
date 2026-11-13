@@ -24,6 +24,10 @@ export interface TrackContext {
   lastfmArtistCheck?: import("@/lib/artistCheck").LastfmArtistCheck;
   musicbrainz: import("@/lib/musicbrainz").MusicBrainzInfo;
   audioFeatures: import("@/lib/reccobeats").AudioFeatures | null;
+  // Measured from the user's own audio file (see localAudio.ts); only
+  // present for songs in their music folder.
+  mixDensity?: import("@/lib/mixDensity").MixDensity;
+  soundsLike?: import("@/lib/soundsLike").SoundsLike;
 }
 
 export interface TrackSummary {

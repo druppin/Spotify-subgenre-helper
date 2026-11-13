@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, type FormEvent, type ReactNode, type RefObject } from "react";
+import type { LocalAudioStatus } from "@/app/api/local-audio/route";
 import type { SettingsResponse } from "@/app/api/settings/route";
 import type { ApiKeyInfo } from "@/lib/api/tokens";
 import type { SettingName } from "@/lib/settings";
@@ -319,6 +320,18 @@ export function SettingsForm({ onSaved }: { onSaved?: (settings: SettingsRespons
         </Field>
       </Section>
 
+      <Section title="Your music files (optional)">
+        <p className="text-sm text-muted">
+          If your songs are also downloaded with their Spotify ID in a <code className="text-ink-2">SPOTIFY_ID</code>{" "}
+          tag, the app measures how sparse or dense each mix is and tells the AI. It helps tell styles apart, like
+          rollers from neurofunk. Needs ffmpeg installed.
+        </p>
+        <Field label="Music folder" note={envNote("MUSIC_FOLDER") ?? "The full path, e.g. /home/you/Music"}>
+          <input className={inputClass} value={value("MUSIC_FOLDER")} onChange={set("MUSIC_FOLDER")} />
+        </Field>
+        <MusicFolderScan folder={saved.MUSIC_FOLDER.value ?? null} />
+      </Section>
+
       <div className="flex items-center justify-end gap-3">
         {status?.kind === "saved" && (
           <span className={`text-sm ${status.message ? "text-warn" : "text-ok"}`}>{status.message ?? "Saved"}</span>
@@ -333,6 +346,85 @@ export function SettingsForm({ onSaved }: { onSaved?: (settings: SettingsRespons
         </button>
       </div>
     </form>
+  );
+}
+
+/** The music folder's scan: what's matched and measured, and a button to scan again. */
+function MusicFolderScan({ folder }: { folder: string | null }) {
+  const [status, setStatus] = useState<LocalAudioStatus | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [scannedFolder, setScannedFolder] = useState(folder);
+  const running = !!status && !["idle", "done", "error"].includes(status.progress.phase);
+
+  const scan = (downloadModel = false) => {
+    setError(null);
+    sendJson<LocalAudioStatus>("/api/local-audio", "POST", { downloadModel }).then(setStatus, (err) => setError(err.message));
+  };
+
+  useEffect(() => {
+    sendJson<LocalAudioStatus>("/api/local-audio", "GET").then(setStatus, (err) => setError(err.message));
+  }, []);
+  // A newly saved folder is scanned straight away.
+  if (folder !== scannedFolder) {
+    setScannedFolder(folder);
+    if (folder) scan();
+  }
+  useEffect(() => {
+    if (!running) return;
+    const timer = setInterval(() => {
+      sendJson<LocalAudioStatus>("/api/local-audio", "GET").then(setStatus, () => {});
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [running]);
+
+  if (!status || !folder) return error ? <p className="text-sm text-danger">{error}</p> : null;
+  if (!status.ffmpeg) {
+    return <p className="text-sm text-warn">ffmpeg isn&apos;t installed, or isn&apos;t on the PATH, so nothing can be measured.</p>;
+  }
+  const { progress, counts } = status;
+  return (
+    <div className="space-y-2 text-sm">
+      <div className="flex items-center gap-3">
+        <p className="flex-1 text-muted" aria-live="polite">
+          {progress.phase === "downloading"
+            ? "Downloading the sound model…"
+            : progress.phase === "scanning"
+              ? `Reading tags… ${progress.scanned} of ${progress.files} files`
+              : progress.phase === "measuring"
+                ? `Measuring… ${progress.measured} of ${progress.toMeasure} songs`
+                : progress.phase === "listening"
+                  ? `Listening… ${progress.listened} of ${progress.toListen} songs`
+                  : `${counts.files} files, ${counts.matched} with a Spotify ID, ${counts.measured} measured` +
+                    (status.soundModel ? `, ${counts.listened} listened to.` : ".")}
+          {progress.phase === "error" && <span className="block text-danger">{progress.error}</span>}
+          {error && <span className="block text-danger">{error}</span>}
+        </p>
+        <button
+          type="button"
+          onClick={() => scan()}
+          disabled={running}
+          className="shrink-0 rounded-md border border-line-strong px-3 py-1 text-sm hover:border-ink-2 disabled:opacity-50"
+        >
+          Scan now
+        </button>
+      </div>
+      {!status.soundModel && (
+        <div className="flex items-center gap-3">
+          <p className="flex-1 text-muted">
+            The sound model listens to each song and finds which of your playlists hold the songs that sound most
+            like it. An 18 MB download (Discogs-EffNet, free for non-commercial use), then about 3 seconds a song.
+          </p>
+          <button
+            type="button"
+            onClick={() => scan(true)}
+            disabled={running}
+            className="shrink-0 rounded-md border border-line-strong px-3 py-1 text-sm hover:border-ink-2 disabled:opacity-50"
+          >
+            Get sound model
+          </button>
+        </div>
+      )}
+    </div>
   );
 }
 

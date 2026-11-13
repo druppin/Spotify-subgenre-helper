@@ -7,6 +7,10 @@ const nextConfig: NextConfig = {
   // Code that reads the data folder makes the build trace .cache/ in; it's
   // this machine's library and keys, never part of the app.
   outputFileTracingExcludes: { "/*": [".cache/**/*"] },
+  // The sound model's runtime (localAudio.ts) loads its WebAssembly from its
+  // own folder at run time, which bundling and tracing don't follow.
+  serverExternalPackages: ["onnxruntime-web"],
+  outputFileTracingIncludes: { "/api/**/*": ["node_modules/onnxruntime-web/dist/ort-wasm-simd-threaded.{mjs,wasm}"] },
   // We access the dev server via 127.0.0.1 (not localhost) so it matches the
   // Spotify OAuth redirect URI, which trips the default HMR origin check.
   allowedDevOrigins: ["127.0.0.1"],

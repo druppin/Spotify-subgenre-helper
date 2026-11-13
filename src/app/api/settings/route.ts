@@ -1,3 +1,4 @@
+import { statSync } from "fs";
 import { NextResponse } from "next/server";
 import { checkLastfm, checkLlm, checkSpotify, type CheckResult } from "@/lib/checkSettings";
 import { checkLocalRequest } from "@/lib/localRequest";
@@ -72,6 +73,11 @@ export async function PUT(request: Request) {
   const provider = changes.LLM_PROVIDER?.trim();
   if (provider && !LLM_PROVIDERS.includes(provider as (typeof LLM_PROVIDERS)[number])) {
     return NextResponse.json({ error: `Unknown AI provider: ${provider}` }, { status: 400 });
+  }
+
+  const folder = changes.MUSIC_FOLDER?.trim();
+  if (folder && !statSync(folder, { throwIfNoEntry: false })?.isDirectory()) {
+    return NextResponse.json({ error: `There's no folder at ${folder}.` }, { status: 400 });
   }
 
   // Check the keys being changed, with the saved values filling in the rest.

@@ -18,6 +18,8 @@ export const SETTING_NAMES = [
   "LLM_API_KEY",
   "LLM_MODEL",
   "LASTFM_API_KEY",
+  // A folder of the user's own audio files, measured for mix density (see localAudio.ts).
+  "MUSIC_FOLDER",
 ] as const;
 export type SettingName = (typeof SETTING_NAMES)[number];
 

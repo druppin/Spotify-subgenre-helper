@@ -7,6 +7,7 @@ import { artistIdFor, getMusicBrainzInfo } from "@/lib/musicbrainz";
 import type { SpotifyClient } from "@/lib/spotify/client";
 import type { TrackContext } from "@/lib/llm/types";
 import { getTrackDetailsCached } from "@/lib/playlistIndex";
+import { getMixDensity, getSoundsLike } from "@/lib/localAudio";
 
 // Bump the namespace whenever TrackContext gains a field, so contexts cached
 // before it existed get rebuilt instead of served without it. (v4 also
@@ -36,6 +37,21 @@ export async function buildTrackContext(
   spotify: SpotifyClient,
   onStep?: (step: ContextStep) => void,
   refresh = false
+): Promise<{ context: TrackContext; lookupFailed: boolean }> {
+  // What the user's own file says is added on the way out rather than
+  // cached, so a song measured after its context was saved still gets it,
+  // and its closest songs follow the playlists as they change.
+  const built = await buildSavedContext(trackId, spotify, onStep, refresh);
+  const mixDensity = getMixDensity(trackId) ?? undefined;
+  const soundsLike = getSoundsLike(trackId) ?? undefined;
+  return mixDensity || soundsLike ? { ...built, context: { ...built.context, mixDensity, soundsLike } } : built;
+}
+
+async function buildSavedContext(
+  trackId: string,
+  spotify: SpotifyClient,
+  onStep: ((step: ContextStep) => void) | undefined,
+  refresh: boolean
 ): Promise<{ context: TrackContext; lookupFailed: boolean }> {
   const cached = await contextCache.get(trackId);
   if (cached && !refresh) {

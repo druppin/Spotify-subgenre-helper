@@ -210,6 +210,28 @@ CREATE TABLE IF NOT EXISTS lab_results (
 -- app uses in place of the built-in one.
 CREATE TABLE IF NOT EXISTS lab_state (key TEXT PRIMARY KEY, value TEXT NOT NULL);
 
+-- Audio files in the user's music folder (see localAudio.ts), with the
+-- Spotify ID from each one's SPOTIFY_ID tag, or null if it has none.
+CREATE TABLE IF NOT EXISTS local_files (
+  path TEXT PRIMARY KEY,
+  mtime_ms INTEGER NOT NULL,
+  track_id TEXT
+);
+CREATE INDEX IF NOT EXISTS local_files_track ON local_files(track_id);
+-- What one file of each song measured (see mixDensity.ts), redone when the
+-- file changes. The measures are null when the file couldn't be measured.
+CREATE TABLE IF NOT EXISTS track_audio (
+  track_id TEXT PRIMARY KEY,
+  path TEXT NOT NULL,
+  mtime_ms INTEGER NOT NULL,
+  dip_db REAL,
+  gap_share REAL,
+  sub_db REAL,
+  mid_db REAL,
+  flatness REAL,
+  measured_at INTEGER NOT NULL
+);
+
 CREATE VIEW IF NOT EXISTS place_songs AS
 SELECT p.id AS place_id, p.name AS place_name, pt.position, pt.added_at,
        t.uri, t.id, t.name,
@@ -245,12 +267,15 @@ const ADDED_COLUMNS: { table: string; column: string; declaration: string }[] = 
   // Spotify's album_type for the release this copy is on: album, single
   // (singles and EPs) or compilation. Null until looked up.
   { table: "tracks", column: "album_type", declaration: "TEXT" },
+  // The sound model's 1280 numbers for the file (see soundsLike.ts), as
+  // float32s. Null until listened to; empty if the file couldn't be.
+  { table: "track_audio", column: "embedding", declaration: "BLOB" },
 ];
 // Indexes on added columns, created once the columns exist.
 const LATE_INDEXES = "CREATE INDEX IF NOT EXISTS tracks_base_title ON tracks(base_title);";
 // Bumped whenever the schema changes, so a dev server's open connection
 // picks the change up without a restart.
-const SCHEMA_VERSION = 9;
+const SCHEMA_VERSION = 11;
 
 interface DbState {
   db: DatabaseSync;

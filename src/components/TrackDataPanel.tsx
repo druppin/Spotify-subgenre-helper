@@ -27,6 +27,30 @@ export function TrackDataPanel({ context }: { context: TrackContext }) {
           Label <span className="font-semibold text-ink-2">{context.recordLabel}</span>
         </p>
       )}
+      {context.mixDensity && (
+        <p
+          className="text-xs text-muted"
+          title={`From your audio file. Dips ${context.mixDensity.dipDb} dB, sub ${context.mixDensity.subDb} dB, mids ${context.mixDensity.midDb} dB, flatness ${context.mixDensity.flatness}`}
+        >
+          Mix <span className="font-semibold text-ink-2">{context.mixDensity.label}</span> (sparseness{" "}
+          {context.mixDensity.sparseness > 0 ? "+" : ""}
+          {context.mixDensity.sparseness})
+        </p>
+      )}
+      {context.soundsLike && context.soundsLike.playlists.length > 0 && (
+        <p
+          className="text-xs text-muted"
+          title="From your audio file: how many of the 10 songs in your playlists that sound most like this one are in each playlist."
+        >
+          Sounds like{" "}
+          {context.soundsLike.playlists.map((p, i) => (
+            <span key={p.name} title={`${p.songs} of the 10; 10 random songs from your playlists would have about ${p.typical}.`}>
+              {i > 0 && " · "}
+              <span className="font-semibold text-ink-2">{p.name}</span> {p.songs}/10
+            </span>
+          ))}
+        </p>
+      )}
       {context.audioFeatures ? (
         <div className="grid grid-cols-4 gap-1.5">
           <Stat label="BPM" value={Math.round(context.audioFeatures.tempo).toString()} />
