@@ -16,9 +16,11 @@ export async function fetchWithTimeout(
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    return await fetch(url, { ...init, signal: controller.signal });
+    // A caller's own signal (say, a deadline for reading the body too) still applies.
+    const signal = init.signal ? AbortSignal.any([init.signal, controller.signal]) : controller.signal;
+    return await fetch(url, { ...init, signal });
   } catch (err) {
-    if (err instanceof Error && err.name === "AbortError") {
+    if (err instanceof Error && (err.name === "AbortError" || err.name === "TimeoutError")) {
       throw new FetchTimeoutError(`Request to ${url} timed out after ${timeoutMs}ms`);
     }
     throw err;

@@ -61,6 +61,8 @@ async function callOpenAiCompatible(
     `${baseUrl}/chat/completions`,
     {
       method: "POST",
+      // The whole answer, not only its first byte: OpenRouter replies at once and sends the body when the model is done.
+      signal: AbortSignal.timeout(options.timeoutMs),
       headers: {
         "Content-Type": "application/json",
         Authorization: `Bearer ${config.apiKey}`,
@@ -73,7 +75,8 @@ async function callOpenAiCompatible(
         // OpenRouter otherwise may route to a host that silently ignores
         // response_format, which is where malformed JSON came from.
         ...(config.provider === "openrouter" && {
-          provider: { require_parameters: true, ignore: OPENROUTER_IGNORED_HOSTS },
+          // Fastest hosts first: by price, some took 10-20 s or more for an answer others give in 2-5.
+          provider: { require_parameters: true, ignore: OPENROUTER_IGNORED_HOSTS, sort: "throughput" },
         }),
       }),
     },
@@ -96,6 +99,8 @@ async function callAnthropic(
     "https://api.anthropic.com/v1/messages",
     {
       method: "POST",
+      // The whole answer, not only its first byte: OpenRouter replies at once and sends the body when the model is done.
+      signal: AbortSignal.timeout(options.timeoutMs),
       headers: {
         "Content-Type": "application/json",
         "x-api-key": config.apiKey,
@@ -128,6 +133,8 @@ async function callGoogle(
     url,
     {
       method: "POST",
+      // The whole answer, not only its first byte: OpenRouter replies at once and sends the body when the model is done.
+      signal: AbortSignal.timeout(options.timeoutMs),
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         systemInstruction: { parts: [{ text: systemPrompt }] },
@@ -194,7 +201,8 @@ async function callWithRetry(
     } catch (err) {
       const isTransient =
         (err instanceof LlmApiError && TRANSIENT_STATUS_CODES.has(err.status)) ||
-        err instanceof FetchTimeoutError;
+        err instanceof FetchTimeoutError ||
+        (err instanceof Error && err.name === "TimeoutError");
       if (!isTransient || attempt === MAX_ATTEMPTS) throw err;
       await sleep(500 * attempt);
     }
