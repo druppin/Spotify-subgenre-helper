@@ -15,6 +15,11 @@ import { getMixDensity, getSoundsLike } from "@/lib/localAudio";
 // Last.fm's artist against MusicBrainz, and adds lastfmArtistCheck; v6 adds
 // recordLabel.)
 const contextCache = getCache<TrackContext>("track-context-v6");
+// Contexts saved before v6, newest first. Everything in them still holds, so
+// a song without a v6 context reuses its old one, adding only the label,
+// rather than waiting on MusicBrainz's one-request-a-second queue again.
+// (v3 and older could hold contexts saved empty after a failed lookup.)
+const oldContextCaches = [getCache<TrackContext>("track-context-v5"), getCache<TrackContext>("track-context-v4")];
 
 // The sources a context is built from, reported as each one finishes so a
 // caller can show per-song progress.
@@ -68,6 +73,15 @@ async function buildSavedContext(
   // Free when a library scan, an opened playlist, or an earlier lookup has
   // already seen this song; otherwise one Spotify request.
   const track = await reported("spotify", getTrackDetailsCached(spotify, trackId));
+
+  if (!refresh) {
+    const upgraded = await upgradeOldContext(trackId, track.isrc);
+    if (upgraded) {
+      for (const step of CONTEXT_STEPS) if (step !== "spotify") onStep?.(step);
+      await contextCache.set(trackId, upgraded);
+      return { context: upgraded, lookupFailed: false };
+    }
+  }
   const primaryArtistName = track.artists[0] ?? "";
 
   let failed = false;
@@ -89,11 +103,7 @@ async function buildSavedContext(
   const { lastfmArtist, lastfmArtistCheck } = checkLastfmArtist(
     lastfmByName,
     artistIdFor(credits, primaryArtistName),
-    [
-      ...lastfmTrack,
-      ...[...musicbrainz.recordingTags, ...musicbrainz.releaseGroupGenres].map((v) => v.name),
-      ...musicbrainz.artistGenres.flatMap((a) => a.genres.map((v) => v.name)),
-    ]
+    songGenres(lastfmTrack, musicbrainz)
   );
 
   const context: TrackContext = {
@@ -121,6 +131,45 @@ async function buildSavedContext(
   }
   await contextCache.set(trackId, context);
   return { context, lookupFailed: false };
+}
+
+/**
+ * A context saved before v6, with the record label added. v4 contexts also
+ * predate the Last.fm artist check; they get the part that needs no
+ * MusicBrainz artist id (tags clashing with the song's other genres). Null
+ * when there's no old context, or the label lookup failed.
+ */
+async function upgradeOldContext(trackId: string, isrc: string | null): Promise<TrackContext | null> {
+  let old: TrackContext | undefined;
+  for (const cache of oldContextCaches) if ((old = await cache.get(trackId))) break;
+  if (!old) return null;
+  let failed = false;
+  const recordLabel = await getRecordLabel(isrc, () => {
+    failed = true;
+  });
+  if (failed) return null;
+  if (old.lastfmArtistCheck) return { ...old, recordLabel };
+  const { lastfmArtist, lastfmArtistCheck } = checkLastfmArtist(
+    { tags: old.lastfmArtistTags, bioSummary: old.lastfmArtistBio, mbid: null },
+    null,
+    songGenres(old.lastfmTrackTags, old.musicbrainz)
+  );
+  return {
+    ...old,
+    recordLabel,
+    lastfmArtistTags: lastfmArtist.tags,
+    lastfmArtistBio: lastfmArtist.bioSummary,
+    lastfmArtistCheck,
+  };
+}
+
+// Every genre the song's own sources give it, for checking Last.fm's artist tags against.
+function songGenres(lastfmTrackTags: string[], musicbrainz: TrackContext["musicbrainz"]): string[] {
+  return [
+    ...lastfmTrackTags,
+    ...[...musicbrainz.recordingTags, ...musicbrainz.releaseGroupGenres].map((v) => v.name),
+    ...musicbrainz.artistGenres.flatMap((a) => a.genres.map((v) => v.name)),
+  ];
 }
 
 const NO_ARTIST_INFO = { tags: [], bioSummary: null };
