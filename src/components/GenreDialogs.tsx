@@ -7,6 +7,7 @@ import { LIKED_SONGS_PICKER_ENTRY } from "@/lib/library";
 import type { SummaryStep } from "@/lib/context";
 import { PlaylistPicker } from "./PlaylistPicker";
 import { CheckIcon, CloseIcon } from "./Icons";
+import { TagSnapshots } from "./TagSnapshots";
 
 const DEFAULT_BATCH = 10;
 const MAX_BATCH = 1000;
@@ -216,6 +217,7 @@ export function GenerateGenresDialog({
 }) {
   const [playlistId, setPlaylistId] = useState(initialPlaylistId);
   const [reloadNonce, setReloadNonce] = useState(0);
+  const [snapshotNonce, setSnapshotNonce] = useState(0);
   const loaded = usePlaylistGenres(playlistId, reloadNonce);
   const [batchSize, setBatchSize] = useState(DEFAULT_BATCH);
   const [concurrency, setConcurrency] = useState(DEFAULT_CONCURRENCY);
@@ -504,14 +506,25 @@ export function GenerateGenresDialog({
               )}
               {tagged.length > 0 && (
                 <button
-                  onClick={() => {
+                  onClick={async () => {
                     if (
                       !window.confirm(
-                        `Redo all ${tagged.length} songs that already have tags? That's ${tagged.length} AI requests, and each song's saved tags are replaced, including ones you edited.`
+                        `Redo all ${tagged.length} songs that already have tags? That's ${tagged.length} AI requests, and each song's saved tags are replaced, including ones you edited. A snapshot of the tags is saved first, so you can compare and put them back.`
                       )
                     ) {
                       return;
                     }
+                    // Never replace tags without a copy to go back to.
+                    const res = await fetch("/api/tag-snapshots", {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({ name: "Before Redo all", playlistId, trackIds: tagged.map((t) => t.id) }),
+                    }).catch(() => null);
+                    if (!res?.ok) {
+                      setStoppedReason("Couldn't save a snapshot of the tags first, so nothing was redone.");
+                      return;
+                    }
+                    setSnapshotNonce((n) => n + 1);
                     run(tagged, true);
                   }}
                   title="Ask the AI again for every song that already has tags, with what's known about it now (such as what your music folder's songs sound like)."
@@ -564,6 +577,7 @@ export function GenerateGenresDialog({
             </div>
           )}
 
+          {!progress && stoppedReason && <p className="text-xs text-warn">{stoppedReason}</p>}
           {progress && (
             <div className="space-y-2">
               <div className="flex items-center justify-between text-sm">
@@ -625,6 +639,19 @@ export function GenerateGenresDialog({
                 </li>
               ))}
             </ul>
+          )}
+
+          {loaded.status === "ready" && playlistId && (
+            <TagSnapshots
+              playlistId={playlistId}
+              trackIds={[...new Set(loaded.tracks.map((t) => t.id))]}
+              disabled={running}
+              reloadNonce={snapshotNonce}
+              onRestored={() => {
+                onGenerated();
+                setReloadNonce((n) => n + 1);
+              }}
+            />
           )}
 
           {results.length > 0 && (

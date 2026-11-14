@@ -232,6 +232,16 @@ CREATE TABLE IF NOT EXISTS track_audio (
   measured_at INTEGER NOT NULL
 );
 
+-- Copies of a playlist's songs' tags, to compare with and restore (see
+-- tagSnapshots in trackGenres.ts). tags is JSON: track ID -> TrackGenres.
+CREATE TABLE IF NOT EXISTS tag_snapshots (
+  id INTEGER PRIMARY KEY,
+  name TEXT NOT NULL,
+  playlist_id TEXT NOT NULL,
+  created_at INTEGER NOT NULL,
+  tags TEXT NOT NULL
+);
+
 CREATE VIEW IF NOT EXISTS place_songs AS
 SELECT p.id AS place_id, p.name AS place_name, pt.position, pt.added_at,
        t.uri, t.id, t.name,
@@ -275,7 +285,7 @@ const ADDED_COLUMNS: { table: string; column: string; declaration: string }[] = 
 const LATE_INDEXES = "CREATE INDEX IF NOT EXISTS tracks_base_title ON tracks(base_title);";
 // Bumped whenever the schema changes, so a dev server's open connection
 // picks the change up without a restart.
-const SCHEMA_VERSION = 11;
+const SCHEMA_VERSION = 12;
 
 interface DbState {
   db: DatabaseSync;

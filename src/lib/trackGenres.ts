@@ -443,3 +443,89 @@ export async function getStoredGenres(trackId: string): Promise<(TrackGenreDetai
     ...(await describeStored(entry)),
   };
 }
+
+export interface TagSnapshot {
+  id: number;
+  name: string;
+  createdAt: number;
+  songs: number;
+}
+
+export interface SnapshotChange {
+  trackId: string;
+  name: string;
+  artists: string;
+  then: string[];
+  // Null when the song has no tags now.
+  now: string[] | null;
+}
+
+/** Saves a copy of these songs' tags (songs without any are left out). */
+export function saveTagSnapshot(name: string, playlistId: string, trackIds: string[]): TagSnapshot {
+  ensureBackfilled();
+  const tags = Object.fromEntries(
+    trackIds.flatMap((id) => {
+      const entry = readGenres(id);
+      return entry && entry.subgenres.length > 0 ? [[id, entry]] : [];
+    })
+  );
+  const createdAt = Date.now();
+  const { lastInsertRowid } = sql(
+    "INSERT INTO tag_snapshots (name, playlist_id, created_at, tags) VALUES (?, ?, ?, ?)"
+  ).run(name, playlistId, createdAt, JSON.stringify(tags));
+  return { id: Number(lastInsertRowid), name, createdAt, songs: Object.keys(tags).length };
+}
+
+/** A playlist's snapshots, newest first. */
+export function listTagSnapshots(playlistId: string): TagSnapshot[] {
+  const rows = sql(
+    "SELECT id, name, created_at, (SELECT count(*) FROM json_each(tags)) AS songs FROM tag_snapshots WHERE playlist_id = ? ORDER BY created_at DESC"
+  ).all(playlistId) as { id: number; name: string; created_at: number; songs: number }[];
+  return rows.map((r) => ({ id: r.id, name: r.name, createdAt: r.created_at, songs: r.songs }));
+}
+
+function snapshotTags(id: number): Record<string, TrackGenres> | null {
+  const row = sql("SELECT tags FROM tag_snapshots WHERE id = ?").get(id) as { tags: string } | undefined;
+  return row ? JSON.parse(row.tags) : null;
+}
+
+/** The snapshot's songs whose tags differ from now. Null if there's no such snapshot. */
+export function compareTagSnapshot(id: number): SnapshotChange[] | null {
+  const tags = snapshotTags(id);
+  if (!tags) return null;
+  return Object.entries(tags).flatMap(([trackId, then]) => {
+    const now = readGenres(trackId);
+    const nowTags = now && now.subgenres.length > 0 ? now.subgenres : null;
+    if (nowTags?.join("|") === then.subgenres.join("|")) return [];
+    const track = sql("SELECT name, artists FROM tracks WHERE id = ?").get(trackId) as
+      | { name: string; artists: string }
+      | undefined;
+    return [
+      {
+        trackId,
+        name: track?.name ?? trackId,
+        artists: track ? (JSON.parse(track.artists) as string[]).join(", ") : "",
+        then: then.subgenres,
+        now: nowTags,
+      },
+    ];
+  });
+}
+
+/**
+ * Puts back the snapshot's tags for these songs (all of its songs if none
+ * given). Restored tags count as the user's edit, so the AI leaves them
+ * alone unless asked to regenerate. Returns how many were restored.
+ */
+export function restoreTagSnapshot(id: number, trackIds?: string[]): number {
+  const tags = snapshotTags(id);
+  if (!tags) return 0;
+  const ids = (trackIds ?? Object.keys(tags)).filter((t) => tags[t]);
+  transaction(() => ids.forEach((t) => writeGenres(t, { ...tags[t], edited: true, updatedAt: Date.now() })));
+  genreIndex = null;
+  return ids.length;
+}
+
+export function deleteTagSnapshot(id: number) {
+  sql("DELETE FROM tag_snapshots WHERE id = ?").run(id);
+}
