@@ -285,10 +285,18 @@ export function GenerateGenresDialog({
     return loaded.tracks.filter((t) => t.subgenres && t.unscored && !seen.has(t.id) && seen.add(t.id));
   })();
 
+  // Songs that already have tags, for asking the AI again (say, after the
+  // music folder scan has listened to them).
+  const tagged = (() => {
+    if (loaded.status !== "ready") return [];
+    const seen = new Set<string>();
+    return loaded.tracks.filter((t) => t.subgenres && !seen.has(t.id) && seen.add(t.id));
+  })();
+
   const clampedBatch = Math.min(Math.max(Math.round(batchSize) || 1, 1), MAX_BATCH);
   const clampedConcurrency = Math.min(Math.max(Math.round(concurrency) || 1, 1), maxConcurrency);
 
-  const run = async (queue: PlaylistGenreTrack[]) => {
+  const run = async (queue: PlaylistGenreTrack[], regenerate = false) => {
     stopRef.current = false;
     setRunning(true);
     setResults([]);
@@ -326,7 +334,7 @@ export function GenerateGenresDialog({
       const res = await fetch("/api/genre-runs", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ runId, trackIds: queue.map((t) => t.id), concurrency: clampedConcurrency, refresh: refreshSources }),
+        body: JSON.stringify({ runId, trackIds: queue.map((t) => t.id), concurrency: clampedConcurrency, refresh: refreshSources, regenerate }),
         signal: abort.signal,
       });
       if (!res.ok) {
@@ -411,7 +419,7 @@ export function GenerateGenresDialog({
             </p>
           )}
 
-          {(missing.length > 0 || unscored.length > 0) && !running && (
+          {(missing.length > 0 || unscored.length > 0 || tagged.length > 0) && !running && (
             <div className="flex flex-wrap items-center gap-2">
               <label className="flex items-center gap-2 text-sm">
                 Analyze the next
@@ -493,6 +501,24 @@ export function GenerateGenresDialog({
                     Score all {unscored.length}
                   </button>
                 </>
+              )}
+              {tagged.length > 0 && (
+                <button
+                  onClick={() => {
+                    if (
+                      !window.confirm(
+                        `Redo all ${tagged.length} songs that already have tags? That's ${tagged.length} AI requests, and each song's saved tags are replaced, including ones you edited.`
+                      )
+                    ) {
+                      return;
+                    }
+                    run(tagged, true);
+                  }}
+                  title="Ask the AI again for every song that already has tags, with what's known about it now (such as what your music folder's songs sound like)."
+                  className="rounded-md border border-line-strong px-3 py-1 text-sm text-ink hover:border-warn hover:text-warn"
+                >
+                  Redo all {tagged.length}
+                </button>
               )}
               <label className="flex basis-full items-start gap-2 text-xs text-muted">
                 <input

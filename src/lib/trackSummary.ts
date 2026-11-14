@@ -72,7 +72,8 @@ export async function summarizeTrackById(
   {
     onStep,
     accessToken,
-    refreshSources = false,
+    // Regenerating a single song looks it up again too; a bulk redo can skip that.
+    refreshSources = forceRegenerate,
   }: { onStep?: (step: SummaryStep) => void; accessToken?: string; refreshSources?: boolean } = {}
 ): Promise<NextResponse> {
   // Track context (Spotify metadata + artist genres + Last.fm tags + audio
@@ -83,7 +84,7 @@ export async function summarizeTrackById(
   let lookupFailed: boolean;
   try {
     const client = new SpotifyClient(accessToken ?? (await getValidAccessToken()));
-    ({ context, lookupFailed } = await buildTrackContext(id, client, onStep, forceRegenerate || refreshSources));
+    ({ context, lookupFailed } = await buildTrackContext(id, client, onStep, refreshSources));
   } catch (err) {
     return spotifyErrorResponse(err, "track summary (context)");
   }

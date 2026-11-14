@@ -31,14 +31,16 @@ function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
 }
 
 /**
- * Body: { runId, trackIds, concurrency, refresh }. refresh looks each song
- * up again, pulling the latest MusicBrainz data instead of what's saved. Responds with newline-delimited
+ * Body: { runId, trackIds, concurrency, refresh, regenerate }. regenerate asks
+ * the AI again, replacing saved tags. refresh looks each song up again,
+ * pulling the latest MusicBrainz data instead of what's saved. Responds with
+ * newline-delimited
  * JSON: {"id","started":true} when a song starts, {"id","step"} as each of
  * its sources finishes, {"id","status","body"} with what the single-song
  * summary route would have returned, and finally {"done":true}.
  */
 export async function POST(request: NextRequest) {
-  const { runId, trackIds, concurrency, refresh } = await request.json();
+  const { runId, trackIds, concurrency, refresh, regenerate } = await request.json();
   if (typeof runId !== "string" || !Array.isArray(trackIds)) {
     return NextResponse.json({ error: "runId and trackIds are required" }, { status: 400 });
   }
@@ -69,7 +71,7 @@ export async function POST(request: NextRequest) {
           send({ id, started: true });
           try {
             const res = await withTimeout(
-              summarizeTrackById(id, false, {
+              summarizeTrackById(id, regenerate === true, {
                 accessToken,
                 onStep: (step) => send({ id, step }),
                 refreshSources: refresh === true,
