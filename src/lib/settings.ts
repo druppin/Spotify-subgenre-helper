@@ -30,11 +30,27 @@ export const LLM_PROVIDERS: LlmProvider[] = ["anthropic", "openai", "google", "g
 
 const DEFAULT_REDIRECT_URI = "http://127.0.0.1:3000/api/auth/callback";
 
+type Values = Partial<Record<SettingName, string>>;
+
 interface SettingsFile {
-  values: Partial<Record<SettingName, string>>;
+  // The active profile's settings, plus the shared ones.
+  values: Values;
+  // Set once the user has made a second profile. From then on a profile's
+  // keys come only from the app, not .env.local, so one profile's keys
+  // can't show through in another.
+  activeProfile?: string;
+  // The other profiles' keys, by name.
+  profiles?: Record<string, Values>;
+  // While the active profile is one just made: the profile it was made
+  // from, to go back to if the user cancels.
+  madeFrom?: string;
   // Encrypts the login cookie. Made on first run; nobody needs to see it.
   sessionSecret?: string;
 }
+
+// What a profile holds: every key. The music folder is the same files whoever's logged in.
+const PROFILE_SETTINGS: SettingName[] = SETTING_NAMES.filter((name) => name !== "MUSIC_FOLDER");
+const DEFAULT_PROFILE = "Default";
 
 const SETTINGS_PATH = path.join(DATA_DIR, "settings.json");
 
@@ -69,14 +85,78 @@ function writeFile(file: SettingsFile) {
   loaded = null;
 }
 
+function fromEnv(file: SettingsFile, name: SettingName): string | undefined {
+  return file.activeProfile && PROFILE_SETTINGS.includes(name) ? undefined : process.env[name];
+}
+
 export function settingSource(name: SettingName): "app" | "env" | null {
-  if (readFile().values[name]) return "app";
-  if (process.env[name]) return "env";
+  const file = readFile();
+  if (file.values[name]) return "app";
+  if (fromEnv(file, name)) return "env";
   return null;
 }
 
 export function getSetting(name: SettingName): string | undefined {
-  return readFile().values[name] || process.env[name] || undefined;
+  const file = readFile();
+  return file.values[name] || fromEnv(file, name) || undefined;
+}
+
+export interface Profiles {
+  active: string;
+  names: string[];
+  // Set while the active profile is new: where cancelling it goes back to.
+  madeFrom?: string;
+}
+
+export function listProfiles(): Profiles {
+  const file = readFile();
+  const active = file.activeProfile ?? DEFAULT_PROFILE;
+  const names = [active, ...Object.keys(file.profiles ?? {})].sort((a, b) => a.localeCompare(b));
+  return { active, names, ...(file.madeFrom && file.profiles?.[file.madeFrom] && { madeFrom: file.madeFrom }) };
+}
+
+/** Throws away the profile just made, keys and all, and goes back to the one it was made from. */
+export function cancelNewProfile() {
+  const file = readFile();
+  const { activeProfile: made, madeFrom } = file;
+  if (!made || !madeFrom || !file.profiles?.[madeFrom]) throw new Error("There's no new profile to cancel.");
+  switchProfile(madeFrom, false);
+  const after = readFile();
+  const profiles = { ...after.profiles };
+  delete profiles[made];
+  writeFile({ ...after, profiles });
+}
+
+/**
+ * Makes `name` the active profile: the current one's keys (including any
+ * from .env.local, the first time) are put away under its name, and
+ * `name`'s come out, or none for a new profile. The music folder stays.
+ */
+export function switchProfile(name: string, create: boolean) {
+  const file = readFile();
+  const active = file.activeProfile ?? DEFAULT_PROFILE;
+  const profiles = { ...file.profiles };
+  if (name === active) throw new Error(`${name} is already the profile in use.`);
+  if (create && profiles[name]) throw new Error(`There's already a profile called ${name}.`);
+  if (!create && !profiles[name]) throw new Error(`There's no profile called ${name}.`);
+  profiles[active] = Object.fromEntries(
+    PROFILE_SETTINGS.flatMap((key) => {
+      const value = file.values[key] || fromEnv(file, key);
+      return value ? [[key, value]] : [];
+    })
+  );
+  const shared = Object.fromEntries(Object.entries(file.values).filter(([key]) => !PROFILE_SETTINGS.includes(key as SettingName)));
+  const values = { ...shared, ...(create ? {} : profiles[name]) };
+  delete profiles[name];
+  writeFile({ ...file, values, activeProfile: name, profiles, madeFrom: create ? active : undefined });
+}
+
+export function deleteProfile(name: string) {
+  const file = readFile();
+  if (!file.profiles?.[name]) throw new Error(`There's no other profile called ${name}.`);
+  const profiles = { ...file.profiles };
+  delete profiles[name];
+  writeFile({ ...file, profiles });
 }
 
 /** Saves the given settings; an empty value clears what the app saved. */

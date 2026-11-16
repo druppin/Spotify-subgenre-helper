@@ -4,7 +4,7 @@ import { useEffect, useState, type FormEvent, type ReactNode, type RefObject } f
 import type { LocalAudioStatus } from "@/app/api/local-audio/route";
 import type { SettingsResponse } from "@/app/api/settings/route";
 import type { ApiKeyInfo } from "@/lib/api/tokens";
-import type { SettingName } from "@/lib/settings";
+import type { Profiles, SettingName } from "@/lib/settings";
 import { setDisplayPrefs, useDisplayPrefs, type ConfidenceDisplay, type ThemePref } from "@/lib/displayPrefs";
 import { CloseIcon } from "./Icons";
 
@@ -429,6 +429,115 @@ function MusicFolderScan({ folder }: { folder: string | null }) {
 }
 
 /** Keys other programs use for the library API (docs/api.md). */
+/**
+ * Named sets of every key, for switching between accounts. Switching logs
+ * out of Spotify and reloads, so the whole app picks up the other keys.
+ */
+function ProfilesSection() {
+  const [profiles, setProfiles] = useState<Profiles | null>(null);
+  const [name, setName] = useState("");
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    sendJson<Profiles>("/api/settings/profiles", "GET")
+      .then(setProfiles)
+      .catch((err) => setError(err.message));
+  }, []);
+
+  const switchTo = async (target: string, create: boolean) => {
+    const message = create
+      ? `Make a new profile called "${target}" and switch to it? It starts with no keys. This logs you out of Spotify; your current keys are kept under "${profiles?.active}".`
+      : `Switch to "${target}"? This logs you out of Spotify, so you can log in with that profile's account.`;
+    if (!window.confirm(message)) return;
+    try {
+      await sendJson("/api/settings/profiles", "PUT", { name: target, create });
+      window.location.reload();
+    } catch (err) {
+      setError((err as Error).message);
+    }
+  };
+
+  const handleDelete = async (target: string) => {
+    if (!window.confirm(`Delete the profile "${target}" and its keys? This can't be undone.`)) return;
+    try {
+      setProfiles(await sendJson(`/api/settings/profiles?name=${encodeURIComponent(target)}`, "DELETE"));
+    } catch (err) {
+      setError((err as Error).message);
+    }
+  };
+
+  const cancelNew = async () => {
+    if (!profiles?.madeFrom) return;
+    if (!window.confirm(`Cancel "${profiles.active}" and go back to "${profiles.madeFrom}"? Any keys you've entered in "${profiles.active}" are thrown away, and you're logged out of Spotify.`)) return;
+    try {
+      await sendJson("/api/settings/profiles", "PUT", { cancelNew: true });
+      window.location.reload();
+    } catch (err) {
+      setError((err as Error).message);
+    }
+  };
+
+  const handleCreate = (e: FormEvent) => {
+    e.preventDefault();
+    const trimmed = name.trim();
+    if (trimmed) switchTo(trimmed, true);
+  };
+
+  return (
+    <Section title="Profiles">
+      <p className="text-xs text-muted">
+        Each profile has its own Spotify app, AI and Last.fm keys. Your library, tags, snapshots and music folder are
+        shared.
+      </p>
+      {profiles && (
+        <ul className="space-y-1 text-sm">
+          {profiles.names.map((n) => (
+            <li key={n} className="flex items-baseline gap-2">
+              <span className="text-ink">{n}</span>
+              {n === profiles.active ? (
+                <>
+                  <span className="text-xs text-muted">{profiles.madeFrom ? "new, in use" : "in use"}</span>
+                  {profiles.madeFrom && (
+                    <button type="button" onClick={cancelNew} className="ml-auto text-xs text-ink-2 hover:text-danger">
+                      Cancel, back to {profiles.madeFrom}
+                    </button>
+                  )}
+                </>
+              ) : (
+                <span className="ml-auto flex gap-3 text-xs">
+                  <button type="button" onClick={() => switchTo(n, false)} className="text-ink-2 hover:text-ink">
+                    Switch to
+                  </button>
+                  <button type="button" onClick={() => handleDelete(n)} className="text-muted hover:text-danger">
+                    Delete
+                  </button>
+                </span>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+      <form onSubmit={handleCreate} className="flex gap-2">
+        <input
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          placeholder="New profile name"
+          aria-label="New profile name"
+          className={inputClass}
+        />
+        <button
+          type="submit"
+          disabled={!name.trim()}
+          className="flex-shrink-0 rounded-md border border-line-strong px-3 py-1 text-sm text-ink hover:border-ink-2 disabled:opacity-50"
+        >
+          New profile
+        </button>
+      </form>
+      {error && <p className="text-xs text-danger">{error}</p>}
+    </Section>
+  );
+}
+
 function ApiKeysSection() {
   const [keys, setKeys] = useState<ApiKeyInfo[] | null>(null);
   const [name, setName] = useState("");
@@ -628,6 +737,7 @@ export function SettingsDialog({ dialogRef }: { dialogRef: RefObject<HTMLDialogE
       {open && (
         <div className="grid max-h-[80vh] gap-5 overflow-y-auto p-6 md:grid-cols-2">
           <div className="space-y-5">
+            <ProfilesSection />
             <SettingsForm />
           </div>
           <div className="space-y-5">
