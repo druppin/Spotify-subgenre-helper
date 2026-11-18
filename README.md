@@ -98,7 +98,8 @@ Download the installer for your computer from the
 `.exe` for Windows, `.dmg` for macOS (arm64 for Apple Silicon, x64 for Intel),
 `.AppImage` for Linux. Open it, and the app opens in your browser at
 `http://127.0.0.1:3000` and walks you through setup. A small window shows it's
-running; close it to stop the app.
+running; close it to stop the app. What changed in each version is in the
+[changelog](CHANGELOG.md).
 
 The installers aren't signed yet, so the first launch warns about it:
 
