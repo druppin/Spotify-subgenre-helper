@@ -2,6 +2,7 @@ import { statSync } from "fs";
 import { NextResponse } from "next/server";
 import { checkLastfm, checkLlm, checkSpotify, type CheckResult } from "@/lib/checkSettings";
 import { checkLocalRequest } from "@/lib/localRequest";
+import { watchMusicFolder } from "@/lib/localAudio";
 import {
   getLlmConfig,
   getRedirectUri,
@@ -97,6 +98,7 @@ export async function PUT(request: Request) {
   if (rejected.length > 0) return NextResponse.json({ error: rejected.join(" ") }, { status: 400 });
 
   saveSettings(changes);
+  if ("MUSIC_FOLDER" in changes) watchMusicFolder();
   const warnings = results.flatMap((r) => (!r.ok ? [r.message] : []));
   return NextResponse.json({ ...settingsResponse(), ...(warnings.length > 0 && { warnings }) });
 }

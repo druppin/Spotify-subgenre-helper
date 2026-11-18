@@ -1,5 +1,5 @@
 import { execFile } from "child_process";
-import { existsSync } from "fs";
+import { existsSync, watch, type FSWatcher } from "fs";
 import { mkdir, readdir, rename, stat, writeFile } from "fs/promises";
 import path from "path";
 import { promisify } from "util";
@@ -15,7 +15,8 @@ import { EMBEDDING_SIZE, melPatches, PATCH_FRAMES, PATCH_SIZE, soundsLike, type 
  * tool), then measures one file per song with ffmpeg. Both steps skip
  * files that haven't changed since the last scan. Off until a music folder
  * is set, and needs ffmpeg on the PATH. Once the user downloads the sound
- * model, a scan also has it listen to each song (see soundsLike.ts).
+ * model, a scan also has it listen to each song (see soundsLike.ts). The
+ * folder is watched, so songs added to it are scanned without asking.
  */
 
 const run = promisify(execFile);
@@ -28,6 +29,9 @@ const MODEL_URL = "https://essentia.upf.edu/models/feature-extractors/discogs-ef
 const MODEL_PATH = path.join(DATA_DIR, "models", "discogs-effnet-bsdynamic-1.onnx");
 // Patches per model run.
 const BATCH = 32;
+// How long the folder must stay still before a watched change is scanned,
+// so a download or a batch of new files is scanned once, whole.
+const SETTLE_MS = 10_000;
 
 export interface LocalAudioProgress {
   phase: "idle" | "downloading" | "scanning" | "measuring" | "listening" | "done" | "error";
@@ -43,7 +47,13 @@ export interface LocalAudioProgress {
 
 // On globalThis so the status route sees the job the scan route started.
 const holder = globalThis as typeof globalThis & {
-  __localAudio?: { progress: LocalAudioProgress; ffmpeg?: boolean; model?: Promise<import("onnxruntime-web").InferenceSession> };
+  __localAudio?: {
+    progress: LocalAudioProgress;
+    ffmpeg?: boolean;
+    model?: Promise<import("onnxruntime-web").InferenceSession>;
+    watched?: { folder: string; watcher: FSWatcher };
+    settleTimer?: NodeJS.Timeout;
+  };
 };
 const IDLE: LocalAudioProgress = { phase: "idle", files: 0, scanned: 0, toMeasure: 0, measured: 0, toListen: 0, listened: 0, error: null };
 holder.__localAudio ??= { progress: IDLE };
@@ -99,6 +109,42 @@ export function startLocalAudioScan(downloadModel = false): void {
     console.error("Music folder scan failed:", err);
     state.progress = { ...state.progress, phase: "error", error: err instanceof Error ? err.message : String(err) };
   });
+}
+
+/**
+ * Watches the music folder (stopping any watch on a previous one) and scans
+ * once it has settled after audio files change. Called at server start and
+ * when the folder setting is saved.
+ */
+export function watchMusicFolder(): void {
+  const folder = getSetting("MUSIC_FOLDER") ?? null;
+  if (state.watched?.folder === folder) return;
+  state.watched?.watcher.close();
+  state.watched = undefined;
+  if (!folder) return;
+  const scanWhenSettled = () => {
+    clearTimeout(state.settleTimer);
+    state.settleTimer = setTimeout(async () => {
+      // A scan still running would miss this change: try again after it.
+      if (!["idle", "done", "error"].includes(state.progress.phase)) return scanWhenSettled();
+      if (await ffmpegAvailable()) startLocalAudioScan();
+    }, SETTLE_MS);
+  };
+  try {
+    const watcher = watch(folder, { recursive: true }, (_event, name) => {
+      // Folder renames and deletes come without an audio extension, and can take songs with them.
+      if (name && path.extname(name) && !AUDIO_EXTENSIONS.has(path.extname(name).toLowerCase())) return;
+      scanWhenSettled();
+    });
+    watcher.on("error", (err) => {
+      console.warn(`Stopped watching the music folder ${folder}:`, err.message);
+      watcher.close();
+      if (state.watched?.watcher === watcher) state.watched = undefined;
+    });
+    state.watched = { folder, watcher };
+  } catch (err) {
+    console.warn(`Couldn't watch the music folder ${folder}:`, err instanceof Error ? err.message : err);
+  }
 }
 
 async function scanFolder(folder: string) {
