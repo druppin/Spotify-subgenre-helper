@@ -74,6 +74,14 @@ holder.__libraryState ??= {
 };
 const state = holder.__libraryState;
 
+/** Forgets the playlist listing held in memory, which belongs to the profile switched away from. */
+export function resetLibraryState() {
+  state.listing = null;
+  state.listingInFlight = null;
+  state.verifiedAt = new Map();
+  state.progress = { playlists: null, liked: null, rateLimitedUntil: null };
+}
+
 export function getScanProgress(): ScanProgress {
   return state.progress;
 }

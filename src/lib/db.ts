@@ -1,11 +1,12 @@
 import { mkdirSync } from "fs";
 import path from "path";
 import { DatabaseSync, type StatementSync } from "node:sqlite";
-import { DATA_DIR } from "@/lib/dataDir";
+import { profileDataDir } from "@/lib/settings";
 
 /*
- * The library database: library.db in the data folder (.cache/ unless
- * SGH_DATA_DIR says otherwise — see dataDir.ts), a SQLite file that can also be
+ * The library database: library.db in the active profile's data folder
+ * (.cache/ for the Default profile unless SGH_DATA_DIR says otherwise — see
+ * dataDir.ts and profileDataDir), a SQLite file that can also be
  * opened directly (`sqlite3 .cache/library.db`) to look things up, e.g.
  *
  *   -- every song in a playlist, in order
@@ -18,8 +19,6 @@ import { DATA_DIR } from "@/lib/dataDir";
  * Genre tags are stored as the AI gave them (normalized, not yet merged
  * into display spellings or given parent genres — see trackGenres.ts).
  */
-
-const DB_PATH = path.join(DATA_DIR, "library.db");
 
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS tracks (
@@ -288,6 +287,7 @@ const LATE_INDEXES = "CREATE INDEX IF NOT EXISTS tracks_base_title ON tracks(bas
 const SCHEMA_VERSION = 12;
 
 interface DbState {
+  path: string;
   db: DatabaseSync;
   statements: Map<string, StatementSync>;
   schemaVersion: number;
@@ -306,13 +306,19 @@ function setUpSchema(db: DatabaseSync) {
 }
 
 function state(): DbState {
+  const dbPath = path.join(profileDataDir(), "library.db");
   let current = holder.__libraryDb;
+  // Another profile's database since the last call: switch to this one's.
+  if (current && current.path !== dbPath) {
+    current.db.close();
+    current = holder.__libraryDb = undefined;
+  }
   if (!current) {
-    mkdirSync(path.dirname(DB_PATH), { recursive: true });
-    const db = new DatabaseSync(DB_PATH);
+    mkdirSync(path.dirname(dbPath), { recursive: true });
+    const db = new DatabaseSync(dbPath);
     // WAL lets a sqlite3 shell read while the app writes.
     db.exec("PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON; PRAGMA busy_timeout = 5000;");
-    current = holder.__libraryDb = { db, statements: new Map(), schemaVersion: 0 };
+    current = holder.__libraryDb = { path: dbPath, db, statements: new Map(), schemaVersion: 0 };
   }
   if (current.schemaVersion !== SCHEMA_VERSION) {
     setUpSchema(current.db);

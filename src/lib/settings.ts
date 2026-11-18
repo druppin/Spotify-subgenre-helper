@@ -1,5 +1,5 @@
 import { randomBytes } from "crypto";
-import { mkdirSync, readFileSync, renameSync, statSync, writeFileSync } from "fs";
+import { mkdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from "fs";
 import path from "path";
 import { DATA_DIR } from "@/lib/dataDir";
 import type { LlmConfig, LlmProvider } from "@/lib/llm/types";
@@ -50,7 +50,20 @@ interface SettingsFile {
 
 // What a profile holds: every key. The music folder is the same files whoever's logged in.
 const PROFILE_SETTINGS: SettingName[] = SETTING_NAMES.filter((name) => name !== "MUSIC_FOLDER");
-const DEFAULT_PROFILE = "Default";
+export const DEFAULT_PROFILE = "Default";
+
+// The active profile's data folder, on globalThis so every route sees a switch.
+const dirHolder = globalThis as typeof globalThis & { __sghProfileDir?: string };
+
+// Default keeps the data folder itself, where everything was before profiles.
+function dirFor(profile: string | undefined): string {
+  return !profile || profile === DEFAULT_PROFILE ? DATA_DIR : path.join(DATA_DIR, "profiles", encodeURIComponent(profile));
+}
+
+/** Where the active profile keeps its library database, caches and logs. Settings and the sound model are shared. */
+export function profileDataDir(): string {
+  return (dirHolder.__sghProfileDir ??= dirFor(readFile().activeProfile));
+}
 
 const SETTINGS_PATH = path.join(DATA_DIR, "settings.json");
 
@@ -125,6 +138,8 @@ export function cancelNewProfile() {
   const profiles = { ...after.profiles };
   delete profiles[made];
   writeFile({ ...after, profiles });
+  // Only just made, so whatever it saved goes too.
+  rmSync(dirFor(made), { recursive: true, force: true });
 }
 
 /**
@@ -149,6 +164,7 @@ export function switchProfile(name: string, create: boolean) {
   const values = { ...shared, ...(create ? {} : profiles[name]) };
   delete profiles[name];
   writeFile({ ...file, values, activeProfile: name, profiles, madeFrom: create ? active : undefined });
+  dirHolder.__sghProfileDir = dirFor(name);
 }
 
 export function deleteProfile(name: string) {

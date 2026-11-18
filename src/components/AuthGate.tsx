@@ -4,11 +4,15 @@ import { useEffect, useState } from "react";
 import { AppShell } from "./AppShell";
 import { SettingsForm } from "./SettingsDialog";
 
-type Status = { configured: boolean; authenticated: boolean };
+type Status = { configured: boolean; authenticated: boolean; profile?: string; account?: string | null };
 
 export function AuthGate() {
   const [status, setStatus] = useState<Status | null>(null);
   const [showSettings, setShowSettings] = useState(false);
+  const [authError] = useState(() =>
+    typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("auth_error") : null
+  );
+  const wrongAccount = authError === "wrong_account";
 
   const check = () =>
     fetch("/api/auth/status")
@@ -63,6 +67,31 @@ export function AuthGate() {
     <div className="flex h-screen flex-col items-center justify-center gap-4 bg-ground text-ink">
       <h1 className="text-2xl font-bold">Spotify Subgenre Assistant</h1>
       <p className="text-muted">Connect your Spotify account to start sorting tracks.</p>
+      {status.profile && (
+        <p className="text-sm text-muted">
+          Profile <span className="font-semibold text-ink-2">{status.profile}</span>
+          {status.account && (
+            <>
+              {" "}
+              · Spotify account <span className="font-semibold text-ink-2">{status.account}</span>
+            </>
+          )}
+        </p>
+      )}
+      {authError === "not_registered" && (
+        <p className="max-w-md text-center text-sm text-danger">
+          That Spotify account isn&apos;t registered for this profile&apos;s Spotify app, so you weren&apos;t logged in.
+          Log in with the account this profile is for (on Spotify&apos;s page, &ldquo;Not you?&rdquo; switches account),
+          or add the account under User Management in the app&apos;s Spotify developer dashboard.
+        </p>
+      )}
+      {wrongAccount && (
+        <p className="max-w-md text-center text-sm text-danger">
+          That Spotify account isn&apos;t the one this profile&apos;s library belongs to
+          {status.account ? ` (${status.account})` : ""}, so you weren&apos;t logged in. On Spotify&apos;s page, use
+          &ldquo;Not you?&rdquo; to switch accounts, or switch profiles in Settings.
+        </p>
+      )}
       <a
         href="/api/auth/login"
         className="rounded-full bg-ink px-6 py-2 font-semibold text-ground hover:bg-ink-2"

@@ -428,29 +428,58 @@ function MusicFolderScan({ folder }: { folder: string | null }) {
   );
 }
 
-/** Keys other programs use for the library API (docs/api.md). */
+// What the browser remembers about one library (the sorter's last session
+// and setups, Lost tracks' choices), by key prefix. Display choices are shared.
+const LIBRARY_STORAGE_PREFIXES = ["subgenre_helper.", "lostTracks."];
+const PROFILE_STORAGE_PREFIX = "profile:";
+
+type Account = { id: string; name: string };
+// The profiles, the Spotify account the active one's library belongs to, and who's logged in.
+type ProfilesState = Profiles & { account: Account | null; loggedIn: boolean; loggedInAs: Account | null };
+
+/** Puts away what the browser remembers for profile `from`, and brings back `to`'s (or nothing). */
+function swapBrowserMemory(from: string | null, to: string) {
+  try {
+    const keys = Array.from({ length: localStorage.length }, (_, i) => localStorage.key(i)!);
+    for (const key of keys) {
+      if (!LIBRARY_STORAGE_PREFIXES.some((p) => key.startsWith(p))) continue;
+      if (from !== null) localStorage.setItem(`${PROFILE_STORAGE_PREFIX}${from}:${key}`, localStorage.getItem(key)!);
+      localStorage.removeItem(key);
+    }
+    const saved = `${PROFILE_STORAGE_PREFIX}${to}:`;
+    for (const key of keys) {
+      if (!key.startsWith(saved)) continue;
+      localStorage.setItem(key.slice(saved.length), localStorage.getItem(key)!);
+      localStorage.removeItem(key);
+    }
+  } catch {
+    // Storage unavailable: the profiles share what the browser remembers.
+  }
+}
+
 /**
  * Named sets of every key, for switching between accounts. Switching logs
  * out of Spotify and reloads, so the whole app picks up the other keys.
  */
 function ProfilesSection() {
-  const [profiles, setProfiles] = useState<Profiles | null>(null);
+  const [profiles, setProfiles] = useState<ProfilesState | null>(null);
   const [name, setName] = useState("");
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    sendJson<Profiles>("/api/settings/profiles", "GET")
+    sendJson<ProfilesState>("/api/settings/profiles", "GET")
       .then(setProfiles)
       .catch((err) => setError(err.message));
   }, []);
 
   const switchTo = async (target: string, create: boolean) => {
     const message = create
-      ? `Make a new profile called "${target}" and switch to it? It starts with no keys. This logs you out of Spotify; your current keys are kept under "${profiles?.active}".`
+      ? `Make a new profile called "${target}" and switch to it? It starts with no keys and an empty library. This logs you out of Spotify; your current keys are kept under "${profiles?.active}".`
       : `Switch to "${target}"? This logs you out of Spotify, so you can log in with that profile's account.`;
     if (!window.confirm(message)) return;
     try {
       await sendJson("/api/settings/profiles", "PUT", { name: target, create });
+      if (profiles) swapBrowserMemory(profiles.active, target);
       window.location.reload();
     } catch (err) {
       setError((err as Error).message);
@@ -458,7 +487,7 @@ function ProfilesSection() {
   };
 
   const handleDelete = async (target: string) => {
-    if (!window.confirm(`Delete the profile "${target}" and its keys? This can't be undone.`)) return;
+    if (!window.confirm(`Delete the profile "${target}" and its keys? This can't be undone. Its library and tags stay on disk, and come back if you make a profile with the same name.`)) return;
     try {
       setProfiles(await sendJson(`/api/settings/profiles?name=${encodeURIComponent(target)}`, "DELETE"));
     } catch (err) {
@@ -468,10 +497,29 @@ function ProfilesSection() {
 
   const cancelNew = async () => {
     if (!profiles?.madeFrom) return;
-    if (!window.confirm(`Cancel "${profiles.active}" and go back to "${profiles.madeFrom}"? Any keys you've entered in "${profiles.active}" are thrown away, and you're logged out of Spotify.`)) return;
+    if (!window.confirm(`Cancel "${profiles.active}" and go back to "${profiles.madeFrom}"? Any keys and data in "${profiles.active}" are thrown away, and you're logged out of Spotify.`)) return;
     try {
       await sendJson("/api/settings/profiles", "PUT", { cancelNew: true });
+      // The new profile's memory goes with it.
+      swapBrowserMemory(null, profiles.madeFrom);
       window.location.reload();
+    } catch (err) {
+      setError((err as Error).message);
+    }
+  };
+
+  const logOut = async () => {
+    try {
+      await sendJson("/api/auth/logout", "POST");
+      window.location.reload();
+    } catch (err) {
+      setError((err as Error).message);
+    }
+  };
+
+  const claimAccount = async () => {
+    try {
+      setProfiles(await sendJson("/api/settings/profiles", "PUT", { claimAccount: true }));
     } catch (err) {
       setError((err as Error).message);
     }
@@ -486,8 +534,8 @@ function ProfilesSection() {
   return (
     <Section title="Profiles">
       <p className="text-xs text-muted">
-        Each profile has its own Spotify app, AI and Last.fm keys. Your library, tags, snapshots and music folder are
-        shared.
+        Each profile has its own Spotify app, AI and Last.fm keys, and its own library, tags and snapshots. The music
+        folder is shared, but each profile scans it for itself.
       </p>
       {profiles && (
         <ul className="space-y-1 text-sm">
@@ -517,6 +565,42 @@ function ProfilesSection() {
           ))}
         </ul>
       )}
+      {profiles?.loggedIn && !profiles.loggedInAs && (
+        <p className="text-xs text-danger">
+          Logged in to Spotify, but Spotify won&apos;t say as whom, usually because the account isn&apos;t registered for
+          this profile&apos;s Spotify app.{" "}
+          <button type="button" onClick={logOut} className="font-semibold underline hover:text-ink">
+            Log out
+          </button>{" "}
+          and log in with this profile&apos;s account.
+        </p>
+      )}
+      {profiles?.loggedInAs && (
+        <div className="space-y-1 text-xs">
+          <p className="text-muted">
+            Logged in to Spotify as <span className="font-semibold text-ink-2">{profiles.loggedInAs.name}</span>
+            {profiles.account?.id === profiles.loggedInAs.id && <> · this profile&apos;s account</>} ·{" "}
+            <button type="button" onClick={logOut} className="text-ink-2 underline hover:text-ink">
+              Log out
+            </button>
+          </p>
+          {!profiles.account && (
+            <p className="text-muted">
+              Is this {profiles.active}&apos;s account? Saying so means logging in with any other account is refused on this
+              profile.{" "}
+              <button type="button" onClick={claimAccount} className="font-semibold text-ink-2 underline hover:text-ink">
+                Yes, it&apos;s {profiles.active}&apos;s
+              </button>
+            </p>
+          )}
+          {profiles.account && profiles.account.id !== profiles.loggedInAs.id && (
+            <p className="text-danger">
+              This profile&apos;s library belongs to {profiles.account.name}, not {profiles.loggedInAs.name}. Log out and log
+              in as {profiles.account.name}.
+            </p>
+          )}
+        </div>
+      )}
       <form onSubmit={handleCreate} className="flex gap-2">
         <input
           value={name}
@@ -538,6 +622,7 @@ function ProfilesSection() {
   );
 }
 
+/** Keys other programs use for the library API (docs/api.md). */
 function ApiKeysSection() {
   const [keys, setKeys] = useState<ApiKeyInfo[] | null>(null);
   const [name, setName] = useState("");

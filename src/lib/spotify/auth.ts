@@ -1,4 +1,4 @@
-import { getSession } from "@/lib/session";
+import { getSession, loggedInHere } from "@/lib/session";
 import { fetchWithTimeout } from "@/lib/fetchWithTimeout";
 import { getRedirectUri, getSetting, type SettingName } from "@/lib/settings";
 
@@ -39,6 +39,9 @@ export function buildAuthorizeUrl(state: string): string {
     redirect_uri: getRedirectUri(),
     scope: SPOTIFY_SCOPES,
     state,
+    // Otherwise Spotify silently uses whoever is logged in to it in the
+    // browser, which after a profile switch is the other profile's account.
+    show_dialog: "true",
   });
   return `${AUTH_URL}?${params.toString()}`;
 }
@@ -116,7 +119,7 @@ function refreshOnce(refreshToken: string): Promise<SpotifyTokenResponse> {
 
 export async function getValidAccessToken(): Promise<string> {
   const session = await getSession();
-  if (!session.accessToken || !session.refreshToken || !session.expiresAt) {
+  if (!loggedInHere(session) || !session.accessToken || !session.refreshToken || !session.expiresAt) {
     throw new Error("Not authenticated with Spotify");
   }
 

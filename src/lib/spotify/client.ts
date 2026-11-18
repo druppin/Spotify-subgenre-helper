@@ -181,6 +181,12 @@ async function recordBlock(waitMs: number) {
   await blockCache.set("blockedUntil", usage.blockedUntil, waitMs);
 }
 
+/** Forgets the block held in memory, which was on the Spotify app of the profile switched away from. */
+export function resetSpotifyBlock() {
+  usage.blockedUntil = null;
+  blockLoaded = false;
+}
+
 /** When Spotify's block on this app ends, or null if it isn't blocked. */
 export function getSpotifyBlockedUntil(): Promise<number | null> {
   return currentBlock();

@@ -1,6 +1,6 @@
 import { promises as fs } from "fs";
 import path from "path";
-import { DATA_DIR } from "@/lib/dataDir";
+import { profileDataDir } from "@/lib/settings";
 
 /**
  * Swappable cache abstraction. File-backed by default (see FileCache) so
@@ -57,14 +57,16 @@ export class InMemoryCache<V = unknown> implements Cache<V> {
  * serialized; it's not meant to survive multiple processes writing.
  */
 export class FileCache<V = unknown> implements Cache<V> {
+  private dir: string;
   private filePath: string;
   private loaded: Map<string, Entry<V>> | null = null;
   // Overlapping writeFile calls to one path can interleave and corrupt it
   // (bulk genre generation runs several requests at once), so writes queue.
   private writeChain: Promise<void> = Promise.resolve();
 
-  constructor(namespace: string) {
-    this.filePath = path.join(DATA_DIR, `${namespace}.json`);
+  constructor(namespace: string, dir: string) {
+    this.dir = dir;
+    this.filePath = path.join(dir, `${namespace}.json`);
   }
 
   private async load(): Promise<Map<string, Entry<V>>> {
@@ -80,7 +82,7 @@ export class FileCache<V = unknown> implements Cache<V> {
 
   private persist(map: Map<string, Entry<V>>): Promise<void> {
     const write = this.writeChain.then(async () => {
-      await fs.mkdir(DATA_DIR, { recursive: true });
+      await fs.mkdir(this.dir, { recursive: true });
       await fs.writeFile(this.filePath, JSON.stringify(Object.fromEntries(map), null, 2), "utf-8");
     });
     this.writeChain = write.catch(() => {});
@@ -123,11 +125,24 @@ export class FileCache<V = unknown> implements Cache<V> {
 // reuse the same cache instead of creating a new one per request.
 const namespacedCaches = new Map<string, Cache<unknown>>();
 
-export function getCache<V = unknown>(namespace: string): Cache<V> {
-  let cache = namespacedCaches.get(namespace);
+// The namespace's cache in the active profile's folder. Callers keep what
+// getCache returns, so it looks the profile up again on every call.
+function cacheFor(namespace: string): Cache<unknown> {
+  const dir = profileDataDir();
+  const key = `${dir}\0${namespace}`;
+  let cache = namespacedCaches.get(key);
   if (!cache) {
-    cache = new FileCache<unknown>(namespace);
-    namespacedCaches.set(namespace, cache);
+    cache = new FileCache<unknown>(namespace, dir);
+    namespacedCaches.set(key, cache);
   }
-  return cache as Cache<V>;
+  return cache;
+}
+
+export function getCache<V = unknown>(namespace: string): Cache<V> {
+  return {
+    get: (key) => cacheFor(namespace).get(key) as Promise<V | undefined>,
+    set: (key, value, ttlMs) => cacheFor(namespace).set(key, value, ttlMs),
+    delete: (key) => cacheFor(namespace).delete(key),
+    entries: () => cacheFor(namespace).entries() as Promise<[string, V][]>,
+  };
 }

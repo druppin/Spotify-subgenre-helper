@@ -2,7 +2,7 @@ import { promises as fs } from "fs";
 import path from "path";
 import { getCache } from "@/lib/cache";
 import { getPlaylistAdds } from "@/lib/libraryStore";
-import { DATA_DIR } from "@/lib/dataDir";
+import { profileDataDir } from "@/lib/settings";
 
 /*
  * A record of every song this app files into (or takes out of) a playlist,
@@ -10,7 +10,7 @@ import { DATA_DIR } from "@/lib/dataDir";
  * as append-only JSON lines: one write per change, never a full rewrite.
  */
 
-const LOG_PATH = path.join(DATA_DIR, "organize-log.jsonl");
+const logPath = () => path.join(profileDataDir(), "organize-log.jsonl");
 
 // Which part of the app made a change.
 export type OrganizeSource = "sorter" | "lost-tracks" | "flows";
@@ -77,8 +77,8 @@ export async function recordOrganizeEvent(event: Omit<OrganizeEvent, "at">): Pro
   if (event.uris.length === 0) return;
   try {
     await ensureBaseline();
-    await fs.mkdir(DATA_DIR, { recursive: true });
-    await fs.appendFile(LOG_PATH, JSON.stringify({ at: new Date().toISOString(), ...event }) + "\n", "utf-8");
+    await fs.mkdir(profileDataDir(), { recursive: true });
+    await fs.appendFile(logPath(), JSON.stringify({ at: new Date().toISOString(), ...event }) + "\n", "utf-8");
   } catch (err) {
     // Losing a log line shouldn't fail the add/remove that already happened.
     console.error("Failed to record organize event:", err);
@@ -88,7 +88,7 @@ export async function recordOrganizeEvent(event: Omit<OrganizeEvent, "at">): Pro
 async function readEvents(): Promise<OrganizeEvent[]> {
   let raw: string;
   try {
-    raw = await fs.readFile(LOG_PATH, "utf-8");
+    raw = await fs.readFile(logPath(), "utf-8");
   } catch {
     return [];
   }

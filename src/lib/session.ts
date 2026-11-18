@@ -1,6 +1,6 @@
 import { cookies } from "next/headers";
 import { getIronSession, type IronSession, type SessionOptions } from "iron-session";
-import { getSessionSecret } from "@/lib/settings";
+import { DEFAULT_PROFILE, getSessionSecret, listProfiles } from "@/lib/settings";
 
 export interface SpotifySessionData {
   accessToken?: string;
@@ -10,6 +10,16 @@ export interface SpotifySessionData {
   // scope added after login can ask for a reconnect instead of failing.
   scope?: string;
   oauthState?: string;
+  // The profile that was in use at login. A login only counts in that
+  // profile: it's for that profile's Spotify app and account.
+  profile?: string;
+}
+
+/** Whether the session is a Spotify login made in the profile now in use. */
+export function loggedInHere(session: SpotifySessionData): boolean {
+  // Logins from before profiles carry none, and were made in Default.
+  const profile = session.profile ?? DEFAULT_PROFILE;
+  return Boolean(session.accessToken && session.refreshToken && profile === listProfiles().active);
 }
 
 function sessionOptions(): SessionOptions {

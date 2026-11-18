@@ -2,7 +2,7 @@ import { existsSync, readFileSync } from "fs";
 import path from "path";
 import { once, sql, transaction } from "@/lib/db";
 import type { StoredTags, TrackSummary } from "@/lib/llm/types";
-import { DATA_DIR } from "@/lib/dataDir";
+import { profileDataDir } from "@/lib/settings";
 import { genreKey, normalizeGenre } from "@/lib/genreKey";
 
 export { normalizeGenre };
@@ -139,8 +139,14 @@ interface GenreIndex {
 
 // Rebuilt after any save.
 let genreIndex: Promise<GenreIndex> | null = null;
+// Whose library genreIndex was built from.
+let genreIndexDir: string | null = null;
 
 function getGenreIndex(): Promise<GenreIndex> {
+  if (genreIndexDir !== profileDataDir()) {
+    genreIndex = null;
+    genreIndexDir = profileDataDir();
+  }
   genreIndex ??= (async () => {
     ensureBackfilled();
     const counts = new Map<string, Map<string, number>>();
@@ -241,7 +247,7 @@ function ensureBackfilled() {
 }
 
 function readJson<V>(file: string): V | undefined {
-  const filePath = path.join(DATA_DIR, file);
+  const filePath = path.join(profileDataDir(), file);
   if (!existsSync(filePath)) return undefined;
   try {
     return JSON.parse(readFileSync(filePath, "utf-8")) as V;
